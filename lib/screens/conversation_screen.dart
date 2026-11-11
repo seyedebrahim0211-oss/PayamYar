@@ -7,6 +7,7 @@ import '../message_logic.dart';
 import '../sms_bridge.dart';
 import 'compose_screen.dart';
 import 'compose_tools.dart';
+import 'send_undo_bar.dart';
 import 'home_screen.dart';
 import 'widgets.dart';
 
@@ -68,16 +69,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
     if (!mounted) return;
     setState(() => sending = false);
     if (pending != null || !store.android) input.clear();
-    if (pending != null) {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(
-          duration: const Duration(seconds: 5),
-          content: const Text('پیام تا ۵ ثانیه دیگر ارسال می‌شود'),
-          action: SnackBarAction(label: 'لغو', onPressed: () async {
-            if (await store.undo(pending)) input.text = pending.body;
-          })));
-    }
+    // A persistent countdown bar in the conversation displays the real
+    // native undo deadline and restores the text when the user cancels.
   }
 
   Future<void> _templates() async {
@@ -255,6 +248,22 @@ class _ConversationScreenState extends State<ConversationScreen> {
                       }
                       return _bubbleFor(e.message!, pinnedId);
                     })),
+            if (pending.isNotEmpty)
+              SendUndoBar(
+                key: ValueKey(pending.last.id),
+                requests: pending,
+                onUndo: () async {
+                  String? restored;
+                  var cancelled = 0;
+                  for (final request in pending) {
+                    if (await store.undo(request)) {
+                      restored ??= request.body;
+                      cancelled++;
+                    }
+                  }
+                  if (cancelled > 0 && restored != null && mounted) input.text = restored;
+                },
+              ),
             if (canReply) _inputBar(scheme) else Padding(
               padding: const EdgeInsets.all(14),
               child: Text('امکان پاسخ به این فرستنده وجود ندارد.', style: TextStyle(color: scheme.onSurfaceVariant))),
