@@ -38,7 +38,7 @@ class UpdateService {
     final isNewer = _compareVersions(version, current) > 0;
     if (url.isNotEmpty) {
       final uri = Uri.tryParse(url);
-      if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
+      if (uri == null || uri.scheme != 'https' || uri.host != 'honarmardomi.ir') {
         throw const FormatException('Invalid update URL');
       }
     }
