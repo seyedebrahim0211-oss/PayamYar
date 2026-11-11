@@ -87,7 +87,12 @@ jobs:
         env:
           WP_USER: ${{ secrets.PAYAMYAR_WP_USER }}
           WP_APP_PASSWORD: ${{ secrets.PAYAMYAR_WP_APP_PASSWORD }}
+          KEYSTORE_BASE64: ${{ secrets.PAYAMYAR_KEYSTORE_BASE64 }}
         run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::notice::A dedicated release signing key is required; skipping public publication."
+            exit 0
+          fi
           if [ -z "$WP_USER" ] || [ -z "$WP_APP_PASSWORD" ]; then
             echo "::notice::WordPress secrets are not set; skipping publish. See docs/RELEASE_SIGNING_FA.md."
             exit 0
