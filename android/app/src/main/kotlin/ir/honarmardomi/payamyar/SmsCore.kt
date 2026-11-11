@@ -83,8 +83,9 @@ object SmsCore {
         var row: Uri? = null
         try {
             val sim = item.getInt("sim")
-            val selected = if (sim >= 0) sim else SubscriptionManager.getDefaultSmsSubscriptionId()
-            check(SubscriptionManager.isValidSubscriptionId(selected)) { "سیم‌کارت پیش‌فرض ارسال را در تنظیمات گوشی انتخاب کنید." }
+            @Suppress("DEPRECATION")
+            val selected = if (sim >= 0) sim else if (Build.VERSION.SDK_INT >= 24) SubscriptionManager.getDefaultSmsSubscriptionId() else SmsManager.getDefault().subscriptionId
+            check(selected >= 0 && selected != Int.MAX_VALUE) { "سیم‌کارت پیش‌فرض ارسال را در تنظیمات گوشی انتخاب کنید." }
             @Suppress("DEPRECATION")
             val manager = if (Build.VERSION.SDK_INT >= 31) c.getSystemService(SmsManager::class.java).createForSubscriptionId(selected)
                 else SmsManager.getSmsManagerForSubscriptionId(selected)
