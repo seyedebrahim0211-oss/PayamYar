@@ -61,16 +61,52 @@ class _ConversationScreenState extends State<ConversationScreen> {
     super.dispose();
   }
 
-  Future<void> _send() async {
+  Future<void> _send({DateTime? scheduledAt}) async {
     final text = input.text.trim();
     if (text.isEmpty || sending) return;
     setState(() => sending = true);
-    final pending = await store.send(widget.address, text);
+    final pending = await store.send(widget.address, text, scheduledAt: scheduledAt);
     if (!mounted) return;
     setState(() => sending = false);
     if (pending != null || !store.android) input.clear();
-    // A persistent countdown bar in the conversation displays the real
-    // native undo deadline and restores the text when the user cancels.
+    if (pending != null && scheduledAt != null) {
+      store.onNotice?.call('ارسال برای ${Jalali.time(scheduledAt)} زمان‌بندی شد.');
+    }
+  }
+
+  Future<void> _scheduleSend() async {
+    if (input.text.trim().isEmpty) {
+      store.onNotice?.call('ابتدا متن پیام را بنویسید.');
+      return;
+    }
+    final now = DateTime.now();
+    final day = await showDatePicker(
+      context: context, initialDate: now, firstDate: now,
+      lastDate: now.add(const Duration(days: 30)),
+      helpText: 'انتخاب روز ارسال',
+      cancelText: 'انصراف', confirmText: 'بعدی',
+    );
+    if (day == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context, initialTime: TimeOfDay.fromDateTime(now.add(const Duration(minutes: 15))),
+      helpText: 'ساعت ارسال', cancelText: 'انصراف', confirmText: 'تأیید',
+    );
+    if (time == null || !mounted) return;
+    final at = DateTime(day.year, day.month, day.day, time.hour, time.minute);
+    final gap = at.difference(DateTime.now());
+    if (gap < const Duration(seconds: 10) || gap > const Duration(days: 30)) {
+      store.onNotice?.call('زمان ارسال باید از ۱۰ ثانیه دیگر تا ۳۰ روز آینده باشد.');
+      return;
+    }
+    final confirmed = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('تأیید ارسال زمان‌دار'),
+      content: Text('پیام در ساعت ${Jalali.time(at)} ثبت می‌شود. ممکن است اندروید یا اپراتور ارسال را به تأخیر بیندازد. در صورت نیاز از صفحه گفتگو لغو کنید.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('زمان‌بندی')),
+      ],
+    ));
+    if (confirmed == true && mounted) await _send(scheduledAt: at);
   }
 
   Future<void> _templates() async {
@@ -259,22 +295,32 @@ class _ConversationScreenState extends State<ConversationScreen> {
               ),
             Expanded(child: items.isEmpty
                 ? const EmptyState(icon: Icons.chat_outlined, title: 'هنوز پیامی نیست', subtitle: 'اولین پیام را بنویسید.')
-                : ListView.builder(
+                : Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topRight, end: Alignment.bottomLeft,
+                        colors: [scheme.primary.withValues(alpha: .055),
+                          scheme.surfaceContainerLowest,
+                          const Color(0xFFD6B779).withValues(alpha: .055)],
+                      ),
+                    ),
+                    child: ListView.builder(
                     reverse: true,
-                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                    padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
                     itemCount: items.length,
                     itemBuilder: (context, i) {
                       final e = items[i];
                       if (e.header != null) return _DayHeader(e.header!);
                       final p = e.pending;
                       if (p != null) {
-                        return _Bubble(text: p.body, outgoing: true, time: 'در صف ارسال',
+                        return _Bubble(text: p.body, outgoing: true,
+                          time: p.scheduled ? 'زمان‌دار • ${Jalali.time(p.deadline)}' : 'در صف ارسال',
                           trailing: TextButton(onPressed: () async {
                             if (await store.undo(p)) input.text = p.body;
                           }, child: const Text('لغو')));
                       }
                       return _bubbleFor(e.message!, pinnedId);
-                    })),
+                    }))),
             if (pending.isNotEmpty)
               SendUndoBar(
                 key: ValueKey(pending.last.id),
@@ -349,6 +395,15 @@ class _ConversationScreenState extends State<ConversationScreen> {
                 ? const SizedBox.shrink()
                 : Padding(padding: const EdgeInsets.only(bottom: 2), child: SmsCounter(text: value.text))),
           Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            GestureDetector(
+              onLongPress: _scheduleSend,
+              child: IconButton.filled(
+                tooltip: 'ارسال (لمس طولانی: ارسال زمان‌دار)',
+                onPressed: sending ? null : () => _send(),
+                icon: const Icon(Icons.arrow_upward_rounded, size: 24),
+                style: IconButton.styleFrom(minimumSize: const Size(48, 48)),
+              ),
+            ),
             PopupMenuButton<String>(
               tooltip: 'ابزارهای پیام',
               icon: Icon(Icons.add_circle_outline_rounded, color: scheme.primary, size: 27),
@@ -398,12 +453,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                   borderSide: BorderSide(color: scheme.outlineVariant)),
               ),
             )),
-            const SizedBox(width: 6),
-            IconButton.filled(
-              tooltip: 'ارسال',
-              onPressed: sending ? null : _send,
-              icon: const Icon(Icons.send_rounded, textDirection: TextDirection.ltr),
-            ),
+            const SizedBox(width: 2),
           ]),
         ]),
       ),
@@ -474,7 +524,7 @@ class _Bubble extends StatelessWidget {
                   SizedBox(width: 4),
                   Text('احتمال کلاهبرداری؛ روی لینک نزنید', style: TextStyle(fontSize: 12, color: Colors.orange)),
                 ])),
-              Text(text, style: TextStyle(color: fg, fontSize: 15, height: 1.7)),
+              Text(text, style: TextStyle(color: fg, fontSize: 15.5, height: 1.7)),
               if (trailing != null) Padding(padding: const EdgeInsets.only(top: 6), child: trailing),
               const SizedBox(height: 4),
               Row(mainAxisSize: MainAxisSize.min, children: [
