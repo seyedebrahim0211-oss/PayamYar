@@ -65,7 +65,7 @@ class MainActivity : FlutterActivity() {
                 else -> worker.execute {
                     try {
                         val value: Any? = when (call.method) {
-                            "isAvailable" -> packageManager.hasSystemFeature(PackageManager.FEATURE_TELEPHONY_MESSAGING)
+                            "isAvailable" -> packageManager.hasSystemFeature(if (Build.VERSION.SDK_INT >= 33) PackageManager.FEATURE_TELEPHONY_MESSAGING else PackageManager.FEATURE_TELEPHONY)
                             "permissionStatus" -> mapOf("read" to has(Manifest.permission.READ_SMS),
                                 "send" to has(Manifest.permission.SEND_SMS), "default" to SmsCore.isDefault(this))
                             "readMessages" -> SmsCore.read(this, call.argument<Int>("limit") ?: 500,
