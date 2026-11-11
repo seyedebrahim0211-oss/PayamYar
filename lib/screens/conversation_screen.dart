@@ -78,6 +78,33 @@ class _ConversationScreenState extends State<ConversationScreen> {
     if (text != null) input.text = text;
   }
 
+  Future<void> _emojiPicker() async {
+    const emojis = ['😊', '🙏', '❤️', '🌹', '👍', '😂', '🎉', '✨', '💐', '👌', '🤝', '💚'];
+    await showModalBottomSheet<void>(
+      context: context, showDragHandle: true,
+      builder: (sheet) => SafeArea(child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Wrap(spacing: 12, runSpacing: 12, children: [
+          for (final emoji in emojis)
+            InkWell(
+              onTap: () {
+                final value = input.value;
+                final start = value.selection.isValid ? value.selection.start : value.text.length;
+                final end = value.selection.isValid ? value.selection.end : value.text.length;
+                final next = value.text.replaceRange(start, end, emoji);
+                input.value = TextEditingValue(text: next,
+                  selection: TextSelection.collapsed(offset: start + emoji.length));
+                Navigator.pop(sheet);
+              },
+              borderRadius: BorderRadius.circular(14),
+              child: Padding(padding: const EdgeInsets.all(10),
+                child: Text(emoji, style: const TextStyle(fontSize: 26))),
+            ),
+        ]),
+      )),
+    );
+  }
+
   Future<void> _polish() async {
     if (input.text.trim().isEmpty) {
       store.onNotice?.call('ابتدا متن پیام را بنویسید.');
@@ -322,16 +349,33 @@ class _ConversationScreenState extends State<ConversationScreen> {
                 ? const SizedBox.shrink()
                 : Padding(padding: const EdgeInsets.only(bottom: 2), child: SmsCounter(text: value.text))),
           Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            IconButton(tooltip: 'پیام‌های آماده', icon: Icon(Icons.bolt_rounded, color: scheme.primary), onPressed: _templates),
-            IconButton(tooltip: 'ویرایش متن', icon: Icon(Icons.auto_fix_high_rounded, color: scheme.primary), onPressed: _polish),
+            PopupMenuButton<String>(
+              tooltip: 'ابزارهای پیام',
+              icon: Icon(Icons.add_circle_outline_rounded, color: scheme.primary, size: 27),
+              onSelected: (option) {
+                if (option == 'templates') _templates();
+                if (option == 'polish') _polish();
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'templates', child: ListTile(
+                  dense: true, leading: Icon(Icons.library_books_outlined), title: Text('پیام‌های آماده'))),
+                PopupMenuItem(value: 'polish', child: ListTile(
+                  dense: true, leading: Icon(Icons.auto_fix_high_rounded), title: Text('ویرایش متن'))),
+              ],
+            ),
+            IconButton(tooltip: 'شکلک‌ها', onPressed: _emojiPicker,
+              icon: Icon(Icons.sentiment_satisfied_alt_rounded, color: scheme.primary)),
             if (dualSim)
               PopupMenuButton<int>(
                 tooltip: 'انتخاب سیم‌کارت',
                 icon: Icon(Icons.sim_card_outlined, color: scheme.primary),
                 onSelected: (v) => setState(() => store.selectedSim = v),
                 itemBuilder: (_) => [
-                  for (final s in store.sims)
-                    CheckedPopupMenuItem(value: s['id'] as int, checked: store.selectedSim == s['id'], child: Text(s['label'].toString())),
+                  for (final sim in store.sims)
+                    CheckedPopupMenuItem(
+                      value: sim['id'] as int,
+                      checked: store.selectedSim == sim['id'],
+                      child: Text(sim['label'].toString())),
                 ],
               ),
             Expanded(child: TextField(
@@ -340,9 +384,19 @@ class _ConversationScreenState extends State<ConversationScreen> {
               maxLines: 5,
               maxLength: 2000,
               textInputAction: TextInputAction.newline,
-              decoration: InputDecoration(hintText: 'پیام بنویسید…', counterText: '',
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none)),
+              decoration: InputDecoration(
+                hintText: 'پیام بنویسید…',
+                counterText: '',
+                filled: true,
+                fillColor: scheme.surface,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(24),
+                  borderSide: BorderSide(color: scheme.outlineVariant)),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(24),
+                  borderSide: BorderSide(color: scheme.outlineVariant)),
+              ),
             )),
             const SizedBox(width: 6),
             IconButton.filled(
@@ -388,8 +442,11 @@ class _Bubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final bg = failed ? scheme.errorContainer : outgoing ? scheme.primary : (dark ? const Color(0xFF1B2D33) : Colors.white);
-    final fg = failed ? scheme.onErrorContainer : outgoing ? scheme.onPrimary : scheme.onSurface;
+    final bg = failed ? scheme.errorContainer
+      : outgoing ? (dark ? const Color(0xFF174D4E) : const Color(0xFFD9EFEB))
+      : (dark ? const Color(0xFF263A40) : Colors.white);
+    final fg = failed ? scheme.onErrorContainer
+      : outgoing && dark ? const Color(0xFFF1F8F6) : scheme.onSurface;
     const r = Radius.circular(20);
     return Align(
       alignment: outgoing ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
@@ -398,10 +455,11 @@ class _Bubble extends StatelessWidget {
         child: GestureDetector(
           onLongPress: onLongPress,
           child: Container(
-            margin: const EdgeInsets.symmetric(vertical: 3),
+            margin: const EdgeInsets.symmetric(vertical: 4),
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
             decoration: BoxDecoration(
               color: bg,
+              boxShadow: [BoxShadow(color: scheme.shadow.withValues(alpha: .05), blurRadius: 6, offset: const Offset(0, 2))],
               border: pinned ? Border.all(color: const Color(0xFFD4A94E), width: 1.5) : null,
               borderRadius: BorderRadiusDirectional.only(
                 topStart: r, topEnd: r,
