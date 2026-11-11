@@ -101,11 +101,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _restoreDraft();
-    if (SmsBridge.supported) SmsBridge.listen((event) async {
+    if (SmsBridge.supported) {
+      SmsBridge.listen((event) async {
       if (event == 'composeIntent') { await _takeIntent(); return; }
       refreshDebounce?.cancel();
       refreshDebounce = Timer(const Duration(milliseconds: 400), _refreshSms);
-    });
+      });
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _checkForUpdates(silent: true);
