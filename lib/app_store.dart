@@ -587,8 +587,10 @@ class AppStore extends ChangeNotifier {
         break;
       }
       if (state == 'cancelled') break;
-      if (state == 'queued' || state == 'pending') await Future<void>.delayed(
-        p.scheduled ? const Duration(seconds: 3) : const Duration(milliseconds: 600));
+      if (state == 'queued' || state == 'pending') {
+        await Future<void>.delayed(
+          p.scheduled ? const Duration(seconds: 3) : const Duration(milliseconds: 600));
+      }
     }
     pendingSends.remove(p);
     if (state.startsWith('send_failed')) {
