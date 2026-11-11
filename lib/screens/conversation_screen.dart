@@ -395,13 +395,23 @@ class _ConversationScreenState extends State<ConversationScreen> {
                 ? const SizedBox.shrink()
                 : Padding(padding: const EdgeInsets.only(bottom: 2), child: SmsCounter(text: value.text))),
           Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            GestureDetector(
-              onLongPress: _scheduleSend,
-              child: IconButton.filled(
-                tooltip: 'ارسال (لمس طولانی: ارسال زمان‌دار)',
-                onPressed: sending ? null : () => _send(),
-                icon: const Icon(Icons.arrow_upward_rounded, size: 24),
-                style: IconButton.styleFrom(minimumSize: const Size(48, 48)),
+            Tooltip(
+              message: 'ارسال (لمس طولانی: ارسال زمان‌دار)',
+              child: Material(
+                color: scheme.primary,
+                borderRadius: BorderRadius.circular(16),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: sending ? null : () => _send(),
+                  onLongPress: sending ? null : _scheduleSend,
+                  child: SizedBox(
+                    width: 49, height: 49,
+                    child: Center(child: sending
+                      ? SizedBox(width: 21, height: 21,
+                          child: CircularProgressIndicator(color: scheme.onPrimary, strokeWidth: 2))
+                      : Icon(Icons.arrow_upward_rounded, size: 25, color: scheme.onPrimary)),
+                  ),
+                ),
               ),
             ),
             PopupMenuButton<String>(
