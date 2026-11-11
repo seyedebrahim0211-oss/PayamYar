@@ -15,6 +15,12 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+      - name: Install Persian font (OFL licensed)
+        shell: bash
+        run: |
+          mkdir -p assets/fonts
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/main/ofl/vazirmatn/Vazirmatn%5Bwght%5D.ttf' --output assets/fonts/Vazirmatn.ttf
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/main/ofl/vazirmatn/OFL.txt' --output assets/fonts/OFL.txt
       - run: flutter create --project-name payamyar --org ir.honarmardomi --platforms android,windows --no-overwrite .
       - run: flutter pub get
       - run: flutter analyze
@@ -27,6 +33,12 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+      - name: Install Persian font (OFL licensed)
+        shell: bash
+        run: |
+          mkdir -p assets/fonts
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/main/ofl/vazirmatn/Vazirmatn%5Bwght%5D.ttf' --output assets/fonts/Vazirmatn.ttf
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/main/ofl/vazirmatn/OFL.txt' --output assets/fonts/OFL.txt
       - run: flutter create --project-name payamyar --org ir.honarmardomi --platforms android --no-overwrite .
       - run: flutter pub get
       - run: flutter build apk --debug
@@ -43,6 +55,12 @@ jobs:
         with:
           channel: stable
       - run: flutter config --enable-windows-desktop
+      - name: Install Persian font (OFL licensed)
+        shell: bash
+        run: |
+          mkdir -p assets/fonts
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/main/ofl/vazirmatn/Vazirmatn%5Bwght%5D.ttf' --output assets/fonts/Vazirmatn.ttf
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/main/ofl/vazirmatn/OFL.txt' --output assets/fonts/OFL.txt
       - run: flutter create --project-name payamyar --org ir.honarmardomi --platforms windows --no-overwrite .
       - run: flutter pub get
       - run: flutter build windows --release

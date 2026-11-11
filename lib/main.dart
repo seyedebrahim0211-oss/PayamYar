@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'message_logic.dart';
 import 'update_service.dart';
+import 'brand_mark.dart';
 
 void main() => runApp(const PayamYar());
 const brand = Color(0xFF087F81);
@@ -38,6 +39,7 @@ class _PayamYarState extends State<PayamYar> {
     ThemeData theme(Brightness b) {
       final s = ColorScheme.fromSeed(seedColor: colors[palette], brightness: b);
       return ThemeData(useMaterial3: true, colorScheme: s,
+        fontFamily: 'Vazirmatn',
         scaffoldBackgroundColor: b == Brightness.dark ? const Color(0xFF121F24) : const Color(0xFFF8F7F2),
         cardTheme: CardThemeData(elevation: 0, margin: EdgeInsets.zero, shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18), side: BorderSide(color: s.outlineVariant))),
@@ -73,6 +75,12 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int tab = 0; String query = ''; MessageCategory? filter;
   bool checking = false;
+  @override void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _checkForUpdates(silent: true);
+    });
+  }
   final recipient = TextEditingController(), message = TextEditingController();
   Timer? countdown; int remaining = 0; MessageRecord? pending;
   final demo = <MessageRecord>[
@@ -82,7 +90,7 @@ class _HomeScreenState extends State<HomeScreen> {
     MessageRecord(sender:'فروشگاه نمونه', body:'تخفیف ویژه امروز؛ تبلیغ آزمایشی.', date:DateTime(2026,11,9)),
   ];
 
-  Future<void> _checkForUpdates() async {
+  Future<void> _checkForUpdates({bool silent = false}) async {
     if (checking) return;
     setState(() => checking = true);
     try {
@@ -92,7 +100,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ? 'در حال حاضر نسخه منتشرشده جدیدی وجود ندارد.'
           : 'نسخه جدید: ${result.version}';
       if (!result.available || result.url.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+        if (!silent) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
       } else {
         await showDialog<void>(
           context: context,
@@ -110,7 +118,7 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      if (mounted && !silent) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('بررسی نسخه ممکن نیست؛ اتصال اینترنت را بررسی کنید.')));
     } finally {
       if (mounted) setState(() => checking = false);
@@ -165,7 +173,7 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(title: Row(mainAxisSize: MainAxisSize.min, children: [
         Container(padding: const EdgeInsets.all(9), decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.primary, borderRadius: BorderRadius.circular(12)),
-          child: const Icon(Icons.mark_chat_read_outlined, color: Colors.white)),
+          child: const BrandMark()),
         const SizedBox(width: 11),
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const Text('پیامیار', style: TextStyle(fontWeight: FontWeight.w800)),
