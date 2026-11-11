@@ -17,6 +17,7 @@ import io.flutter.plugin.common.MethodChannel
 import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
+    private var observing = false
     private var contactResult: MethodChannel.Result? = null
     private lateinit var channel: MethodChannel
     private val worker = Executors.newSingleThreadExecutor()
@@ -87,7 +88,19 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
-        contentResolver.registerContentObserver(Telephony.Sms.CONTENT_URI, true, observer)
+        observeMessages()
+    }
+    private fun observeMessages() {
+        if (!observing && has(Manifest.permission.READ_SMS)) {
+            try {
+                contentResolver.registerContentObserver(Telephony.Sms.CONTENT_URI, true, observer)
+                observing = true
+            } catch (_: SecurityException) { }
+        }
+    }
+    override fun onResume() {
+        super.onResume()
+        if (::channel.isInitialized) observeMessages()
     }
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
@@ -108,9 +121,10 @@ class MainActivity : FlutterActivity() {
     }
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        observeMessages()
         channel.invokeMethod("messagesChanged", null)
     }
     private fun has(permission: String) = ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); channel.invokeMethod("composeIntent", null) }
-    override fun onDestroy() { contentResolver.unregisterContentObserver(observer); super.onDestroy() }
+    override fun onDestroy() { if (observing) contentResolver.unregisterContentObserver(observer); super.onDestroy() }
 }
