@@ -6,12 +6,17 @@ class SmsPermissionState {
   final bool isDefault;
   final bool canRead;
   final bool canSend;
-  const SmsPermissionState({required this.canRead, required this.canSend, this.isDefault = false});
+  final bool contacts;
+  const SmsPermissionState({required this.canRead, required this.canSend, this.isDefault = false, this.contacts = false});
+  static SmsPermissionState fromMap(Map<String, bool> raw) => SmsPermissionState(
+    canRead: raw['read'] ?? false, canSend: raw['send'] ?? false,
+    isDefault: raw['default'] ?? false, contacts: raw['contacts'] ?? false);
 }
 
 class SmsBridge {
   static const MethodChannel _channel = MethodChannel('ir.honarmardomi.payamyar/sms');
   static bool get supported => Platform.isAndroid;
+  static const pageSize = 1000;
 
   static Future<bool> available() async {
     if (!supported) return false;
@@ -21,14 +26,17 @@ class SmsBridge {
   static Future<SmsPermissionState> status() async {
     if (!supported) return const SmsPermissionState(canRead: false, canSend: false);
     final raw = await _channel.invokeMapMethod<String, bool>('permissionStatus') ?? {};
-    return SmsPermissionState(canRead: raw['read'] ?? false, canSend: raw['send'] ?? false, isDefault: raw['default'] ?? false);
+    return SmsPermissionState.fromMap(raw);
   }
 
-  static Future<void> request() async {
-    if (supported) await _channel.invokeMethod<void>('requestPermissions');
+  /// Shows the Android permission dialog and completes with the state after the user answers.
+  static Future<SmsPermissionState> request() async {
+    if (!supported) return const SmsPermissionState(canRead: false, canSend: false);
+    final raw = await _channel.invokeMapMethod<String, bool>('requestPermissions') ?? {};
+    return SmsPermissionState.fromMap(raw);
   }
 
-  static Future<List<MessageRecord>> read({int limit = 500, MessageRecord? before}) async {
+  static Future<List<MessageRecord>> read({int limit = pageSize, MessageRecord? before}) async {
     if (!supported) return [];
     final response = await _channel.invokeListMethod<dynamic>('readMessages', {'limit': limit, 'beforeDate': before?.date.millisecondsSinceEpoch, 'beforeId': before?.id});
     return (response ?? []).map((value) {
@@ -67,7 +75,16 @@ class SmsBridge {
   }
   static void stopListening() => _channel.setMethodCallHandler(null);
   static Future<String?> pickContact() => _channel.invokeMethod<String>('pickContact');
-  static Future<void> requestDefault() => _channel.invokeMethod<void>('requestDefault');
+  /// Opens Android's "default SMS app" dialog; true when PayamYar was chosen.
+  static Future<bool> requestDefault() async => await _channel.invokeMethod<bool>('requestDefault') ?? false;
+  static Future<void> openAppSettings() => _channel.invokeMethod<bool>('openAppSettings');
+  static Future<void> manageBlocked() => _channel.invokeMethod<bool>('manageBlocked');
+  static Future<void> block(String address) => _channel.invokeMethod<bool>('blockNumber', {'address': address});
+  static Future<Map<String, String>> contactNames(List<String> addresses) async {
+    if (!supported || addresses.isEmpty) return {};
+    final raw = await _channel.invokeMapMethod<String, String>('contactNames', {'addresses': addresses});
+    return raw ?? {};
+  }
   static Future<List<Map<dynamic, dynamic>>> subscriptions() async =>
     (await _channel.invokeListMethod<dynamic>('subscriptions') ?? []).map((e) => Map<dynamic, dynamic>.from(e as Map)).toList();
   static Future<Map<String, dynamic>?> composeIntent() => _channel.invokeMapMethod<String, dynamic>('takeComposeIntent');
@@ -80,5 +97,9 @@ class SmsBridge {
       await _channel.invokeMethod<void>('markRead', {'ids': ids.sublist(start, (start + 500).clamp(0, ids.length))});
     }
   }
-  static Future<void> delete(List<int> ids) => _channel.invokeMethod<void>('deleteMessages', {'ids': ids});
+  static Future<void> delete(List<int> ids) async {
+    for (var start = 0; start < ids.length; start += 500) {
+      await _channel.invokeMethod<void>('deleteMessages', {'ids': ids.sublist(start, (start + 500).clamp(0, ids.length))});
+    }
+  }
 }

@@ -17,7 +17,7 @@ void main() {
     expect(group.latest.type, 5);
     expect(group.messages.any((m) => !m.read), isTrue);
   });
-  testWidgets('Saved draft survives composer reopening and exposes SMS length limit', (tester) async {
+  testWidgets('Saved draft survives reopening the composer and exposes SMS length limit', (tester) async {
     SharedPreferences.setMockInitialValues({'draft_to': '09121234567', 'draft_body': 'پیش‌نویس من'});
     await tester.pumpWidget(const PayamYar());
     await tester.pumpAndSettle();

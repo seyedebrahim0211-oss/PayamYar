@@ -26,5 +26,22 @@ class MessageLogic {
   static List<MessageRecord> search(List<MessageRecord> source, String term, {DateTime? from, DateTime? to}) =>
     source.where((m) => (term.isEmpty || ('${m.sender} ${m.body}').toLowerCase().contains(term.toLowerCase())) &&
       (from == null || !m.date.isBefore(from)) && (to == null || !m.date.isAfter(to))).toList();
-}
 
+  static String _latinDigits(String s) {
+    const fa = '۰۱۲۳۴۵۶۷۸۹', ar = '٠١٢٣٤٥٦٧٨٩';
+    return s.split('').map((c) {
+      final p = fa.indexOf(c);
+      if (p >= 0) return '$p';
+      final a = ar.indexOf(c);
+      return a >= 0 ? '$a' : c;
+    }).join();
+  }
+
+  /// One-time password / verification code in the message, for a one-tap copy button.
+  static String? otp(String body) {
+    final s = _latinDigits(body);
+    final match = RegExp(
+      r'(?:کد|رمز|code|otp|password|pin)[^\d\n]{0,25}(\d{4,8})(?!\d)', caseSensitive: false).firstMatch(s);
+    return match?.group(1);
+  }
+}

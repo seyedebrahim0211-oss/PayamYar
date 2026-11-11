@@ -26,7 +26,7 @@ object SmsCore {
         val args = if (selection != null) arrayOf(before.toString(), before.toString(), beforeId.toString()) else null
         c.contentResolver.query(Telephony.Sms.CONTENT_URI, arrayOf("_id", "address", "body", "date", "type", "read", "status"),
             selection, args, "date DESC, _id DESC")?.use { cur ->
-            while (rows.size < limit.coerceIn(1, 500) && cur.moveToNext()) rows.add(mapOf(
+            while (rows.size < limit.coerceIn(1, 1000) && cur.moveToNext()) rows.add(mapOf(
                 "id" to cur.getLong(0), "sender" to cur.getString(1), "body" to cur.getString(2),
                 "date" to cur.getLong(3), "outgoing" to (cur.getInt(4) != 1), "read" to (cur.getInt(5) != 0),
                 "type" to cur.getInt(4), "delivery" to cur.getInt(6)))
@@ -191,7 +191,10 @@ object SmsCore {
                         put("thread_id", Telephony.Threads.getOrCreateThreadId(c, address))
                     })
                     check(uri != null)
-                    notify(c, uri.lastPathSegment?.toIntOrNull() ?: 1, address, "پیامک جدید دریافت شد")
+                    val preview = c.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                        .getBoolean("flutter.notifyPreview", true)
+                    notify(c, uri.lastPathSegment?.toIntOrNull() ?: 1, contactName(c, address) ?: address,
+                        if (preview) body else "پیامک جدید دریافت شد")
                 }
                 file.delete()
             } catch (_: Exception) {
@@ -227,13 +230,24 @@ object SmsCore {
         }
         return affected
     }
+    fun contactName(c: Context, address: String): String? {
+        if (ContextCompat.checkSelfPermission(c, Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return null
+        if (address.none { it.isDigit() }) return null
+        return try {
+            val uri = Uri.withAppendedPath(android.provider.ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(address))
+            c.contentResolver.query(uri, arrayOf(android.provider.ContactsContract.PhoneLookup.DISPLAY_NAME), null, null, null)?.use {
+                if (it.moveToFirst()) it.getString(0) else null
+            }
+        } catch (_: Exception) { null }
+    }
     fun notify(c: Context, id: Int, title: String, text: String) {
         val manager = c.getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(NotificationChannel("messages", "پیامک‌ها", NotificationManager.IMPORTANCE_HIGH))
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(c, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val open = PendingIntent.getActivity(c, 0, Intent(c, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val n = NotificationCompat.Builder(c, "messages").setSmallIcon(android.R.drawable.stat_notify_chat)
-            .setContentTitle(title).setContentText(text).setContentIntent(open).setAutoCancel(true)
+            .setContentTitle(title).setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE).setContentIntent(open).setAutoCancel(true)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE).build()
         NotificationManagerCompat.from(c).notify(id, n)
     }

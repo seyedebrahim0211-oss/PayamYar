@@ -1,4 +1,4 @@
-name: PayamYar Android and Windows (preview)
+name: PayamYar Android and Windows
 'on':
   workflow_dispatch:
   push:
@@ -52,7 +52,12 @@ jobs:
           fi
           tail -n 3 "$f"
       - run: flutter pub get
-      - name: Build APK (release if signing secrets exist, otherwise debug)
+      - name: Reuse the same fallback signing key across runs
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: payamyar-fallback-signing-key-v1
+      - name: Build release APK (own key from secrets, otherwise the cached fallback key)
         shell: bash
         env:
           KEYSTORE_BASE64: ${{ secrets.PAYAMYAR_KEYSTORE_BASE64 }}
@@ -68,13 +73,13 @@ jobs:
             cp build/app/outputs/flutter-apk/app-release.apk dist/PayamYar-release.apk
             rm -f "$PAYAMYAR_KEYSTORE_PATH"
           else
-            echo "::warning::Signing secrets are not set; building a debug APK (each run uses a different debug key)."
-            flutter build apk --debug
-            cp build/app/outputs/flutter-apk/app-debug.apk dist/PayamYar-debug.apk
+            echo "::warning::Signing secrets are not set; signing the release APK with the cached fallback key. See docs/RELEASE_SIGNING_FA.md."
+            flutter build apk --release
+            cp build/app/outputs/flutter-apk/app-release.apk dist/PayamYar.apk
           fi
       - uses: actions/upload-artifact@v4
         with:
-          name: PayamYar-Android-preview
+          name: PayamYar-Android
           path: dist/*.apk
   windows:
     needs: analyze
@@ -96,5 +101,5 @@ jobs:
       - run: flutter build windows --release
       - uses: actions/upload-artifact@v4
         with:
-          name: PayamYar-Windows-preview
+          name: PayamYar-Windows
           path: build/windows/x64/runner/Release/

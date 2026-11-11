@@ -1,7 +1,7 @@
 name: payamyar
 description: Persian SMS messenger for Android
 publish_to: none
-version: 0.5.0+6
+version: 1.0.0+10
 environment:
   sdk: '>=3.4.0 <4.0.0'
 dependencies:
