@@ -78,13 +78,38 @@ object SmsCore {
         }
         return result
     }
+    /** Resolve a usable subscription BEFORE showing the five-second undo message.
+     * Android returns INVALID_SUBSCRIPTION_ID when the device is set to "Ask every time".
+     * On single-SIM devices we can select the sole active subscription automatically.
+     */ 
+    private fun resolveSubscription(c: Context, requested: Int): Int {
+        val service = c.getSystemService(SubscriptionManager::class.java)
+        val active = if (ContextCompat.checkSelfPermission(c, Manifest.permission.READ_PHONE_STATE) ==
+            PackageManager.PERMISSION_GRANTED) {
+            try { service.activeSubscriptionInfoList?.map { it.subscriptionId }.orEmpty() }
+            catch (_: SecurityException) { emptyList() }
+        } else emptyList()
+        if (requested >= 0) {
+            check(active.isEmpty() || active.contains(requested)) { "سیم‌کارت انتخابی فعال نیست؛ سیم‌کارت دیگری انتخاب کنید." }
+            return requested
+        }
+        @Suppress("DEPRECATION")
+        val defaultId = SubscriptionManager.getDefaultSmsSubscriptionId()
+        if (defaultId >= 0 && defaultId != Int.MAX_VALUE &&
+            (active.isEmpty() || active.contains(defaultId))) return defaultId
+        if (active.size == 1) return active.first()
+        error(if (active.size > 1) "برای ارسال، سیم‌کارت ۱ یا ۲ را در پیامیار انتخاب کنید."
+            else "سیم‌کارت فعال شناسایی نشد. وضعیت سیم‌کارت و دسترسی تلفن را بررسی کنید.")
+    }
+
     @Synchronized fun queue(c: Context, address: String, body: String, sim: Int, delayMs: Long = 5000): String {
         val to = address.replace(Regex("[\\s()-]"), "")
         require(Regex("^\\+?[0-9]{3,15}$").matches(to)) { "شماره گیرنده معتبر نیست." }
         require(body.isNotBlank() && body.length <= 2000) { "متن باید بین ۱ تا ۲۰۰۰ نویسه باشد." }
         check(ContextCompat.checkSelfPermission(c, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) { "مجوز ارسال پیامک لازم است." }
+        val subscriptionId = resolveSubscription(c, sim)
         val id = UUID.randomUUID().toString()
-        val item = JSONObject().put("to", to).put("body", body).put("sim", sim).put("due", System.currentTimeMillis() + delayMs)
+        val item = JSONObject().put("to", to).put("body", body).put("sim", subscriptionId).put("due", System.currentTimeMillis() + delayMs)
         check(prefs(c).edit().putString("queue:$id", item.toString()).putString("status:$id", "queued").commit())
         if (delayMs > 0) arm(c, id, item.getLong("due"))
         return id
@@ -96,9 +121,14 @@ object SmsCore {
         val alarms = c.getSystemService(AlarmManager::class.java)
         // Exact alarm keeps the 5 s undo window honest when the app is in the background.
         // Android 12+ may deny exact alarms (default on Android 14); then fall back to an inexact one.
-        if (Build.VERSION.SDK_INT < 31 || alarms.canScheduleExactAlarms())
-            alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, due, alarmIntent(c, id))
-        else alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, due, alarmIntent(c, id))
+        try {
+            if (Build.VERSION.SDK_INT < 31 || alarms.canScheduleExactAlarms())
+                alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, due, alarmIntent(c, id))
+            else alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, due, alarmIntent(c, id))
+        } catch (_: SecurityException) {
+            // Exact-alarm permission can be revoked between checking and scheduling.
+            alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, due, alarmIntent(c, id))
+        }
     }
     const val ACTION_DRAIN = "ir.honarmardomi.payamyar.DRAIN_INCOMING"
     private fun incomingDir(c: Context) = java.io.File(c.filesDir, "incoming_sms")
@@ -138,10 +168,7 @@ object SmsCore {
         prefs(c).edit().remove("queue:$id").putString("status:$id", "pending").commit()
         var row: Uri? = null
         try {
-            val sim = item.getInt("sim")
-            @Suppress("DEPRECATION")
-            val selected = if (sim >= 0) sim else if (Build.VERSION.SDK_INT >= 24) SubscriptionManager.getDefaultSmsSubscriptionId() else SmsManager.getDefault().subscriptionId
-            check(selected >= 0 && selected != Int.MAX_VALUE) { "سیم‌کارت پیش‌فرض ارسال را در تنظیمات گوشی انتخاب کنید." }
+            val selected = resolveSubscription(c, item.getInt("sim"))
             @Suppress("DEPRECATION")
             val manager = if (Build.VERSION.SDK_INT >= 31) c.getSystemService(SmsManager::class.java).createForSubscriptionId(selected)
                 else SmsManager.getSmsManagerForSubscriptionId(selected)
@@ -161,9 +188,15 @@ object SmsCore {
                     .putExtra("id", id).putExtra("part", part).putExtra("parts", parts.size).putExtra("delivered", delivered),
                     PendingIntent.FLAG_UPDATE_CURRENT or (if (delivered && Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else if (delivered) 0 else PendingIntent.FLAG_IMMUTABLE))
             })
-            manager.sendMultipartTextMessage(item.getString("to"), null, parts, callbacks(false), callbacks(true))
+            check(parts.isNotEmpty()) { "متن پیامک خالی است." }
+            if (parts.size == 1) {
+                manager.sendTextMessage(item.getString("to"), null, parts[0], callbacks(false)[0], callbacks(true)[0])
+            } else {
+                manager.sendMultipartTextMessage(item.getString("to"), null, parts, callbacks(false), callbacks(true))
+            }
         } catch (e: Exception) {
-            prefs(c).edit().putString("status:$id", "send_failed:${e.javaClass.simpleName}").commit()
+            val reason = (e.message ?: e.javaClass.simpleName).take(180)
+            prefs(c).edit().putString("status:$id", "send_failed:$reason").commit()
             if (row != null && isDefault(c)) c.contentResolver.update(row, ContentValues().apply { put("type", 5); put("status", 64) }, null, null)
             notify(c, id.hashCode(), "ارسال پیامک انجام نشد", "پیامیار را باز کنید و وضعیت سیم‌کارت و مجوزها را بررسی کنید.")
         }
