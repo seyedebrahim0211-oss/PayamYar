@@ -5,6 +5,7 @@ import '../sms_bridge.dart';
 import 'compose_tools.dart';
 import 'contact_picker.dart';
 import 'conversation_screen.dart';
+import 'send_undo_bar.dart';
 
 /// SMS composition with an internal phone book and explicit multi-send confirmation.
 class ComposeScreen extends StatefulWidget {
@@ -28,6 +29,8 @@ class _ComposeScreenState extends State<ComposeScreen> {
   final body = TextEditingController();
   final Set<String> recipients = {};
   final Map<String, String> contactNames = {};
+  final List<PendingSend> undoGroup = [];
+  String lastSentBody = '';
   bool sending = false;
   bool openingContacts = false;
   int queuedCount = 0;
@@ -106,7 +109,8 @@ class _ComposeScreenState extends State<ComposeScreen> {
         if (_isNumber(number)) contactNames[number] = item['name'] ?? number;
       }
       final selected = await showContactPicker(context,
-        contacts: contacts.where((c) => _isNumber(_normalize(c['number'] ?? ''))).toList(),
+        contacts: contacts.where((c) => _isNumber(_normalize(c['number'] ?? '')))
+          .map((c) => <String,String>{'name': c['name'] ?? '', 'number': _normalize(c['number'] ?? '')}).toList(),
         selected: {...recipients}, maxSelection: maxRecipients);
       if (selected == null || !mounted) return;
       setState(() {
@@ -163,22 +167,24 @@ class _ComposeScreenState extends State<ComposeScreen> {
         ));
       if (confirmed != true || !mounted) return;
     }
-    setState(() { sending = true; queuedCount = 0; });
+    setState(() { sending = true; queuedCount = 0; undoGroup.clear(); });
     final failed = <String>[];
     final queued = <PendingSend>[];
-    PendingSend? lastPending;
     for (final number in targets) {
       final pending = await store.send(number, text);
       if (pending == null && store.android) {
         failed.add(number);
       } else {
-        lastPending = pending;
         if (pending != null) queued.add(pending);
         if (mounted) setState(() => queuedCount++);
       }
     }
     if (!mounted) return;
-    setState(() => sending = false);
+    setState(() {
+      sending = false;
+      lastSentBody = text;
+      undoGroup.addAll(queued);
+    });
     if (targets.length == 1 && failed.isEmpty) {
       final address = targets.single;
       to.clear();
@@ -186,19 +192,8 @@ class _ComposeScreenState extends State<ComposeScreen> {
       recipients.clear();
       await _saveDraft();
       if (!mounted) return;
-      final messenger = ScaffoldMessenger.of(context);
       Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
         builder: (_) => ConversationScreen(store: store, address: address)));
-      if (lastPending != null) {
-        final undo = lastPending;
-        messenger
-          ..hideCurrentSnackBar()
-          ..showSnackBar(SnackBar(
-            duration: const Duration(seconds: 5),
-            content: const Text('پیام در صف ارسال است'),
-            action: SnackBarAction(label: 'لغو', onPressed: () => store.undo(undo)),
-          ));
-      }
       return;
     }
     setState(() {
@@ -210,23 +205,9 @@ class _ComposeScreenState extends State<ComposeScreen> {
     });
     await _saveDraft();
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text('${targets.length - failed.length} پیامک در صف ارسال قرار گرفت. '
-          '${failed.isEmpty ? 'برای پیگیری وضعیت، گفتگوها را ببینید.' : '${failed.length} شماره ثبت نشد؛ متن برای تلاش مجدد محفوظ است.'}'),
-        duration: const Duration(seconds: 5),
-        action: queued.isEmpty ? null : SnackBarAction(
-          label: 'لغو گروه',
-          onPressed: () async {
-            var cancelled = 0;
-            for (final request in queued) {
-              if (await store.undo(request)) cancelled++;
-            }
-            store.onNotice?.call('$cancelled پیامک از صف ارسال لغو شد.');
-          },
-        ),
-      ));
+    if (failed.isNotEmpty) {
+      store.onNotice?.call('${failed.length} شماره در صف قرار نگرفت؛ متن برای ارسال مجدد محفوظ است.');
+    }
   }
 
   @override
@@ -362,6 +343,22 @@ class _ComposeScreenState extends State<ComposeScreen> {
             ),
           ],
         ])),
+        if (undoGroup.isNotEmpty)
+          SendUndoBar(
+            requests: undoGroup,
+            onUndo: () async {
+              var count = 0;
+              for (final pending in List<PendingSend>.of(undoGroup)) {
+                if (await store.undo(pending)) count++;
+              }
+              if (!mounted) return;
+              setState(() {
+                undoGroup.clear();
+                if (count > 0) body.text = lastSentBody;
+              });
+              if (count > 0) _saveDraft();
+            },
+          ),
         SafeArea(top: false, child: Container(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
           decoration: BoxDecoration(
