@@ -118,8 +118,10 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
     } catch (_) {
-      if (mounted && !silent) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('بررسی نسخه ممکن نیست؛ اتصال اینترنت را بررسی کنید.')));
+      if (mounted && !silent) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('بررسی نسخه ممکن نیست؛ اتصال اینترنت را بررسی کنید.')));
+      }
     } finally {
       if (mounted) setState(() => checking = false);
     }
