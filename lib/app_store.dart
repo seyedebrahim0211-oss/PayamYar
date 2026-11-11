@@ -71,6 +71,7 @@ class AppStore extends ChangeNotifier {
   final List<PendingSend> pendingSends = [];
   ReleaseInfo? update;
   bool updateDismissed = false;
+  bool updateCheckFailed = false;
   /// null when not downloading; 0..1 while the new version downloads.
   double? updateProgress;
   void Function(String message)? onNotice;
@@ -173,6 +174,7 @@ class AppStore extends ChangeNotifier {
 
   /// Reads the release info published on honarmardomi.ir; quiet unless a newer version exists.
   Future<bool> checkForUpdate({bool manual = false}) async {
+    updateCheckFailed = false;
     try {
       final info = await UpdateService.check();
       update = info.available && UpdateService.trusted(info.url) ? info : null;
@@ -180,6 +182,7 @@ class AppStore extends ChangeNotifier {
       notifyListeners();
       return update != null;
     } catch (_) {
+      updateCheckFailed = true;
       if (manual) onNotice?.call('بررسی به‌روزرسانی ممکن نشد؛ اینترنت را بررسی کنید.');
       return false;
     }
