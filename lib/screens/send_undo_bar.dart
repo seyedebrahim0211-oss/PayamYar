@@ -21,7 +21,7 @@ class _SendUndoBarState extends State<SendUndoBar> {
   @override
   void initState() {
     super.initState();
-    _ticker = Timer.periodic(const Duration(milliseconds: 100), (_) {
+    _ticker = Timer.periodic(const Duration(milliseconds: 250), (_) {
       if (mounted) setState(() {});
     });
   }
@@ -42,6 +42,7 @@ class _SendUndoBarState extends State<SendUndoBar> {
         .reduce((a, b) => a.isAfter(b) ? a : b);
     final left = latest.difference(now).inMilliseconds.clamp(0, 5000);
     final count = active.length;
+    final scheduled = active.any((p) => p.scheduled);
     final seconds = (left / 1000).ceil();
     final scheme = Theme.of(context).colorScheme;
 
@@ -62,12 +63,13 @@ class _SendUndoBarState extends State<SendUndoBar> {
                   color: scheme.onPrimaryContainer),
                 const SizedBox(width: 8),
                 Expanded(child: Text(
-                  count > 1 ? '$count پیامک در صف ارسال' : 'پیامک در صف ارسال',
+                  scheduled ? (count > 1 ? '$count پیامک زمان‌بندی‌شده' : 'ارسال زمان‌بندی‌شده')
+                     : (count > 1 ? '$count پیامک در صف ارسال' : 'پیامک در صف ارسال'),
                   style: TextStyle(color: scheme.onPrimaryContainer,
                     fontWeight: FontWeight.w700, fontSize: 13),
                   maxLines: 1, overflow: TextOverflow.ellipsis,
                 )),
-                Text('${Jalali.digits(seconds)} ثانیه',
+                Text(scheduled ? Jalali.time(latest) : '${Jalali.digits(seconds)} ثانیه',
                   style: TextStyle(color: scheme.onPrimaryContainer, fontSize: 12)),
                 const SizedBox(width: 8),
                 TextButton(
@@ -79,13 +81,13 @@ class _SendUndoBarState extends State<SendUndoBar> {
                       if (mounted) setState(() => cancelling = false);
                     }
                   },
-                  child: Text(count > 1 ? 'لغو همه' : 'لغو ارسال',
+                  child: Text(count > 1 ? 'لغو همه' : scheduled ? 'لغو زمان‌بندی' : 'لغو ارسال',
                     style: TextStyle(color: scheme.onPrimaryContainer,
                       fontWeight: FontWeight.w800)),
                 ),
               ]),
             ),
-            LinearProgressIndicator(
+            if (!scheduled) LinearProgressIndicator(
               value: left / 5000,
               minHeight: 3,
               backgroundColor: scheme.onPrimaryContainer.withValues(alpha: .12),
