@@ -146,6 +146,7 @@ class MainActivity : FlutterActivity() {
                             "readMessages" -> SmsCore.read(this, call.argument<Int>("limit") ?: 300)
                             "subscriptions" -> SmsCore.subscriptions(this)
                             "contactNames" -> contactNames(call.argument<List<String>>("addresses").orEmpty())
+                            "listContacts" -> listContacts()
                             "blockNumber" -> blockNumber(call.argument<String>("address").orEmpty())
                             "queueSms" -> SmsCore.queue(this, call.argument<String>("to").orEmpty(),
                                 call.argument<String>("body").orEmpty(), call.argument<Int>("subscriptionId") ?: -1).also { id ->
@@ -235,6 +236,34 @@ class MainActivity : FlutterActivity() {
             if (name != null) names[address] = name
         }
         return names
+    }
+
+    /** The in-app contact selector reads the phone book once, not one contact at a time.
+     * It returns only display name and telephone number, never any contact data to a server.
+     */
+    private fun listContacts(): List<Map<String, String>> {
+        check(has(Manifest.permission.READ_CONTACTS)) { "برای دیدن مخاطبان، اجازه دفترچه تلفن را بدهید." }
+        val entries = LinkedHashMap<String, Map<String, String>>()
+        contentResolver.query(
+            ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+            arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                ContactsContract.CommonDataKinds.Phone.NUMBER),
+            null, null, ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " COLLATE LOCALIZED ASC"
+        )?.use { cursor ->
+            while (cursor.moveToNext()) {
+                val name = cursor.getString(0)?.trim().orEmpty()
+                val raw = cursor.getString(1)?.trim().orEmpty()
+                val digits = buildString {
+                    raw.forEach { ch -> val digit = Character.digit(ch, 10); if (digit >= 0) append(digit) }
+                }
+                if (digits.length !in 7..15) continue
+                val number = if (raw.startsWith("+")) "+$digits" else digits
+                val key = phoneKey(number)
+                if (key.length >= 7 && !entries.containsKey(key))
+                    entries[key] = mapOf("name" to (name.ifEmpty { number }), "number" to number)
+            }
+        }
+        return entries.values.toList()
     }
 
     private fun blockNumber(address: String): Boolean {
