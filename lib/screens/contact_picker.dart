@@ -6,7 +6,7 @@ Future<Set<String>?> showContactPicker(
   BuildContext context, {
   required List<Map<String, String>> contacts,
   required Set<String> selected,
-  int maxSelection = 50,
+  int maxSelection = 500,
 }) {
   return showModalBottomSheet<Set<String>>(
     context: context,
@@ -80,7 +80,7 @@ class _ContactPickerState extends State<_ContactPicker> {
     });
     if (!allPicked && numbers.any((n) => !selected.contains(n))) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('برای جلوگیری از ارسال ناخواسته، سقف هر نوبت ${widget.limit} نفر است.'),
+        content: Text('حداکثر ${widget.limit} مخاطب انتخاب می‌شود؛ محدودیت‌های اپراتور ممکن است مستقل از این مقدار باشد.'),
       ));
     }
   }
