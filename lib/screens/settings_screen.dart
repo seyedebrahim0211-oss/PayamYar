@@ -91,11 +91,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: const Text('شماره‌های مسدود'),
                   trailing: const Icon(Icons.chevron_left_rounded),
                   onTap: SmsBridge.manageBlocked),
-                ListTile(
-                  leading: Icon(Icons.sync_rounded, color: scheme.primary),
-                  title: const Text('بارگذاری دوباره همه پیام‌ها'),
-                  subtitle: Text('${Jalali.digits(store.messages.length)} پیام روی گوشی'),
-                  onTap: store.loadingAll ? null : store.loadAll),
               ])),
             ],
             _section('ظاهر'),
@@ -157,33 +152,80 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: const Text('خواندن همه پیام‌ها'),
                 onTap: store.markAllRead),
             ])),
-            _section('درباره'),
+            _section('درباره پیامیار'),
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(24),
+                gradient: const LinearGradient(
+                  begin: Alignment.topRight, end: Alignment.bottomLeft,
+                  colors: [Color(0xFF0B6C70), Color(0xFF12444C), Color(0xFF17353B)],
+                ),
+              ),
+              padding: const EdgeInsets.all(21),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Container(
+                    width: 52, height: 52,
+                    decoration: BoxDecoration(color: const Color(0xFFF8E9C7).withValues(alpha: .17),
+                      borderRadius: BorderRadius.circular(17),
+                      border: Border.all(color: const Color(0xFFEBD3A2).withValues(alpha: .6))),
+                    child: const Icon(Icons.sms_rounded, color: Color(0xFFEAC786), size: 28),
+                  ),
+                  const SizedBox(width: 13),
+                  const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('پیامیار', style: TextStyle(color: Colors.white, fontSize: 23, fontWeight: FontWeight.w900)),
+                    Text('پیامک‌رسان فارسی، از خانواده هنر مردمی',
+                      style: TextStyle(color: Color(0xFFD8E9E6), fontSize: 12)),
+                  ])),
+                ]),
+                const SizedBox(height: 18),
+                FutureBuilder<PackageInfo>(
+                  future: packageInfo,
+                  builder: (context, snapshot) => Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                    decoration: BoxDecoration(color: Colors.white.withValues(alpha: .12),
+                      borderRadius: BorderRadius.circular(13), border: Border.all(color: Colors.white24)),
+                    child: Row(children: [
+                      const Icon(Icons.verified_outlined, size: 20, color: Color(0xFFEBD3A2)),
+                      const SizedBox(width: 10),
+                      Text(snapshot.hasData ? 'نسخه ${Jalali.digits(snapshot.data!.version)}'
+                        : 'در حال خواندن نسخه…', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                      const Spacer(),
+                      const Text('اندروید', style: TextStyle(color: Color(0xFFD8E9E6), fontSize: 12)),
+                    ]),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text('طراحی و توسعه با الهام از هویت بصری ایرانی. مدیریت پیام‌های گوشی بدون ارسال محتوای پیامک به سایت.',
+                  style: TextStyle(color: Color(0xFFE2EFEC), height: 1.75, fontSize: 12)),
+              ]),
+            ),
+            const SizedBox(height: 11),
             Card(child: Column(children: [
               ListTile(
                 leading: Icon(Icons.system_update_outlined, color: scheme.primary),
-                title: const Text('بررسی به‌روزرسانی'),
+                title: const Text('بررسی نسخه جدید'),
                 subtitle: store.updateProgress != null
-                    ? Text('در حال دریافت نسخه جدید… ${Jalali.digits(((store.updateProgress ?? 0) * 100).round())}٪')
-                    : const Text('دریافت و نصب نسخه جدید از داخل برنامه'),
+                    ? Text('در حال دریافت… ${Jalali.digits(((store.updateProgress ?? 0) * 100).round())}٪')
+                    : const Text('دریافت نسخه امضاشده با اجازه شما'),
                 trailing: checking || store.updateProgress != null
                     ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.chevron_left_rounded),
                 onTap: checking || store.updateProgress != null ? null : _checkUpdate),
+              const Divider(indent: 17, endIndent: 17, height: 1),
               ListTile(
                 leading: Icon(Icons.language_rounded, color: scheme.primary),
-                title: const Text('وب‌سایت پیامیار'),
-                subtitle: const Text('honarmardomi.ir/payamyar'),
+                title: const Text('وب‌سایت هنر مردمی'),
+                subtitle: const Text('honarmardomi.ir'),
+                trailing: const Icon(Icons.open_in_new_rounded, size: 19),
+                onTap: () => UpdateService.openDownload('https://honarmardomi.ir/')),
+              const Divider(indent: 17, endIndent: 17, height: 1),
+              ListTile(
+                leading: Icon(Icons.phone_android_rounded, color: scheme.primary),
+                title: const Text('صفحه رسمی پیامیار و دانلود'),
+                subtitle: const Text('honarmardomi.ir/payamyar/'),
+                trailing: const Icon(Icons.open_in_new_rounded, size: 19),
                 onTap: () => UpdateService.openDownload('https://honarmardomi.ir/payamyar/')),
-              FutureBuilder<PackageInfo>(
-                future: packageInfo,
-                builder: (context, snapshot) => ListTile(
-                  leading: const Icon(Icons.info_outline_rounded),
-                  title: Text(snapshot.hasData
-                      ? 'پیامیار نسخه ${Jalali.digits(snapshot.data!.version)}'
-                      : 'درباره پیامیار'),
-                  subtitle: const Text('از خانواده هنر مردمی • پیام‌های شما فقط روی گوشی خودتان است'),
-                ),
-              ),
             ])),
           ]),
         );
