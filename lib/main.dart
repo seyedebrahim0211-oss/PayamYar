@@ -77,6 +77,7 @@ class HomeScreen extends StatefulWidget {
 }
 class _HomeScreenState extends State<HomeScreen> {
   int tab = 0; String query = ''; MessageCategory? filter;
+  DateTimeRange? searchRange;
   bool checking = false;
   bool smsLoading = false;
   bool smsPermissionGranted = false;
@@ -302,7 +303,10 @@ class _HomeScreenState extends State<HomeScreen> {
     MessageCategory.advertising => Icons.campaign_outlined,
   };
   Widget _messages() {
-    final entries = MessageLogic.search(displayedMessages, query).where(
+    final entries = MessageLogic.search(displayedMessages, query,
+      from: searchRange?.start,
+      to: searchRange == null ? null : DateTime(searchRange!.end.year,
+        searchRange!.end.month, searchRange!.end.day, 23, 59, 59, 999)).where(
       (m) => filter == null || MessageLogic.category(m) == filter).toList();
     final conversations = ConversationLogic.group(entries);
     return ListView(padding: const EdgeInsets.fromLTRB(16, 10, 16, 100), children: [
@@ -345,6 +349,27 @@ class _HomeScreenState extends State<HomeScreen> {
       TextField(onChanged: (v) => setState(() => query = v),
         decoration: const InputDecoration(
           prefixIcon: Icon(Icons.search), hintText: 'جستجو در پیام‌ها و فرستنده‌ها')),
+      const SizedBox(height: 8),
+      Row(children: [
+        TextButton.icon(
+          icon: const Icon(Icons.date_range_outlined),
+          label: Text(searchRange == null ? 'فیلتر تاریخ'
+              : 'از ${searchRange!.start.year}/${searchRange!.start.month}/${searchRange!.start.day} تا ${searchRange!.end.year}/${searchRange!.end.month}/${searchRange!.end.day}'),
+          onPressed: () async {
+            final value = await showDateRangePicker(
+              context: context, firstDate: DateTime(2010),
+              lastDate: DateTime(2100),
+              initialDateRange: searchRange,
+            );
+            if (value != null && mounted) setState(() => searchRange = value);
+          },
+        ),
+        if (searchRange != null)
+          IconButton(
+            tooltip: 'حذف فیلتر تاریخ', icon: const Icon(Icons.close),
+            onPressed: () => setState(() => searchRange = null),
+          ),
+      ]),
       const SizedBox(height: 12),
       SizedBox(height: 44, child: ListView(scrollDirection: Axis.horizontal, children: [
         Padding(padding: const EdgeInsets.only(left: 7),
