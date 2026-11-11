@@ -353,8 +353,7 @@ class _HomeScreenState extends State<HomeScreen> {
       Row(children: [
         TextButton.icon(
           icon: const Icon(Icons.date_range_outlined),
-          label: Text(searchRange == null ? 'فیلتر تاریخ'
-              : 'از ${searchRange!.start.year}/${searchRange!.start.month}/${searchRange!.start.day} تا ${searchRange!.end.year}/${searchRange!.end.month}/${searchRange!.end.day}'),
+          label: Text(searchRange == null ? 'فیلتر تاریخ' : 'بازه تاریخ انتخاب شد'),
           onPressed: () async {
             final value = await showDateRangePicker(
               context: context, firstDate: DateTime(2010),
