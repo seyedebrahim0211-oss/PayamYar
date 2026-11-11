@@ -149,8 +149,12 @@ class MainActivity : FlutterActivity() {
                             "listContacts" -> listContacts()
                             "blockNumber" -> blockNumber(call.argument<String>("address").orEmpty())
                             "queueSms" -> SmsCore.queue(this, call.argument<String>("to").orEmpty(),
-                                call.argument<String>("body").orEmpty(), call.argument<Int>("subscriptionId") ?: -1).also { id ->
-                                    handler.postDelayed({ worker.execute { SmsCore.dispatch(this, id) } }, 5100)
+                                call.argument<String>("body").orEmpty(), call.argument<Int>("subscriptionId") ?: -1,
+                                (call.argument<Number>("delayMs")?.toLong() ?: 5000L)).also { id ->
+                                    // The alarm owns scheduled sends, even after the UI is closed.
+                                    // Only the short five-second undo gets a foreground fallback.
+                                    val delay = call.argument<Number>("delayMs")?.toLong() ?: 5000L
+                                    if (delay <= 10000L) handler.postDelayed({ worker.execute { SmsCore.dispatch(this, id) } }, delay + 100L)
                                 }
                             "cancelSms" -> SmsCore.cancel(this, call.argument<String>("requestId").orEmpty())
                             "sendStatus" -> SmsCore.status(this, call.argument<String>("requestId").orEmpty())
