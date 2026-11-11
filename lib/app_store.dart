@@ -567,7 +567,12 @@ class AppStore extends ChangeNotifier {
     }
     pendingSends.remove(p);
     if (state.startsWith('send_failed')) {
-      onNotice?.call('ارسال پیام ناموفق بود. سیم‌کارت و آنتن را بررسی کنید.');
+      final reason = state.contains(':') ? state.substring(state.indexOf(':') + 1) : '';
+      onNotice?.call(reason.isEmpty
+          ? 'ارسال پیامک ناموفق بود. سیم‌کارت، اعتبار و آنتن را بررسی کنید.'
+          : 'ارسال پیامک انجام نشد: $reason');
+    } else if (state == 'delivery_failed') {
+      onNotice?.call('گزارش تحویل پیامک ناموفق است؛ ممکن است پیام در شبکه پذیرفته شده باشد.');
     }
     notifyListeners();
     await refresh();
