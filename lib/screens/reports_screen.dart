@@ -19,19 +19,14 @@ class ReportsScreen extends StatelessWidget {
       builder: (context, _) {
         final scheme = Theme.of(context).colorScheme;
         final hide = settings.hidePreview;
-        final now = DateTime.now();
-        final monthStart = DateTime(now.year, now.month - 1, now.day);
-        final entries = FinanceLogic.extract(store.messages);
-        final recent = entries.where((e) => e.date.isAfter(monthStart)).toList();
-        final deposits = FinanceLogic.total(recent, FinanceKind.deposit);
-        final withdrawals = FinanceLogic.total(recent, FinanceKind.withdrawal);
+        // Computed once per change of the inbox and cached in the store.
+        final report = store.report;
+        final recent = report.recent;
+        final deposits = report.deposits;
+        final withdrawals = report.withdrawals;
         String money(int v) => hide ? '••••' : Jalali.digits(FinanceLogic.formatTomans(v));
-        final counts = <MessageCategory, int>{for (final c in MessageCategory.values) c: 0};
-        for (final m in store.messages) {
-          final c = MessageLogic.category(m);
-          counts[c] = counts[c]! + 1;
-        }
-        final top = store.conversations.toList()..sort((a, b) => b.count.compareTo(a.count));
+        final counts = report.counts;
+        final top = report.top;
         return Scaffold(
           appBar: AppBar(title: const Text('گزارش‌ها')),
           body: ListView(padding: const EdgeInsets.fromLTRB(16, 4, 16, 24), children: [
@@ -59,7 +54,7 @@ class ReportsScreen extends StatelessWidget {
               Expanded(child: _stat(context, 'گفتگوها', store.conversations.length, Icons.forum_outlined)),
               const SizedBox(width: 10),
               Expanded(child: _stat(context, 'خوانده‌نشده',
-                store.conversations.fold<int>(0, (s, c) => s + store.unreadCount(c)), Icons.mark_email_unread_outlined)),
+                store.unreadConversations, Icons.mark_email_unread_outlined)),
             ]),
             const SizedBox(height: 16),
             Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(
@@ -90,11 +85,11 @@ class ReportsScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                     child: Text('بیشترین پیام‌ها', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700))),
-                  for (final c in top.take(5))
+                  for (final c in top)
                     ListTile(
                       dense: true,
                       leading: SenderAvatar(name: store.displayName(c.address), address: c.address,
-                        category: MessageLogic.category(c.latest), radius: 18),
+                        category: store.categoryOf(c), radius: 18),
                       title: Text(store.displayName(c.address)),
                       trailing: Text('${Jalali.digits(c.count)} پیام'),
                     ),

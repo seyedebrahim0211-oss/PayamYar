@@ -62,6 +62,43 @@ class MainActivity : FlutterActivity() {
                     }
                 }
                 "requestDefault" -> requestDefault(result)
+                "loadAllMessages" -> {
+                    // One pass over the inbox on its own thread; pages are pushed to Dart as they are read.
+                    val generation = call.argument<Int>("generation") ?: 0
+                    Thread {
+                        try {
+                            val total = SmsCore.stream(this) { page ->
+                                runOnUiThread { channel.invokeMethod("messagesPage", page + ("generation" to generation)) }
+                            }
+                            runOnUiThread { result.success(total) }
+                        } catch (e: Exception) {
+                            runOnUiThread { result.error("SMS_ERROR", e.message ?: "SMS read failed", null) }
+                        }
+                    }.start()
+                }
+                "specialAccess" -> result.success(specialAccess())
+                "requestBatteryExemption" -> {
+                    try {
+                        startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+                        result.success(true)
+                    } catch (e: Exception) {
+                        try { startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)); result.success(true) }
+                        catch (e2: Exception) { result.success(false) }
+                    }
+                }
+                "requestExactAlarm" -> {
+                    try {
+                        if (Build.VERSION.SDK_INT >= 31) startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName")))
+                        result.success(true)
+                    } catch (e: Exception) { result.success(false) }
+                }
+                "openNotificationSettings" -> {
+                    try {
+                        if (Build.VERSION.SDK_INT >= 26) startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
+                        result.success(true)
+                    } catch (e: Exception) { result.success(false) }
+                }
+                "clearNotifications" -> { Notifier.cancel(this, call.argument<String>("address").orEmpty()); result.success(null) }
                 "installUpdate" -> {
                     val url = call.argument<String>("url").orEmpty()
                     if (!AppUpdater.canInstall(this)) {
@@ -95,7 +132,9 @@ class MainActivity : FlutterActivity() {
                 "takeComposeIntent" -> {
                     val data = intent
                     val address = data.data?.schemeSpecificPart?.substringBefore('?').orEmpty()
-                    result.success(if (data.action == Intent.ACTION_SENDTO) mapOf("to" to address,
+                    val open = data.getStringExtra("open_address")
+                    result.success(if (open != null) mapOf("open" to open)
+                        else if (data.action == Intent.ACTION_SENDTO) mapOf("to" to address,
                         "body" to (data.getStringExtra("sms_body") ?: "")) else null)
                     intent = Intent(this, MainActivity::class.java)
                 }
@@ -104,8 +143,7 @@ class MainActivity : FlutterActivity() {
                         val value: Any? = when (call.method) {
                             "isAvailable" -> packageManager.hasSystemFeature(if (Build.VERSION.SDK_INT >= 33) PackageManager.FEATURE_TELEPHONY_MESSAGING else PackageManager.FEATURE_TELEPHONY)
                             "permissionStatus" -> permissionMap()
-                            "readMessages" -> SmsCore.read(this, call.argument<Int>("limit") ?: 1000,
-                                call.argument<Number>("beforeDate")?.toLong(), call.argument<Number>("beforeId")?.toLong())
+                            "readMessages" -> SmsCore.read(this, call.argument<Int>("limit") ?: 300)
                             "subscriptions" -> SmsCore.subscriptions(this)
                             "contactNames" -> contactNames(call.argument<List<String>>("addresses").orEmpty())
                             "blockNumber" -> blockNumber(call.argument<String>("address").orEmpty())
@@ -157,23 +195,44 @@ class MainActivity : FlutterActivity() {
         "contacts" to has(Manifest.permission.READ_CONTACTS),
         "default" to SmsCore.isDefault(this))
 
-    /** Display names for phone numbers, looked up one by one so the full address book is never loaded. */
+    private fun specialAccess(): Map<String, Boolean> {
+        val power = getSystemService(android.os.PowerManager::class.java)
+        val alarms = getSystemService(android.app.AlarmManager::class.java)
+        return mapOf(
+            "battery" to power.isIgnoringBatteryOptimizations(packageName),
+            "exactAlarm" to (Build.VERSION.SDK_INT < 31 || alarms.canScheduleExactAlarms()),
+            "notifications" to androidx.core.app.NotificationManagerCompat.from(this).areNotificationsEnabled())
+    }
+
+    private fun phoneKey(number: String): String {
+        val digits = StringBuilder()
+        for (ch in number) {
+            val d = Character.digit(ch, 10)
+            if (d >= 0) digits.append(d)
+        }
+        return if (digits.length > 10) digits.substring(digits.length - 10) else digits.toString()
+    }
+
+    /** Display names for phone numbers: the phone book is read in ONE query and matched by the last 10 digits. */
     private fun contactNames(addresses: List<String>): Map<String, String> {
         if (!has(Manifest.permission.READ_CONTACTS)) return emptyMap()
-        val names = mutableMapOf<String, String>()
-        for (address in addresses.take(3000)) {
-            if (address.none { it.isDigit() }) continue
-            try {
-                val uri = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(address))
-                contentResolver.query(uri, arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME), null, null, null)?.use {
-                    if (it.moveToFirst()) {
-                        val name = it.getString(0)
-                        if (!name.isNullOrBlank()) names[address] = name
-                    }
-                }
-            } catch (_: Exception) {
-                // Skip numbers the contacts provider cannot parse.
+        val book = HashMap<String, String>()
+        contentResolver.query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+            arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER, ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME),
+            null, null, null)?.use {
+            while (it.moveToNext()) {
+                val number = it.getString(0) ?: continue
+                val name = it.getString(1)
+                val key = phoneKey(number)
+                if (key.length >= 7 && !name.isNullOrBlank() && !book.containsKey(key)) book[key] = name
             }
+        }
+        val names = HashMap<String, String>()
+        for (address in addresses) {
+            if (address.any { it.isLetter() }) continue
+            val key = phoneKey(address)
+            val name = if (key.length >= 7) book[key] else null
+            if (name != null) names[address] = name
         }
         return names
     }

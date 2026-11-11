@@ -13,10 +13,18 @@ class SmsPermissionState {
     isDefault: raw['default'] ?? false, contacts: raw['contacts'] ?? false);
 }
 
+/// Android "special access" switches that keep background SMS delivery and timing reliable.
+class SpecialAccess {
+  final bool battery;
+  final bool exactAlarm;
+  final bool notifications;
+  const SpecialAccess({this.battery = true, this.exactAlarm = true, this.notifications = true});
+  bool get complete => battery && exactAlarm && notifications;
+}
+
 class SmsBridge {
   static const MethodChannel _channel = MethodChannel('ir.honarmardomi.payamyar/sms');
   static bool get supported => Platform.isAndroid;
-  static const pageSize = 1000;
 
   static Future<bool> available() async {
     if (!supported) return false;
@@ -36,21 +44,38 @@ class SmsBridge {
     return SmsPermissionState.fromMap(raw);
   }
 
-  static Future<List<MessageRecord>> read({int limit = pageSize, MessageRecord? before}) async {
-    if (!supported) return [];
-    final response = await _channel.invokeListMethod<dynamic>('readMessages', {'limit': limit, 'beforeDate': before?.date.millisecondsSinceEpoch, 'beforeId': before?.id});
-    return (response ?? []).map((value) {
-      final row = Map<Object?, Object?>.from(value as Map);
+  /// Decodes one page sent by the native side as typed columns.
+  static List<MessageRecord> fromColumns(Object? raw) {
+    if (raw is! Map) return const [];
+    final n = (raw['n'] as num?)?.toInt() ?? 0;
+    final ids = raw['ids'] as List, dates = raw['dates'] as List, types = raw['types'] as List;
+    final reads = raw['reads'] as List, status = raw['status'] as List;
+    final senders = raw['senders'] as List, bodies = raw['bodies'] as List;
+    return List<MessageRecord>.generate(n, (i) {
+      final type = (types[i] as num).toInt();
       return MessageRecord(
-        id: (row['id'] as num).toInt(), read: row['read'] == true,
-        type: (row['type'] as num?)?.toInt() ?? 1, delivery: (row['delivery'] as num?)?.toInt() ?? -1,
-        sender: row['sender']?.toString() ?? '',
-        body: row['body']?.toString() ?? '',
-        date: DateTime.fromMillisecondsSinceEpoch((row['date'] as num).toInt()),
-        outgoing: row['outgoing'] == true,
+        id: (ids[i] as num).toInt(),
+        sender: senders[i] as String? ?? '',
+        body: bodies[i] as String? ?? '',
+        date: DateTime.fromMillisecondsSinceEpoch((dates[i] as num).toInt()),
+        outgoing: type != 1,
+        read: (reads[i] as num) != 0,
+        type: type,
+        delivery: (status[i] as num).toInt(),
       );
-    }).toList();
+    }, growable: false);
   }
+
+  /// Newest [limit] messages (quick refresh after a change).
+  static Future<List<MessageRecord>> read({int limit = 300}) async {
+    if (!supported) return [];
+    return fromColumns(await _channel.invokeMethod<Object?>('readMessages', {'limit': limit}));
+  }
+
+  /// Starts one native pass over the whole inbox. Pages arrive as 'messagesPage' events
+  /// (see [listen]) tagged with [generation]; completes with the total count.
+  static Future<int> loadAll(int generation) async =>
+    await _channel.invokeMethod<int>('loadAllMessages', {'generation': generation}) ?? 0;
 
   static String normalizeNumber(String value) {
     const persian = '۰۱۲۳۴۵۶۷۸۹';
@@ -73,17 +98,32 @@ class SmsBridge {
   static void listen(Future<void> Function(String method, Object? arguments) callback) {
     _channel.setMethodCallHandler((call) => callback(call.method, call.arguments));
   }
+  static void stopListening() => _channel.setMethodCallHandler(null);
+
   /// Downloads the release from honarmardomi.ir and opens Android's installer.
   /// Returns 'installing' or 'needs_permission' (the "install unknown apps" screen was opened).
   static Future<String> installUpdate(String url) async =>
     await _channel.invokeMethod<String>('installUpdate', {'url': url}) ?? 'installing';
-  static void stopListening() => _channel.setMethodCallHandler(null);
   static Future<String?> pickContact() => _channel.invokeMethod<String>('pickContact');
   /// Opens Android's "default SMS app" dialog; true when PayamYar was chosen.
   static Future<bool> requestDefault() async => await _channel.invokeMethod<bool>('requestDefault') ?? false;
   static Future<void> openAppSettings() => _channel.invokeMethod<bool>('openAppSettings');
   static Future<void> manageBlocked() => _channel.invokeMethod<bool>('manageBlocked');
   static Future<void> block(String address) => _channel.invokeMethod<bool>('blockNumber', {'address': address});
+
+  static Future<SpecialAccess> specialAccess() async {
+    if (!supported) return const SpecialAccess();
+    final raw = await _channel.invokeMapMethod<String, bool>('specialAccess') ?? {};
+    return SpecialAccess(battery: raw['battery'] ?? true, exactAlarm: raw['exactAlarm'] ?? true,
+      notifications: raw['notifications'] ?? true);
+  }
+  static Future<void> requestBatteryExemption() => _channel.invokeMethod<bool>('requestBatteryExemption');
+  static Future<void> requestExactAlarm() => _channel.invokeMethod<bool>('requestExactAlarm');
+  static Future<void> openNotificationSettings() => _channel.invokeMethod<bool>('openNotificationSettings');
+  static Future<void> clearNotifications(String address) async {
+    if (supported) await _channel.invokeMethod<void>('clearNotifications', {'address': address});
+  }
+
   static Future<Map<String, String>> contactNames(List<String> addresses) async {
     if (!supported || addresses.isEmpty) return {};
     final raw = await _channel.invokeMapMethod<String, String>('contactNames', {'addresses': addresses});

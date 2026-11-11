@@ -3,7 +3,11 @@ import '../app_settings.dart';
 import '../app_store.dart';
 import '../jalali.dart';
 import '../sms_bridge.dart';
+import '../templates.dart';
 import '../update_service.dart';
+import 'compose_screen.dart';
+import 'compose_tools.dart';
+import 'home_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final AppStore store;
@@ -38,40 +42,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (ok == true) await store.installUpdate();
   }
 
-  Future<void> _templates() async {
-    final controller = TextEditingController();
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (ctx) => ListenableBuilder(
-        listenable: store,
-        builder: (ctx, _) => Padding(
-          padding: EdgeInsets.fromLTRB(16, 0, 16, MediaQuery.viewInsetsOf(ctx).bottom + 16),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text('پیام‌های آماده', style: Theme.of(ctx).textTheme.titleLarge),
-            const SizedBox(height: 8),
-            for (final t in store.templates)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(t),
-                trailing: IconButton(tooltip: 'حذف', icon: const Icon(Icons.close_rounded), onPressed: () => store.removeTemplate(t))),
-            const SizedBox(height: 8),
-            Row(children: [
-              Expanded(child: TextField(controller: controller, decoration: const InputDecoration(hintText: 'متن پیام آماده جدید'))),
-              const SizedBox(width: 8),
-              IconButton.filled(tooltip: 'افزودن', icon: const Icon(Icons.add_rounded), onPressed: () {
-                store.addTemplate(controller.text);
-                controller.clear();
-              }),
-            ]),
-          ]),
-        ),
-      ),
-    );
-    controller.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -104,6 +74,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       await SmsBridge.openAppSettings();
                     }
                   }),
+                ListTile(
+                  leading: Icon(Icons.bolt_rounded, color: store.access.complete ? Colors.green : scheme.primary),
+                  title: const Text('دسترسی‌های ویژه'),
+                  subtitle: Text(store.access.complete
+                      ? 'اعلان، باتری و زمان‌بندی دقیق فعال است'
+                      : 'برای دریافت مطمئن پیام‌ها در پس‌زمینه کامل کنید'),
+                  trailing: const Icon(Icons.chevron_left_rounded),
+                  onTap: () => showSpecialAccessSheet(context, store)),
                 ListTile(
                   leading: Icon(Icons.block_rounded, color: scheme.primary),
                   title: const Text('شماره‌های مسدود'),
@@ -162,9 +140,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ListTile(
                 leading: Icon(Icons.bolt_rounded, color: scheme.primary),
                 title: const Text('پیام‌های آماده'),
-                subtitle: Text('${Jalali.digits(store.templates.length)} پیام برای ارسال سریع'),
+                subtitle: Text('${Jalali.digits(builtInTemplates.values.fold<int>(0, (n, l) => n + l.length))} پیام آماده و ${Jalali.digits(store.templates.length)} پیام شما'),
                 trailing: const Icon(Icons.chevron_left_rounded),
-                onTap: _templates),
+                onTap: () async {
+                  final text = await showTemplatesSheet(context, store);
+                  if (text != null && context.mounted) {
+                    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ComposeScreen(store: store, initialBody: text)));
+                  }
+                }),
               ListTile(
                 leading: Icon(Icons.done_all_rounded, color: scheme.primary),
                 title: const Text('خواندن همه پیام‌ها'),
@@ -189,7 +172,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onTap: () => UpdateService.openDownload('https://honarmardomi.ir/payamyar/')),
               const ListTile(
                 leading: Icon(Icons.info_outline_rounded),
-                title: Text('پیامیار نسخه ۱٫۰٫۱'),
+                title: Text('پیامیار نسخه ۱٫۱'),
                 subtitle: Text('از خانواده هنر مردمی • پیام‌های شما فقط روی گوشی خودتان است')),
             ])),
           ]),

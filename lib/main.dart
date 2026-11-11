@@ -38,27 +38,71 @@ class _PayamYarState extends State<PayamYar> {
   }
 
   ThemeData _theme(Brightness b) {
-    final scheme = ColorScheme.fromSeed(seedColor: palettes[settings.palette], brightness: b);
     final dark = b == Brightness.dark;
+    // Teal identity with a warm gold accent on paper-like backgrounds.
+    final scheme = ColorScheme.fromSeed(seedColor: palettes[settings.palette], brightness: b).copyWith(
+      tertiary: dark ? const Color(0xFFE7C57C) : const Color(0xFF8A6417),
+      tertiaryContainer: dark ? const Color(0xFF4A3A14) : const Color(0xFFFCEBC4),
+      onTertiaryContainer: dark ? const Color(0xFFFCEBC4) : const Color(0xFF3F2E05));
+    final paper = dark ? const Color(0xFF0E1B1F) : const Color(0xFFFAF8F3);
+    final surface = dark ? const Color(0xFF172A30) : Colors.white;
+    final base = dark ? Typography.material2021().white : Typography.material2021().black;
+    TextStyle? fa(TextStyle? s, {double? size, FontWeight? weight, double height = 1.6}) => s?.copyWith(
+      fontFamily: 'Vazirmatn', fontSize: size, fontWeight: weight, height: height, letterSpacing: 0);
+    final text = base.copyWith(
+      headlineSmall: fa(base.headlineSmall, size: 24, weight: FontWeight.w800, height: 1.5),
+      titleLarge: fa(base.titleLarge, size: 20, weight: FontWeight.w800, height: 1.5),
+      titleMedium: fa(base.titleMedium, size: 16, weight: FontWeight.w700),
+      titleSmall: fa(base.titleSmall, size: 14, weight: FontWeight.w700),
+      bodyLarge: fa(base.bodyLarge, size: 16, height: 1.8),
+      bodyMedium: fa(base.bodyMedium, size: 14.5, height: 1.7),
+      bodySmall: fa(base.bodySmall, size: 12.5),
+      labelLarge: fa(base.labelLarge, size: 14, weight: FontWeight.w700),
+      labelMedium: fa(base.labelMedium, size: 12.5, weight: FontWeight.w600),
+      labelSmall: fa(base.labelSmall, size: 11.5, weight: FontWeight.w600),
+    );
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
       fontFamily: 'Vazirmatn',
-      scaffoldBackgroundColor: dark ? const Color(0xFF0F1A1E) : const Color(0xFFF7F8F7),
+      textTheme: text,
+      scaffoldBackgroundColor: paper,
       appBarTheme: AppBarTheme(
-        backgroundColor: dark ? const Color(0xFF0F1A1E) : const Color(0xFFF7F8F7),
+        backgroundColor: paper,
         surfaceTintColor: Colors.transparent,
+        scrolledUnderElevation: 0,
         titleTextStyle: TextStyle(fontFamily: 'Vazirmatn', fontSize: 20, fontWeight: FontWeight.w800, color: scheme.onSurface),
       ),
       cardTheme: CardThemeData(
         elevation: 0,
         margin: EdgeInsets.zero,
-        color: dark ? const Color(0xFF17262B) : Colors.white,
+        color: surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: surface,
+        surfaceTintColor: Colors.transparent,
+        indicatorColor: scheme.primaryContainer,
+        height: 68,
+      ),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: scheme.primary,
+        foregroundColor: scheme.onPrimary,
+        extendedTextStyle: const TextStyle(fontFamily: 'Vazirmatn', fontWeight: FontWeight.w700, fontSize: 15),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: surface,
+        selectedColor: scheme.primaryContainer,
+        side: BorderSide(color: scheme.outlineVariant.withValues(alpha: .6)),
+        labelStyle: TextStyle(fontFamily: 'Vazirmatn', fontSize: 13, fontWeight: FontWeight.w600, color: scheme.onSurface),
+      ),
+      bottomSheetTheme: BottomSheetThemeData(backgroundColor: paper, surfaceTintColor: Colors.transparent),
+      dialogTheme: DialogThemeData(backgroundColor: surface, surfaceTintColor: Colors.transparent),
+      listTileTheme: const ListTileThemeData(shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(16)))),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: dark ? const Color(0xFF17262B) : Colors.white,
+        fillColor: surface,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
       ),
       filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(

@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'conversation_logic.dart';
+import 'finance_logic.dart';
 import 'message_logic.dart';
 import 'sms_bridge.dart';
 import 'update_service.dart';
@@ -13,6 +14,24 @@ class PendingSend {
   final String body;
   final DateTime deadline;
   PendingSend(this.id, this.to, this.body, this.deadline);
+}
+
+/// Per-conversation values computed once while messages are grouped, so list rows are cheap to draw.
+class ConvInfo {
+  int unread = 0;
+  final MessageCategory category;
+  final bool suspicious;
+  ConvInfo(this.category, this.suspicious);
+}
+
+class ReportData {
+  final int revision;
+  final int deposits;
+  final int withdrawals;
+  final List<FinanceEntry> recent;
+  final Map<MessageCategory, int> counts;
+  final List<Conversation> top;
+  const ReportData(this.revision, this.deposits, this.withdrawals, this.recent, this.counts, this.top);
 }
 
 /// Single source of truth for messages, permissions and local preferences.
@@ -26,14 +45,26 @@ class AppStore extends ChangeNotifier {
   bool onboarded = false;
   bool available = false;
   SmsPermissionState permissions = const SmsPermissionState(canRead: false, canSend: false);
+  SpecialAccess access = const SpecialAccess();
   bool loading = false;
   bool loadingAll = false;
+  int loadedCount = 0;
   String? error;
+
+  /// Newest first.
   List<MessageRecord> messages = [];
   List<Conversation> conversations = [];
+  final Map<String, List<MessageRecord>> _groups = {};
+  final Map<String, ConvInfo> _info = {};
+  final Map<String, String> _keyCache = {};
+  /// Bumped whenever messages change; lets screens cache derived data.
+  int revision = 0;
+
   final Map<String, String> names = {};
   final Set<String> archived = {};
   final Set<String> pinned = {};
+  /// Conversation key -> id of the message pinned at the top of that conversation.
+  final Map<String, int> pinnedMessages = {};
   List<String> templates = [];
   List<Map<dynamic, dynamic>> sims = [];
   int selectedSim = -1;
@@ -43,58 +74,74 @@ class AppStore extends ChangeNotifier {
   /// null when not downloading; 0..1 while the new version downloads.
   double? updateProgress;
   void Function(String message)? onNotice;
+  VoidCallback? onComposeIntent;
+  Timer? _debounce;
+  int _generation = 0;
+  List<MessageRecord> _buffer = [];
+  bool _progressive = false;
+  ReportData? _report;
 
   bool get isDefault => permissions.isDefault;
   bool get needsOnboarding => android && (!permissions.canRead || !onboarded);
 
-  static final _sample = <MessageRecord>[
-    MessageRecord(sender: 'هنر مردمی', body: 'به پیامیار خوش آمدید. پیام‌های گوشی شما اینجا نمایش داده می‌شوند.', date: DateTime.now().subtract(const Duration(minutes: 5)), read: false, id: 1),
-    MessageRecord(sender: 'بانک', body: 'واریز ۲۵۰,۰۰۰ تومان به حساب شما. موجودی: ۱,۲۰۰,۰۰۰ تومان', date: DateTime.now().subtract(const Duration(hours: 3)), id: 2),
-    MessageRecord(sender: 'سامانه', body: 'کد تأیید شما: 48213', date: DateTime.now().subtract(const Duration(days: 1)), id: 3),
-    MessageRecord(sender: '09121234567', body: 'سلام، فردا ساعت ۱۰ جلسه داریم.', date: DateTime.now().subtract(const Duration(days: 2)), id: 4),
-    MessageRecord(sender: 'فروشگاه', body: 'تخفیف ویژه امروز تا ۵۰٪', date: DateTime.now().subtract(const Duration(days: 9)), id: 5),
-  ];
+  static List<MessageRecord> _sample() {
+    final now = DateTime.now();
+    return [
+      MessageRecord(sender: 'هنر مردمی', body: 'به پیامیار خوش آمدید. پیام‌های گوشی شما اینجا نمایش داده می‌شوند.', date: now.subtract(const Duration(minutes: 5)), read: false, id: 1),
+      MessageRecord(sender: 'بانک', body: 'واریز ۲۵۰,۰۰۰ تومان به حساب شما. موجودی: ۱,۲۰۰,۰۰۰ تومان', date: now.subtract(const Duration(hours: 3)), id: 2),
+      MessageRecord(sender: 'سامانه', body: 'کد تأیید شما: 48213', date: now.subtract(const Duration(days: 1)), id: 3),
+      MessageRecord(sender: '09121234567', body: 'سلام، فردا ساعت ۱۰ جلسه داریم.', date: now.subtract(const Duration(days: 2)), id: 4),
+      MessageRecord(sender: 'فروشگاه', body: 'تخفیف ویژه امروز تا ۵۰٪', date: now.subtract(const Duration(days: 9)), id: 5),
+    ];
+  }
 
   Future<void> init() async {
     final p = await SharedPreferences.getInstance();
     onboarded = p.getBool('onboarded') ?? false;
     archived.addAll(p.getStringList('archived') ?? []);
     pinned.addAll(p.getStringList('pinned') ?? []);
-    templates = p.getStringList('templates') ??
-        ['در جلسه هستم، بعداً تماس می‌گیرم.', 'رسیدم.', 'ممنون 🌹', 'چند دقیقه دیگر می‌رسم.'];
+    for (final row in p.getStringList('pinned_messages') ?? const <String>[]) {
+      final i = row.lastIndexOf('|');
+      final id = i < 0 ? null : int.tryParse(row.substring(i + 1));
+      if (id != null) pinnedMessages[row.substring(0, i)] = id;
+    }
+    templates = p.getStringList('templates_user') ?? [];
     if (android) {
-      SmsBridge.listen((event, args) async {
-        if (event == 'updateProgress') {
-          updateProgress = ((args as num?)?.toDouble() ?? 0) / 100;
-          notifyListeners();
-          return;
-        }
-        if (event == 'composeIntent') {
-          onComposeIntent?.call();
-          return;
-        }
-        _debounce?.cancel();
-        _debounce = Timer(const Duration(milliseconds: 400), refresh);
-      });
+      SmsBridge.listen(_onNativeEvent);
       await checkPermissions();
       if (permissions.canRead) unawaited(loadAll());
       unawaited(checkForUpdate());
     } else {
-      messages = List.of(_sample);
-      _regroup();
+      messages = _sample();
+      _rebuild();
     }
     initialized = true;
     notifyListeners();
   }
 
-  VoidCallback? onComposeIntent;
-  Timer? _debounce;
+  Future<void> _onNativeEvent(String event, Object? args) async {
+    switch (event) {
+      case 'messagesPage':
+        _onPage(args);
+      case 'updateProgress':
+        updateProgress = ((args as num?)?.toDouble() ?? 0) / 100;
+        notifyListeners();
+      case 'composeIntent':
+        onComposeIntent?.call();
+      default:
+        _debounce?.cancel();
+        _debounce = Timer(const Duration(milliseconds: 350), refresh);
+    }
+  }
+
+  // ───────────── permissions ─────────────
 
   Future<void> checkPermissions() async {
     if (!android) return;
     try {
       available = await SmsBridge.available();
       permissions = await SmsBridge.status();
+      access = await SmsBridge.specialAccess();
     } catch (_) {
       error = 'وضعیت دسترسی‌ها خوانده نشد.';
     }
@@ -103,7 +150,7 @@ class AppStore extends ChangeNotifier {
 
   Future<SmsPermissionState> requestPermissions() async {
     permissions = await SmsBridge.request();
-    if (permissions.canRead) unawaited(loadAll());
+    if (permissions.canRead && messages.isEmpty) unawaited(loadAll());
     notifyListeners();
     return permissions;
   }
@@ -114,6 +161,15 @@ class AppStore extends ChangeNotifier {
     if (ok) unawaited(refresh());
     return ok;
   }
+
+  Future<void> finishOnboarding() async {
+    onboarded = true;
+    final p = await SharedPreferences.getInstance();
+    await p.setBool('onboarded', true);
+    notifyListeners();
+  }
+
+  // ───────────── updates ─────────────
 
   /// Reads the release info published on honarmardomi.ir; quiet unless a newer version exists.
   Future<bool> checkForUpdate({bool manual = false}) async {
@@ -157,49 +213,58 @@ class AppStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> finishOnboarding() async {
-    onboarded = true;
-    final p = await SharedPreferences.getInstance();
-    await p.setBool('onboarded', true);
-    notifyListeners();
-  }
+  // ───────────── loading ─────────────
 
-  /// Reads every SMS on the phone, page by page, showing each page as soon as it arrives.
+  /// Reads every SMS in one native pass. The first 150 messages appear at once; the rest follow in large pages.
   Future<void> loadAll() async {
     if (!android || loadingAll) return;
     loadingAll = true;
     error = null;
+    loadedCount = 0;
+    final generation = ++_generation;
+    _buffer = [];
+    // First load fills the screen page by page; a reload swaps in the result at the end.
+    _progressive = messages.isEmpty;
+    if (_progressive) _reset();
     notifyListeners();
     try {
-      var page = await SmsBridge.read();
-      final all = <MessageRecord>[...page];
-      messages = List.of(all);
-      _regroup();
-      notifyListeners();
-      while (page.length == SmsBridge.pageSize) {
-        page = await SmsBridge.read(before: all.last);
-        all.addAll(page);
-        messages = List.of(all);
-        _regroup();
-        notifyListeners();
-      }
+      await SmsBridge.loadAll(generation);
+      if (generation != _generation) return;
+      messages = _buffer;
+      if (!_progressive) _rebuild();
+      _buffer = [];
       sims = await SmsBridge.subscriptions();
       if (!sims.any((s) => s['id'] == selectedSim)) selectedSim = -1;
       unawaited(_loadNames());
     } catch (_) {
       error = 'خواندن پیامک‌های گوشی ممکن نشد.';
     } finally {
-      loadingAll = false;
-      notifyListeners();
+      if (generation == _generation) {
+        loadingAll = false;
+        notifyListeners();
+      }
     }
   }
 
-  /// Re-reads the newest page and merges it, so a change does not reload the whole inbox.
+  void _onPage(Object? args) {
+    if (args is! Map || args['generation'] != _generation || !loadingAll) return;
+    final page = SmsBridge.fromColumns(args);
+    _buffer.addAll(page);
+    loadedCount = _buffer.length;
+    if (_progressive) {
+      messages = _buffer;
+      _ingest(page);
+      revision++;
+    }
+    notifyListeners();
+  }
+
+  /// Re-reads only the newest messages and merges them, so a change never reloads the whole inbox.
   Future<void> refresh() async {
     if (!android) return;
     if (loadingAll || loading) {
       _debounce?.cancel();
-      _debounce = Timer(const Duration(seconds: 1), refresh);
+      _debounce = Timer(const Duration(milliseconds: 800), refresh);
       return;
     }
     loading = true;
@@ -211,8 +276,9 @@ class AppStore extends ChangeNotifier {
         await loadAll();
         return;
       }
-      final page = await SmsBridge.read();
-      if (page.length < SmsBridge.pageSize) {
+      const window = 300;
+      final page = await SmsBridge.read(limit: window);
+      if (page.length < window) {
         messages = page;
       } else {
         final last = page.last;
@@ -220,7 +286,7 @@ class AppStore extends ChangeNotifier {
             (m.date == last.date && (m.id ?? 0) < (last.id ?? 0)));
         messages = [...page, ...older];
       }
-      _regroup();
+      _rebuild();
       unawaited(_loadNames());
     } catch (_) {
       error = 'به‌روزرسانی پیام‌ها انجام نشد.';
@@ -246,8 +312,34 @@ class AppStore extends ChangeNotifier {
     }
   }
 
-  void _regroup() {
-    conversations = ConversationLogic.group(messages.where((m) => m.sender.isNotEmpty));
+  // ───────────── grouping ─────────────
+
+  void _reset() {
+    _groups.clear();
+    _info.clear();
+    conversations = [];
+  }
+
+  /// Adds messages (already newest-first) to their conversations. Conversations stay ordered by latest message.
+  void _ingest(List<MessageRecord> page) {
+    for (final m in page) {
+      if (m.sender.isEmpty) continue;
+      final k = key(m.sender);
+      var list = _groups[k];
+      if (list == null) {
+        list = _groups[k] = [];
+        conversations.add(Conversation(m.sender, list));
+        _info[k] = ConvInfo(MessageLogic.category(m), !m.outgoing && MessageLogic.suspicious(m.body));
+      }
+      list.add(m);
+      if (!m.read && !m.outgoing) _info[k]!.unread++;
+    }
+  }
+
+  void _rebuild() {
+    _reset();
+    _ingest(messages);
+    revision++;
   }
 
   String displayName(String address) {
@@ -255,84 +347,136 @@ class AppStore extends ChangeNotifier {
     return name == null || name.isEmpty ? address : name;
   }
 
-  String key(String address) => ConversationLogic.normalize(address);
+  String key(String address) => _keyCache[address] ??= ConversationLogic.normalize(address);
   bool isArchived(String address) => archived.contains(key(address));
   bool isPinned(String address) => pinned.contains(key(address));
 
   Conversation? conversationFor(String address) {
-    final k = key(address);
-    for (final c in conversations) {
-      if (key(c.address) == k) return c;
-    }
-    return null;
+    final list = _groups[key(address)];
+    if (list == null || list.isEmpty) return null;
+    return Conversation(list.first.sender, list);
   }
 
-  int unreadCount(Conversation c) => c.messages.where((m) => !m.read && !m.outgoing).length;
+  ConvInfo? infoFor(String address) => _info[key(address)];
+  int unreadCount(Conversation c) => _info[key(c.address)]?.unread ?? 0;
+  MessageCategory categoryOf(Conversation c) => _info[key(c.address)]?.category ?? MessageCategory.personal;
+  int get unreadConversations => _info.values.where((i) => i.unread > 0).length;
 
+  /// Pinned conversations first, then by latest message.
   List<Conversation> visible({required bool archive}) {
-    final list = conversations.where((c) => isArchived(c.address) == archive).toList();
-    list.sort((a, b) {
-      final pa = isPinned(a.address) ? 1 : 0, pb = isPinned(b.address) ? 1 : 0;
-      if (pa != pb) return pb - pa;
-      return b.latest.date.compareTo(a.latest.date);
-    });
-    return list;
+    final top = <Conversation>[], rest = <Conversation>[];
+    for (final c in conversations) {
+      final k = key(c.address);
+      if (archived.contains(k) != archive) continue;
+      (pinned.contains(k) ? top : rest).add(c);
+    }
+    return [...top, ...rest];
   }
 
-  Future<void> _saveSets() async {
+  ReportData get report {
+    final cached = _report;
+    if (cached != null && cached.revision == revision) return cached;
+    final since = DateTime.now().subtract(const Duration(days: 30));
+    final recent = <FinanceEntry>[];
+    final counts = <MessageCategory, int>{for (final c in MessageCategory.values) c: 0};
+    for (final m in messages) {
+      final category = MessageLogic.category(m);
+      counts[category] = counts[category]! + 1;
+      if (category == MessageCategory.banking && m.date.isAfter(since)) {
+        final entry = FinanceLogic.parse(m);
+        if (entry != null) recent.add(entry);
+      }
+    }
+    final top = conversations.toList()..sort((a, b) => b.count.compareTo(a.count));
+    return _report = ReportData(revision, FinanceLogic.total(recent, FinanceKind.deposit),
+      FinanceLogic.total(recent, FinanceKind.withdrawal), recent, counts, top.take(5).toList());
+  }
+
+  // ───────────── local organisation ─────────────
+
+  Future<void> _savePrefs() async {
     final p = await SharedPreferences.getInstance();
     await p.setStringList('archived', archived.toList());
     await p.setStringList('pinned', pinned.toList());
-    await p.setStringList('templates', templates);
+    await p.setStringList('templates_user', templates);
+    await p.setStringList('pinned_messages', [for (final e in pinnedMessages.entries) '${e.key}|${e.value}']);
   }
 
   void toggleArchive(String address) {
     final k = key(address);
     if (!archived.remove(k)) archived.add(k);
     notifyListeners();
-    _saveSets();
+    _savePrefs();
   }
 
   void togglePin(String address) {
     final k = key(address);
-    if (!pinned.remove(k)) pinned.add(k);
+    final nowPinned = !pinned.remove(k);
+    if (nowPinned) pinned.add(k);
     notifyListeners();
-    _saveSets();
+    _savePrefs();
+    onNotice?.call(nowPinned ? 'گفتگو بالای فهرست سنجاق شد.' : 'سنجاق برداشته شد.');
+  }
+
+  int? pinnedMessageId(String address) => pinnedMessages[key(address)];
+
+  void togglePinMessage(String address, int id) {
+    final k = key(address);
+    if (pinnedMessages[k] == id) {
+      pinnedMessages.remove(k);
+    } else {
+      pinnedMessages[k] = id;
+    }
+    notifyListeners();
+    _savePrefs();
   }
 
   void addTemplate(String text) {
     final t = text.trim();
     if (t.isEmpty || templates.contains(t)) return;
-    templates = [...templates, t];
+    templates = [t, ...templates];
     notifyListeners();
-    _saveSets();
+    _savePrefs();
   }
 
   void removeTemplate(String text) {
     templates = templates.where((t) => t != text).toList();
     notifyListeners();
-    _saveSets();
+    _savePrefs();
   }
 
+  // ───────────── message actions ─────────────
+
+  /// Marks a conversation read at once on screen, then writes it to the phone in the background.
   Future<void> markRead(Conversation c) async {
-    final ids = c.messages.where((m) => !m.read && !m.outgoing && m.id != null).map((m) => m.id!).toList();
+    final k = key(c.address);
+    if (android) unawaited(SmsBridge.clearNotifications(c.address));
+    final ids = <int>{for (final m in c.messages) if (!m.read && !m.outgoing && m.id != null) m.id!};
     if (ids.isEmpty) return;
-    if (!android) {
-      messages = messages.map((m) => ids.contains(m.id) ? _copy(m, read: true) : m).toList();
-      _regroup();
-      notifyListeners();
-      return;
+    if (android && !isDefault) return;
+    void patch(List<MessageRecord> list) {
+      for (var i = 0; i < list.length; i++) {
+        if (ids.contains(list[i].id)) list[i] = _copy(list[i], read: true);
+      }
     }
-    if (!isDefault) return;
+    patch(_groups[k] ?? const []);
+    if (!identical(_groups[k], messages)) patch(messages);
+    _info[k]?.unread = 0;
+    revision++;
+    notifyListeners();
+    if (!android) return;
     try {
-      await SmsBridge.markRead(ids);
-      await refresh();
+      await SmsBridge.markRead(ids.toList());
     } catch (_) {
       onNotice?.call('خوانده‌شدن پیام‌ها ثبت نشد.');
     }
   }
 
   Future<void> markAllRead() async {
+    if (android && !isDefault) {
+      onNotice?.call('برای این کار، پیامیار باید پیام‌رسان پیش‌فرض باشد.');
+      return;
+    }
     for (final c in conversations.where((c) => unreadCount(c) > 0).toList()) {
       await markRead(c);
     }
@@ -354,7 +498,8 @@ class AppStore extends ChangeNotifier {
     }
     final set = ids.toSet();
     messages = messages.where((m) => !set.contains(m.id)).toList();
-    _regroup();
+    pinnedMessages.removeWhere((_, id) => set.contains(id));
+    _rebuild();
     notifyListeners();
     return true;
   }
@@ -378,7 +523,7 @@ class AppStore extends ChangeNotifier {
     if (text.isEmpty || target.isEmpty) return null;
     if (!android) {
       messages = [MessageRecord(sender: target, body: text, date: DateTime.now(), outgoing: true, type: 2, id: DateTime.now().millisecondsSinceEpoch), ...messages];
-      _regroup();
+      _rebuild();
       notifyListeners();
       return null;
     }
@@ -418,7 +563,7 @@ class AppStore extends ChangeNotifier {
         break;
       }
       if (state == 'cancelled') break;
-      if (state == 'queued' || state == 'pending') await Future<void>.delayed(const Duration(seconds: 1));
+      if (state == 'queued' || state == 'pending') await Future<void>.delayed(const Duration(milliseconds: 600));
     }
     pendingSends.remove(p);
     if (state.startsWith('send_failed')) {

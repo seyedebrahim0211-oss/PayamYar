@@ -19,19 +19,55 @@ object SmsCore {
     private fun prefs(c: Context) = c.getSharedPreferences("sms_engine_v1", Context.MODE_PRIVATE)
     fun isDefault(c: Context) = Telephony.Sms.getDefaultSmsPackage(c) == c.packageName
     fun status(c: Context, id: String): String = prefs(c).getString("status:$id", "unknown") ?: "unknown"
-    fun read(c: Context, limit: Int, before: Long?, beforeId: Long?): List<Map<String, Any?>> {
-        if (isDefault(c)) drainIncoming(c)
-        val rows = mutableListOf<Map<String, Any?>>()
-        val selection = if (before != null && beforeId != null) "date < ? OR (date = ? AND _id < ?)" else null
-        val args = if (selection != null) arrayOf(before.toString(), before.toString(), beforeId.toString()) else null
-        c.contentResolver.query(Telephony.Sms.CONTENT_URI, arrayOf("_id", "address", "body", "date", "type", "read", "status"),
-            selection, args, "date DESC, _id DESC")?.use { cur ->
-            while (rows.size < limit.coerceIn(1, 1000) && cur.moveToNext()) rows.add(mapOf(
-                "id" to cur.getLong(0), "sender" to cur.getString(1), "body" to cur.getString(2),
-                "date" to cur.getLong(3), "outgoing" to (cur.getInt(4) != 1), "read" to (cur.getInt(5) != 0),
-                "type" to cur.getInt(4), "delivery" to cur.getInt(6)))
+    private val COLUMNS = arrayOf("_id", "address", "body", "date", "type", "read", "status")
+    private const val ORDER = "date DESC, _id DESC"
+
+    /** Reads up to [limit] rows from the cursor as compact columns (typed arrays cross to Dart far faster than maps). */
+    private fun chunk(cur: android.database.Cursor, limit: Int): Map<String, Any> {
+        val ids = LongArray(limit); val dates = LongArray(limit)
+        val types = IntArray(limit); val reads = IntArray(limit); val status = IntArray(limit)
+        val senders = ArrayList<String?>(limit); val bodies = ArrayList<String?>(limit)
+        var n = 0
+        while (n < limit && cur.moveToNext()) {
+            ids[n] = cur.getLong(0); senders.add(cur.getString(1)); bodies.add(cur.getString(2))
+            dates[n] = cur.getLong(3); types[n] = cur.getInt(4); reads[n] = cur.getInt(5); status[n] = cur.getInt(6)
+            n++
         }
-        return rows
+        return mapOf("n" to n, "ids" to ids.copyOf(n), "dates" to dates.copyOf(n), "types" to types.copyOf(n),
+            "reads" to reads.copyOf(n), "status" to status.copyOf(n), "senders" to senders, "bodies" to bodies)
+    }
+
+    /** Newest [limit] messages; used for quick refreshes after a change. */
+    fun read(c: Context, limit: Int): Map<String, Any> {
+        if (isDefault(c)) drainIncoming(c)
+        c.contentResolver.query(Telephony.Sms.CONTENT_URI, COLUMNS, null, null, ORDER)?.use { cur ->
+            return chunk(cur, limit.coerceIn(1, 5000))
+        }
+        return chunk(android.database.MatrixCursor(COLUMNS), 1)
+    }
+
+    /** Whole inbox in ONE query: a small first page for instant display, then large pages. Returns the total. */
+    fun stream(c: Context, emit: (Map<String, Any>) -> Unit): Int {
+        if (isDefault(c)) drainIncoming(c)
+        var total = 0
+        c.contentResolver.query(Telephony.Sms.CONTENT_URI, COLUMNS, null, null, ORDER)?.use { cur ->
+            var size = 150
+            while (true) {
+                val page = chunk(cur, size)
+                val n = page["n"] as Int
+                if (n > 0) { total += n; emit(page) }
+                if (n < size) break
+                size = 4000
+            }
+        }
+        return total
+    }
+
+    /** Marks every unread incoming message from this sender as read (notification "خوانده شد" action). */
+    fun markAddressRead(c: Context, address: String): Int {
+        if (!isDefault(c)) return 0
+        return c.contentResolver.update(Telephony.Sms.Inbox.CONTENT_URI,
+            ContentValues().apply { put("read", 1); put("seen", 1) }, "address = ? AND read = 0", arrayOf(address))
     }
     fun subscriptions(c: Context): List<Map<String, Any>> {
         val result = mutableListOf<Map<String, Any>>(mapOf("id" to -1, "label" to "سیم‌کارت پیش‌فرض"))
@@ -42,15 +78,15 @@ object SmsCore {
         }
         return result
     }
-    @Synchronized fun queue(c: Context, address: String, body: String, sim: Int): String {
+    @Synchronized fun queue(c: Context, address: String, body: String, sim: Int, delayMs: Long = 5000): String {
         val to = address.replace(Regex("[\\s()-]"), "")
         require(Regex("^\\+?[0-9]{3,15}$").matches(to)) { "شماره گیرنده معتبر نیست." }
         require(body.isNotBlank() && body.length <= 2000) { "متن باید بین ۱ تا ۲۰۰۰ نویسه باشد." }
         check(ContextCompat.checkSelfPermission(c, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) { "مجوز ارسال پیامک لازم است." }
         val id = UUID.randomUUID().toString()
-        val item = JSONObject().put("to", to).put("body", body).put("sim", sim).put("due", System.currentTimeMillis() + 5000)
+        val item = JSONObject().put("to", to).put("body", body).put("sim", sim).put("due", System.currentTimeMillis() + delayMs)
         check(prefs(c).edit().putString("queue:$id", item.toString()).putString("status:$id", "queued").commit())
-        arm(c, id, item.getLong("due"))
+        if (delayMs > 0) arm(c, id, item.getLong("due"))
         return id
     }
     private fun alarmIntent(c: Context, id: String) = PendingIntent.getBroadcast(c, 0,
@@ -191,10 +227,7 @@ object SmsCore {
                         put("thread_id", Telephony.Threads.getOrCreateThreadId(c, address))
                     })
                     check(uri != null)
-                    val preview = c.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-                        .getBoolean("flutter.notifyPreview", true)
-                    notify(c, uri.lastPathSegment?.toIntOrNull() ?: 1, contactName(c, address) ?: address,
-                        if (preview) body else "پیامک جدید دریافت شد")
+                    Notifier.incoming(c, address, contactName(c, address), body, item.getLong("received"))
                 }
                 file.delete()
             } catch (_: Exception) {
@@ -226,7 +259,6 @@ object SmsCore {
             val uri = ContentUris.withAppendedId(Telephony.Sms.CONTENT_URI, id.toLong())
             affected += if (delete) c.contentResolver.delete(uri, null, null) else c.contentResolver.update(uri,
                 ContentValues().apply { put("read", 1); put("seen", 1) }, null, null)
-            c.getSystemService(NotificationManager::class.java).cancel(id.toInt())
         }
         return affected
     }
@@ -242,12 +274,12 @@ object SmsCore {
     }
     fun notify(c: Context, id: Int, title: String, text: String) {
         val manager = c.getSystemService(NotificationManager::class.java)
-        if (Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(NotificationChannel("messages", "پیامک‌ها", NotificationManager.IMPORTANCE_HIGH))
+        if (Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(NotificationChannel("alerts", "هشدارهای پیامیار", NotificationManager.IMPORTANCE_DEFAULT))
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(c, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val open = PendingIntent.getActivity(c, 0, Intent(c, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val n = NotificationCompat.Builder(c, "messages").setSmallIcon(android.R.drawable.stat_notify_chat)
+        val n = NotificationCompat.Builder(c, "alerts").setSmallIcon(R.drawable.ic_stat_payamyar).setColor(0xFF087F81.toInt())
             .setContentTitle(title).setContentText(text).setStyle(NotificationCompat.BigTextStyle().bigText(text))
-            .setCategory(NotificationCompat.CATEGORY_MESSAGE).setContentIntent(open).setAutoCancel(true)
+            .setContentIntent(open).setAutoCancel(true)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE).build()
         NotificationManagerCompat.from(c).notify(id, n)
     }

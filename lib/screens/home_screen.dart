@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import '../app_settings.dart';
 import '../app_store.dart';
 import '../brand_mark.dart';
 import '../conversation_logic.dart';
 import '../jalali.dart';
-import '../app_settings.dart';
 import '../message_logic.dart';
 import '../sms_bridge.dart';
 import 'compose_screen.dart';
@@ -41,30 +41,36 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      widget.store.checkPermissions();
       widget.store.refresh();
       _takeIntent();
     }
   }
 
-  /// sms:/smsto: links from other apps open the composer prefilled; nothing is sent automatically.
+  /// Opens the conversation of a tapped notification, or the composer for sms:/smsto: links.
+  /// Nothing is ever sent automatically.
   Future<void> _takeIntent() async {
     if (!SmsBridge.supported) return;
     final value = await SmsBridge.composeIntent();
     if (value == null || !mounted) return;
-    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ComposeScreen(
-      store: widget.store, initialTo: value['to']?.toString() ?? '', initialBody: value['body']?.toString() ?? '')));
+    final open = value['open']?.toString();
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => open != null
+        ? ConversationScreen(store: widget.store, address: open)
+        : ComposeScreen(store: widget.store, initialTo: value['to']?.toString() ?? '', initialBody: value['body']?.toString() ?? '')));
   }
 
   @override
   Widget build(BuildContext context) {
-    final unread = widget.store.conversations.where((c) => widget.store.unreadCount(c) > 0).length;
-    final pages = [
-      ConversationsPage(store: widget.store, settings: widget.settings),
-      ReportsScreen(store: widget.store, settings: widget.settings),
-      SettingsScreen(store: widget.store, settings: widget.settings),
-    ];
+    final unread = widget.store.unreadConversations;
     return Scaffold(
-      body: IndexedStack(index: tab, children: pages),
+      // The inbox stays alive (keeps scroll and search); the other tabs are built only while open.
+      body: Stack(children: [
+        Offstage(
+          offstage: tab != 0,
+          child: TickerMode(enabled: tab == 0, child: ConversationsPage(store: widget.store, settings: widget.settings))),
+        if (tab == 1) ReportsScreen(store: widget.store, settings: widget.settings),
+        if (tab == 2) SettingsScreen(store: widget.store, settings: widget.settings),
+      ]),
       floatingActionButton: tab == 0
           ? FloatingActionButton.extended(
               onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
@@ -98,7 +104,6 @@ class ConversationsPage extends StatefulWidget {
 }
 
 class _ConversationsPageState extends State<ConversationsPage> {
-  bool searching = false;
   String query = '';
   bool unreadOnly = false;
   MessageCategory? category;
@@ -114,9 +119,11 @@ class _ConversationsPageState extends State<ConversationsPage> {
 
   List<Conversation> _filtered() {
     final q = query.trim().toLowerCase();
-    return store.visible(archive: widget.archive).where((c) {
+    final all = store.visible(archive: widget.archive);
+    if (!unreadOnly && category == null && q.isEmpty) return all;
+    return all.where((c) {
       if (unreadOnly && store.unreadCount(c) == 0) return false;
-      if (category != null && MessageLogic.category(c.latest) != category) return false;
+      if (category != null && store.categoryOf(c) != category) return false;
       if (q.isEmpty) return true;
       if (store.displayName(c.address).toLowerCase().contains(q) || c.address.toLowerCase().contains(q)) return true;
       return c.messages.any((m) => m.body.toLowerCase().contains(q));
@@ -125,14 +132,15 @@ class _ConversationsPageState extends State<ConversationsPage> {
 
   void _actions(Conversation c) {
     final unread = store.unreadCount(c) > 0;
+    final isPinned = store.isPinned(c.address);
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
         ListTile(title: Text(store.displayName(c.address), style: const TextStyle(fontWeight: FontWeight.w800))),
         ListTile(
-          leading: Icon(store.isPinned(c.address) ? Icons.push_pin_outlined : Icons.push_pin_rounded),
-          title: Text(store.isPinned(c.address) ? 'برداشتن سنجاق' : 'سنجاق کردن بالای فهرست'),
+          leading: Icon(isPinned ? Icons.push_pin_outlined : Icons.push_pin_rounded),
+          title: Text(isPinned ? 'برداشتن سنجاق' : 'سنجاق کردن بالای فهرست'),
           onTap: () { Navigator.pop(ctx); store.togglePin(c.address); }),
         if (unread)
           ListTile(leading: const Icon(Icons.mark_chat_read_outlined), title: const Text('علامت‌گذاری به‌عنوان خوانده‌شده'),
@@ -155,6 +163,16 @@ class _ConversationsPageState extends State<ConversationsPage> {
     );
   }
 
+  void _archiveBySwipe(Conversation c) {
+    final wasArchived = store.isArchived(c.address);
+    store.toggleArchive(c.address);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(wasArchived ? 'از بایگانی خارج شد.' : 'گفتگو بایگانی شد.'),
+        action: SnackBarAction(label: 'بازگردانی', onPressed: () => store.toggleArchive(c.address))));
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -162,34 +180,30 @@ class _ConversationsPageState extends State<ConversationsPage> {
       listenable: Listenable.merge([store, widget.settings]),
       builder: (context, _) {
         final list = _filtered();
+        final unread = store.unreadConversations;
         return Scaffold(
           appBar: AppBar(
             titleSpacing: 16,
-            title: searching
-                ? TextField(
-                    controller: search,
-                    autofocus: true,
-                    onChanged: (v) => setState(() => query = v),
-                    decoration: const InputDecoration(hintText: 'جستجو در نام‌ها و پیام‌ها', isDense: true,
-                      prefixIcon: Icon(Icons.search_rounded)))
-                : widget.archive
-                    ? const Text('بایگانی')
-                    : Row(mainAxisSize: MainAxisSize.min, children: [
-                        Container(
-                          padding: const EdgeInsets.all(7),
-                          decoration: BoxDecoration(color: scheme.primary, borderRadius: BorderRadius.circular(12)),
-                          child: const BrandMark()),
-                        const SizedBox(width: 10),
-                        const Text('پیامیار'),
-                      ]),
+            toolbarHeight: 64,
+            title: widget.archive
+                ? const Text('بایگانی')
+                : Row(mainAxisSize: MainAxisSize.min, children: [
+                    Container(
+                      padding: const EdgeInsets.all(9),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(begin: Alignment.topRight, end: Alignment.bottomLeft,
+                          colors: [Color(0xFF12A7A2), Color(0xFF05545A)]),
+                        borderRadius: BorderRadius.circular(14)),
+                      child: const BrandMark()),
+                    const SizedBox(width: 12),
+                    Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                      const Text('پیامیار'),
+                      Text(unread > 0 ? '${Jalali.digits(unread)} گفتگوی خوانده‌نشده' : 'همه پیام‌ها خوانده شده',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w400,
+                          color: unread > 0 ? scheme.primary : scheme.onSurfaceVariant)),
+                    ]),
+                  ]),
             actions: [
-              IconButton(
-                tooltip: searching ? 'بستن جستجو' : 'جستجو',
-                icon: Icon(searching ? Icons.close_rounded : Icons.search_rounded),
-                onPressed: () => setState(() {
-                  searching = !searching;
-                  if (!searching) { search.clear(); query = ''; }
-                })),
               if (!widget.archive)
                 PopupMenuButton<String>(
                   onSelected: (v) {
@@ -212,23 +226,49 @@ class _ConversationsPageState extends State<ConversationsPage> {
           body: RefreshIndicator(
             onRefresh: store.android ? store.loadAll : () async {},
             child: CustomScrollView(slivers: [
+              SliverToBoxAdapter(child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 2, 14, 6),
+                child: TextField(
+                  controller: search,
+                  onChanged: (v) => setState(() => query = v),
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(
+                    hintText: 'جستجو در نام‌ها و پیام‌ها',
+                    isDense: true,
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    suffixIcon: query.isEmpty ? null : IconButton(
+                      tooltip: 'پاک کردن جستجو',
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: () => setState(() { search.clear(); query = ''; })),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(28), borderSide: BorderSide.none)),
+                ))),
               if (store.update != null && !store.updateDismissed && !widget.archive)
                 SliverToBoxAdapter(child: UpdateBanner(store: store)),
               if (store.android && !store.isDefault && !widget.archive)
-                SliverToBoxAdapter(child: _DefaultBanner(store: store)),
+                SliverToBoxAdapter(child: _ActionBanner(
+                  icon: Icons.star_rounded,
+                  text: 'پیامیار را پیام‌رسان پیش‌فرض کنید تا پیام‌های جدید را دریافت و مدیریت کند.',
+                  action: 'فعال‌سازی',
+                  onTap: store.requestDefault))
+              else if (store.android && !store.access.complete && !widget.archive)
+                SliverToBoxAdapter(child: _ActionBanner(
+                  icon: Icons.bolt_rounded,
+                  text: 'برای دریافت مطمئن پیام‌ها و اعلان‌ها، دسترسی‌های ویژه را کامل کنید.',
+                  action: 'تنظیم',
+                  onTap: () => showSpecialAccessSheet(context, store))),
               if (store.loadingAll)
                 SliverToBoxAdapter(child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
                   child: Column(children: [
                     const LinearProgressIndicator(borderRadius: BorderRadius.all(Radius.circular(4))),
                     const SizedBox(height: 6),
-                    Text('در حال آوردن پیام‌های گوشی… ${Jalali.digits(store.messages.length)} پیام',
+                    Text('در حال آوردن پیام‌های گوشی… ${Jalali.digits(store.loadedCount)} پیام',
                       style: Theme.of(context).textTheme.bodySmall),
                   ]))),
               if (!widget.archive)
-                SliverToBoxAdapter(child: SizedBox(height: 52, child: ListView(
+                SliverToBoxAdapter(child: SizedBox(height: 50, child: ListView(
                   scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                   children: [
                     _chip('همه', !unreadOnly && category == null, () => setState(() { unreadOnly = false; category = null; })),
                     _chip('خوانده‌نشده', unreadOnly, () => setState(() { unreadOnly = !unreadOnly; })),
@@ -242,17 +282,26 @@ class _ConversationsPageState extends State<ConversationsPage> {
                 SliverToBoxAdapter(child: EmptyState(
                   icon: query.isNotEmpty ? Icons.search_off_rounded : Icons.forum_outlined,
                   title: query.isNotEmpty ? 'نتیجه‌ای پیدا نشد' : widget.archive ? 'بایگانی خالی است' : 'پیامی وجود ندارد',
-                  subtitle: widget.archive ? 'گفتگوها را با نگه داشتن انگشت روی آن‌ها بایگانی کنید.' : null)),
+                  subtitle: widget.archive ? 'گفتگوها را با کشیدن به کنار بایگانی کنید.' : null)),
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(10, 0, 10, 96),
+                padding: const EdgeInsets.fromLTRB(8, 0, 8, 96),
                 sliver: SliverList.builder(
                   itemCount: list.length,
-                  itemBuilder: (context, i) => ConversationTile(
-                    store: store,
-                    conversation: list[i],
-                    hidePreview: widget.settings.hidePreview,
-                    onLongPress: () => _actions(list[i]),
-                  ),
+                  itemBuilder: (context, i) {
+                    final c = list[i];
+                    return Dismissible(
+                      key: ValueKey('conv-${store.key(c.address)}'),
+                      background: const _SwipeBackground(alignment: AlignmentDirectional.centerStart),
+                      secondaryBackground: const _SwipeBackground(alignment: AlignmentDirectional.centerEnd),
+                      onDismissed: (_) => _archiveBySwipe(c),
+                      child: ConversationTile(
+                        store: store,
+                        conversation: c,
+                        hidePreview: widget.settings.hidePreview,
+                        onLongPress: () => _actions(c),
+                      ),
+                    );
+                  },
                 ),
               ),
             ]),
@@ -272,6 +321,22 @@ class _ConversationsPageState extends State<ConversationsPage> {
       shape: const StadiumBorder(),
     ),
   );
+}
+
+class _SwipeBackground extends StatelessWidget {
+  final AlignmentGeometry alignment;
+  const _SwipeBackground({required this.alignment});
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 22),
+      alignment: alignment,
+      decoration: BoxDecoration(color: scheme.secondaryContainer, borderRadius: BorderRadius.circular(20)),
+      child: Icon(Icons.archive_rounded, color: scheme.onSecondaryContainer),
+    );
+  }
 }
 
 /// "New version available" card; downloads and installs inside the app.
@@ -321,9 +386,12 @@ class UpdateBanner extends StatelessWidget {
   }
 }
 
-class _DefaultBanner extends StatelessWidget {
-  final AppStore store;
-  const _DefaultBanner({required this.store});
+class _ActionBanner extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final String action;
+  final VoidCallback onTap;
+  const _ActionBanner({required this.icon, required this.text, required this.action, required this.onTap});
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -334,15 +402,14 @@ class _DefaultBanner extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
           child: Row(children: [
-            Icon(Icons.star_rounded, color: scheme.onPrimaryContainer),
+            Icon(icon, color: scheme.onPrimaryContainer),
             const SizedBox(width: 10),
-            Expanded(child: Text('پیامیار را پیام‌رسان پیش‌فرض کنید تا پیام‌های جدید را دریافت و مدیریت کند.',
-              style: TextStyle(color: scheme.onPrimaryContainer))),
+            Expanded(child: Text(text, style: TextStyle(color: scheme.onPrimaryContainer))),
             const SizedBox(width: 8),
             FilledButton.tonal(
               style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
-              onPressed: store.requestDefault,
-              child: const Text('فعال‌سازی')),
+              onPressed: onTap,
+              child: Text(action)),
           ]),
         ),
       ),
@@ -361,50 +428,59 @@ class ConversationTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final m = conversation.latest;
-    final unread = store.unreadCount(conversation);
+    final info = store.infoFor(conversation.address);
+    final unread = info?.unread ?? 0;
     final name = store.displayName(conversation.address);
+    final pinned = store.isPinned(conversation.address);
     final bold = unread > 0;
     final preview = hidePreview ? 'متن پیام مخفی است' : '${m.outgoing ? 'شما: ' : ''}${m.body.replaceAll('\n', ' ')}';
-    return InkWell(
-      borderRadius: BorderRadius.circular(18),
-      onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
-        builder: (_) => ConversationScreen(store: store, address: conversation.address))),
-      onLongPress: onLongPress,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
-        child: Row(children: [
-          SenderAvatar(name: name, address: conversation.address, category: MessageLogic.category(m)),
-          const SizedBox(width: 12),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Expanded(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                textDirection: name == conversation.address && RegExp(r'^[\d+]').hasMatch(name) ? TextDirection.ltr : null,
-                textAlign: TextAlign.right,
-                style: TextStyle(fontSize: 16, fontWeight: bold ? FontWeight.w800 : FontWeight.w600))),
-              if (store.isPinned(conversation.address))
-                Padding(padding: const EdgeInsetsDirectional.only(start: 4),
-                  child: Icon(Icons.push_pin_rounded, size: 16, color: scheme.onSurfaceVariant)),
-              const SizedBox(width: 6),
-              Text(Jalali.short(m.date), style: TextStyle(fontSize: 12,
-                color: bold ? scheme.primary : scheme.onSurfaceVariant, fontWeight: bold ? FontWeight.w700 : null)),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Material(
+        color: pinned ? scheme.primaryContainer.withValues(alpha: .38) : Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => ConversationScreen(store: store, address: conversation.address))),
+          onLongPress: onLongPress,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            child: Row(children: [
+              SenderAvatar(name: name, address: conversation.address, category: info?.category ?? MessageCategory.personal),
+              const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Expanded(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    textDirection: name == conversation.address && RegExp(r'^[\d+]').hasMatch(name) ? TextDirection.ltr : null,
+                    textAlign: TextAlign.right,
+                    style: TextStyle(fontSize: 16, fontWeight: bold ? FontWeight.w800 : FontWeight.w600))),
+                  if (pinned)
+                    const Padding(padding: EdgeInsetsDirectional.only(start: 4),
+                      child: Icon(Icons.push_pin_rounded, size: 16, color: Color(0xFFB8862E))),
+                  const SizedBox(width: 6),
+                  Text(Jalali.short(m.date), style: TextStyle(fontSize: 12,
+                    color: bold ? scheme.primary : scheme.onSurfaceVariant, fontWeight: bold ? FontWeight.w700 : null)),
+                ]),
+                const SizedBox(height: 3),
+                Row(children: [
+                  if (info?.suspicious ?? false)
+                    const Padding(padding: EdgeInsetsDirectional.only(end: 4),
+                      child: Icon(Icons.warning_amber_rounded, size: 16, color: Colors.orange)),
+                  Expanded(child: Text(preview, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: bold ? scheme.onSurface : scheme.onSurfaceVariant,
+                      fontWeight: bold ? FontWeight.w600 : null))),
+                  if (unread > 0)
+                    Container(
+                      margin: const EdgeInsetsDirectional.only(start: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(color: scheme.primary, borderRadius: BorderRadius.circular(12)),
+                      child: Text(Jalali.digits(unread), style: TextStyle(color: scheme.onPrimary, fontSize: 12, fontWeight: FontWeight.w700))),
+                ]),
+              ])),
             ]),
-            const SizedBox(height: 3),
-            Row(children: [
-              if (MessageLogic.suspicious(m.body))
-                const Padding(padding: EdgeInsetsDirectional.only(end: 4),
-                  child: Icon(Icons.warning_amber_rounded, size: 16, color: Colors.orange)),
-              Expanded(child: Text(preview, maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: bold ? scheme.onSurface : scheme.onSurfaceVariant,
-                  fontWeight: bold ? FontWeight.w600 : null))),
-              if (unread > 0)
-                Container(
-                  margin: const EdgeInsetsDirectional.only(start: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(color: scheme.primary, borderRadius: BorderRadius.circular(12)),
-                  child: Text(Jalali.digits(unread), style: TextStyle(color: scheme.onPrimary, fontSize: 12, fontWeight: FontWeight.w700))),
-            ]),
-          ])),
-        ]),
+          ),
+        ),
       ),
     );
   }
@@ -420,4 +496,46 @@ Future<void> confirmDeleteConversation(BuildContext context, AppStore store, Con
     ]));
   if (ok != true) return;
   await store.deleteMessages(c.messages.where((m) => m.id != null).map((m) => m.id!).toList());
+}
+
+/// Android "special access" switches that keep PayamYar working reliably in the background.
+Future<void> showSpecialAccessSheet(BuildContext context, AppStore store) {
+  return showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (ctx) => ListenableBuilder(
+      listenable: store,
+      builder: (ctx, _) {
+        final a = store.access;
+        Widget row(bool ok, IconData icon, String title, String body, Future<void> Function() open) => ListTile(
+          leading: Icon(icon, color: Theme.of(ctx).colorScheme.primary),
+          title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+          subtitle: Text(body),
+          trailing: ok
+              ? const Icon(Icons.check_circle_rounded, color: Colors.green)
+              : FilledButton.tonal(
+                  style: FilledButton.styleFrom(minimumSize: const Size(0, 38)),
+                  onPressed: open,
+                  child: const Text('فعال‌سازی')),
+        );
+        return SafeArea(child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 8), child: Text('دسترسی‌های ویژه',
+              style: Theme.of(ctx).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800))),
+            row(a.notifications, Icons.notifications_active_rounded, 'اعلان‌ها',
+              'نمایش پیام جدید با پاسخ سریع و کپی کد', SmsBridge.openNotificationSettings),
+            row(a.battery, Icons.battery_charging_full_rounded, 'اجرا بدون محدودیت باتری',
+              'تا اندروید دریافت پیام در پس‌زمینه را متوقف نکند', SmsBridge.requestBatteryExemption),
+            row(a.exactAlarm, Icons.alarm_on_rounded, 'زمان‌بندی دقیق',
+              'برای ارسال سر وقت و مهلت لغو ۵ ثانیه‌ای', SmsBridge.requestExactAlarm),
+            const SizedBox(height: 6),
+            Text('پس از بازگشت از تنظیمات گوشی، وضعیت خودکار به‌روز می‌شود.',
+              style: Theme.of(ctx).textTheme.bodySmall),
+          ]),
+        ));
+      },
+    ),
+  );
 }

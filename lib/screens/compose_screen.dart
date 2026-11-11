@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app_store.dart';
 import '../sms_bridge.dart';
+import 'compose_tools.dart';
 import 'conversation_screen.dart';
 
 /// New message: recipient (typed or from contacts), ready-made texts, SIM choice. Draft is kept until sent.
@@ -117,21 +118,34 @@ class _ComposeScreenState extends State<ComposeScreen> {
           maxLength: 2000,
           minLines: 5,
           maxLines: 10,
-          decoration: const InputDecoration(labelText: 'متن پیام', alignLabelWithHint: true),
+          decoration: const InputDecoration(labelText: 'متن پیام', alignLabelWithHint: true, counterText: ''),
         ),
-        if (store.templates.isNotEmpty) ...[
-          Text('پیام‌های آماده', style: TextStyle(color: scheme.onSurfaceVariant)),
-          const SizedBox(height: 8),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            for (final t in store.templates)
-              ActionChip(label: Text(t), onPressed: () {
-                body.text = t;
-                _saveDraft();
-                setState(() {});
-              }),
-          ]),
-          const SizedBox(height: 16),
-        ],
+        Row(children: [
+          Expanded(child: SmsCounter(text: body.text)),
+        ]),
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(child: OutlinedButton.icon(
+            icon: const Icon(Icons.bolt_rounded),
+            label: const Text('پیام‌های آماده'),
+            onPressed: () async {
+              final text = await showTemplatesSheet(context, store, currentText: body.text);
+              if (text == null || !mounted) return;
+              setState(() => body.text = text);
+              await _saveDraft();
+            })),
+          const SizedBox(width: 10),
+          Expanded(child: OutlinedButton.icon(
+            icon: const Icon(Icons.auto_fix_high_rounded),
+            label: const Text('ویرایش متن'),
+            onPressed: body.text.trim().isEmpty ? null : () async {
+              final text = await showPolishSheet(context, body.text);
+              if (text == null || !mounted) return;
+              setState(() => body.text = text);
+              await _saveDraft();
+            })),
+        ]),
+        const SizedBox(height: 16),
         if (store.sims.length > 2) ...[
           DropdownButtonFormField<int>(
             initialValue: store.selectedSim,
