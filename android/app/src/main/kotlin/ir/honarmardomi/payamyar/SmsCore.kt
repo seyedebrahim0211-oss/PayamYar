@@ -219,12 +219,18 @@ object SmsCore {
         val set = prefs(c).getStringSet(key, emptySet())!!.toMutableSet()
         set.add(intent.getIntExtra("part", 0).toString())
         val previous = status(c, id)
+        // A delivery report is stronger evidence than a vendor-specific SENT callback.
+        // Some devices report RESULT_CANCELED (0) even when the SMS was transmitted.
+        // Treat that result as unconfirmed, never as proof of a failed transmission.
         val next = when {
-            previous.startsWith("send_failed") || previous == "delivered" -> previous
-            code != Activity.RESULT_OK || deliveryFailure -> if (delivered) "delivery_failed" else "send_failed:$code"
-            previous == "delivery_failed" -> previous
+            delivered && !deliveryFailure -> "delivered"
+            previous == "delivered" -> previous
+            delivered && deliveryFailure -> "delivery_failed"
+            delivered -> previous
+            code == Activity.RESULT_CANCELED -> if (previous == "pending" || previous == "queued") "send_unconfirmed" else previous
+            code != Activity.RESULT_OK -> if (previous == "accepted_by_radio") previous else "send_failed:$code"
+            previous.startsWith("send_failed") -> previous
             set.size < count -> previous
-            delivered -> "delivered"
             else -> "accepted_by_radio"
         }
         prefs(c).edit().putStringSet(key, set).putString("status:$id", next).commit()
@@ -237,7 +243,10 @@ object SmsCore {
             }
             if (values.size() > 0) c.contentResolver.update(Uri.parse(row), values, null, null)
         }
-        if (next.startsWith("send_failed")) notify(c, id.hashCode(), "ارسال پیامک ناموفق بود", "برای بررسی پیام ارسال‌نشده، پیامیار را باز کنید.")
+        if (next.startsWith("send_failed") && next != previous)
+            notify(c, id.hashCode(), "ارسال پیامک ناموفق بود", "شبکه ارسال را رد کرد؛ سیم‌کارت و وضعیت پیام را بررسی کنید.")
+        else if (next == "delivered" && previous.startsWith("send_failed"))
+            c.getSystemService(NotificationManager::class.java).cancel(id.hashCode())
     }
     @Synchronized fun drainIncoming(c: Context) {
         val dir = incomingDir(c)
