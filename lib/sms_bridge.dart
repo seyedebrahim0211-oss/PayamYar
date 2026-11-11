@@ -149,6 +149,12 @@ class SmsBridge {
     await _channel.invokeMethod<String>('queueSms', {
       'to': normalizeNumber(to), 'body': body, 'subscriptionId': sim, 'delayMs': delay.inMilliseconds,
     }) ?? '';
+  /// Native queue survives the conversation screen and can be restored after restart.
+  static Future<List<Map<dynamic, dynamic>>> pending() async {
+    if (!supported) return [];
+    final raw = await _channel.invokeListMethod<dynamic>('pendingSms') ?? [];
+    return raw.map((item) => Map<dynamic, dynamic>.from(item as Map)).toList();
+  }
   static Future<bool> cancel(String id) async =>
     await _channel.invokeMethod<bool>('cancelSms', {'requestId': id}) ?? false;
   static Future<void> markRead(List<int> ids) async {
