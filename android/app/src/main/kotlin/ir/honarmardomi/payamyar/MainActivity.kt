@@ -66,6 +66,16 @@ class MainActivity : FlutterActivity() {
                             }
                         }
                         "subscriptions" -> result.success(getSubscriptions())
+                        "sendStatus" -> {
+                            val id = call.argument<String>("requestId").orEmpty()
+                            if (!Regex("^[0-9]{10,20}$").matches(id)) {
+                                result.error("INVALID", "Invalid request id", null)
+                            } else {
+                                result.success(getSharedPreferences(
+                                    "payamyar_sms_status", Context.MODE_PRIVATE)
+                                    .getString(id, "unknown"))
+                            }
+                        }
                         else -> result.notImplemented()
                     }
                 } catch (ex: SecurityException) {
@@ -154,17 +164,28 @@ class MainActivity : FlutterActivity() {
             }
             sent.add(PendingIntent.getBroadcast(this, ((System.nanoTime() + part) and 0x7fffffff).toInt(), intent, flags))
         }
+        getSharedPreferences("payamyar_sms_status", Context.MODE_PRIVATE)
+            .edit().putString(id, "pending").apply()
         manager.sendMultipartTextMessage(cleanedTo, null, parts, sent, null)
-        return id // accepted by Android, not proof of carrier delivery
+        return id // request queued by Android, not proof of carrier delivery
     }
 }
 
 class SendStatusReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        // Persist only a non-sensitive status. Do not read/exfiltrate SMS data.
         val requestId = intent.getStringExtra("requestId") ?: return
+        val parts = intent.getIntExtra("parts", 1).coerceAtLeast(1)
         val prefs = context.getSharedPreferences("payamyar_sms_status", Context.MODE_PRIVATE)
-        prefs.edit().putString(requestId, if (resultCode == Activity.RESULT_OK)
-            "accepted_by_radio" else "send_failed:$resultCode").apply()
+        val previous = prefs.getString(requestId, "pending") ?: "pending"
+        if (previous.startsWith("send_failed")) return
+        if (resultCode != Activity.RESULT_OK) {
+            prefs.edit().putString(requestId, "send_failed:$resultCode").apply()
+            return
+        }
+        val acknowledged = prefs.getInt("$" + "{requestId}:acknowledged", 0) + 1
+        prefs.edit()
+            .putInt("$" + "{requestId}:acknowledged", acknowledged)
+            .putString(requestId, if (acknowledged >= parts) "accepted_by_radio" else "pending")
+            .apply()
     }
 }
