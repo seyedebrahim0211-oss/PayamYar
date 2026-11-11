@@ -18,7 +18,7 @@ class ComposeScreen extends StatefulWidget {
 }
 
 class _ComposeScreenState extends State<ComposeScreen> {
-  static const maxRecipients = 50;
+  static const maxRecipients = 500;
   static const quickTexts = <String>[
     'در جلسه هستم، بعداً تماس می‌گیرم.',
     'رسیدم.',
@@ -81,7 +81,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
       return;
     }
     if ({...recipients, ...incoming}.length > maxRecipients) {
-      store.onNotice?.call('در هر نوبت حداکثر ۵۰ گیرنده انتخاب کنید.');
+      store.onNotice?.call('در هر نوبت حداکثر ۵۰۰ گیرنده انتخاب کنید.');
       return;
     }
     setState(() {
@@ -138,7 +138,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
       result.add(number);
     }
     if (result.length > maxRecipients) {
-      store.onNotice?.call('برای جلوگیری از ارسال ناخواسته، حداکثر ۵۰ گیرنده مجاز است.');
+      store.onNotice?.call('برای جلوگیری از ارسال ناخواسته، حداکثر ۵۰۰ گیرنده مجاز است.');
       return null;
     }
     return result.toList(growable: false);
@@ -159,7 +159,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
           title: const Text('تأیید ارسال گروهی'),
           content: Text('متن پیام به ${targets.length} شماره، به‌صورت پیامک جداگانه ارسال می‌شود. '
             'اپراتور ممکن است برای هر پیامک هزینه دریافت کند. '
-            'پس از تأیید، برای هر پیام ۵ ثانیه مهلت لغو وجود دارد.'),
+            'پس از تأیید، هر پیام جداگانه به صف ارسال می‌رود. به محدودیت‌های اپراتور و هزینه احتمالی توجه کنید؛ تا ۵ ثانیه پس از ثبت هر پیام امکان لغو آن وجود دارد.'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('بازگشت')),
             FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('تأیید و ارسال')),
