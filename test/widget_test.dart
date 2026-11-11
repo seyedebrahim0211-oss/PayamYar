@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:payamyar/main.dart';
@@ -5,26 +6,23 @@ import 'package:payamyar/main.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('PayamYar launches with Persian navigation and demo notice', (tester) async {
+  testWidgets('Persian inbox and primary action are visible', (tester) async {
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(const PayamYar());
     await tester.pumpAndSettle();
-
-    expect(find.text('پیامیار'), findsWidgets);
-    expect(find.text('مدیریت پیام‌ها'), findsOneWidget);
-    expect(find.text('نسخه آزمایشی'), findsOneWidget);
+    expect(find.text('پیامیار'), findsOneWidget);
+    expect(find.text('گفتگوها'), findsOneWidget);
+    expect(find.text('پیام جدید'), findsOneWidget);
+    expect(find.textContaining('نسخه نمایشی'), findsWidgets);
   });
 
-  testWidgets('User can reach appearance settings', (tester) async {
+  testWidgets('Appearance screen is reachable in one tap', (tester) async {
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(const PayamYar());
     await tester.pumpAndSettle();
-
-    final target = find.text('شخصی‌سازی').evaluate().isNotEmpty
-        ? find.text('شخصی‌سازی').first
-        : find.text('ظاهر').first;
-    await tester.tap(target);
+    await tester.tap(find.byTooltip('تنظیمات ظاهر'));
     await tester.pumpAndSettle();
-    expect(find.text('حالت نمایش'), findsOneWidget);
+    expect(find.text('شخصی‌سازی'), findsOneWidget);
+    expect(find.byType(Slider), findsOneWidget);
   });
 }
