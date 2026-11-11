@@ -6,6 +6,7 @@ import 'update_service.dart';
 import 'brand_mark.dart';
 import 'finance_logic.dart';
 import 'sms_bridge.dart';
+import 'conversation_logic.dart';
 
 void main() => runApp(const PayamYar());
 const brand = Color(0xFF087F81);
@@ -303,6 +304,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _messages() {
     final entries = MessageLogic.search(displayedMessages, query).where(
       (m) => filter == null || MessageLogic.category(m) == filter).toList();
+    final conversations = ConversationLogic.group(entries);
     return ListView(padding: const EdgeInsets.fromLTRB(16, 10, 16, 100), children: [
       Container(padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
@@ -365,11 +367,14 @@ class _HomeScreenState extends State<HomeScreen> {
       const SizedBox(height: 18),
       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
         Text('گفتگوها', style: Theme.of(context).textTheme.titleLarge),
-        Text('${entries.length} پیام',
+        Text('${conversations.length} گفتگو',
           style: Theme.of(context).textTheme.bodySmall),
       ]),
       const SizedBox(height: 12),
-      for (final m in entries) ...[
+      for (final conversation in conversations) ...[
+        Builder(builder: (context) {
+          final m = conversation.latest;
+          return
         Card(child: ListTile(
           contentPadding: EdgeInsets.symmetric(
             horizontal: 14, vertical: widget.settings.dense ? 0 : 8),
@@ -377,29 +382,71 @@ class _HomeScreenState extends State<HomeScreen> {
             backgroundColor: Theme.of(context).colorScheme.primaryContainer,
             child: Icon(_icon(MessageLogic.category(m)))),
           title: Text(m.sender, style: const TextStyle(fontWeight: FontWeight.bold)),
-          subtitle: Text(widget.settings.hideText ? 'متن پیام مخفی است' : m.body,
+          subtitle: Text(widget.settings.hideText ? 'متن پیام مخفی است' :
+            conversation.count > 1 ? '${m.body} • ${conversation.count} پیام' : m.body,
             maxLines: 1, overflow: TextOverflow.ellipsis),
           trailing: MessageLogic.suspicious(m.body)
             ? const Icon(Icons.warning_amber_outlined, color: Colors.orange)
             : const Icon(Icons.chevron_left),
-          onTap: () => showModalBottomSheet<void>(context: context,
-            showDragHandle: true, builder: (ctx) => Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(m.sender, style: Theme.of(context).textTheme.titleLarge),
-                  const SizedBox(height: 14), Text(m.body),
-                  const SizedBox(height: 16),
-                  Text(SmsBridge.supported && smsPermissionGranted
-                      ? 'این پیامک از حافظه پیامک گوشی خوانده شده است.'
-                      : 'این داده نمایشی است.'),
-                ]))),
-        )),
+          onTap: () => _openConversation(conversation),
+        )); }),
         const SizedBox(height: 9),
       ],
       if (entries.isEmpty) const Padding(padding: EdgeInsets.all(24),
         child: Text('موردی پیدا نشد.')),
     ]);
+  }
+  void _openConversation(Conversation conversation) {
+    showModalBottomSheet<void>(
+      context: context, isScrollControlled: true, useSafeArea: true,
+      showDragHandle: true,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(16, 0, 16, MediaQuery.viewInsetsOf(ctx).bottom + 16),
+        child: SizedBox(
+          height: MediaQuery.sizeOf(ctx).height * .7,
+          child: Column(children: [
+            Row(children: [
+              Expanded(child: Text(conversation.address,
+                style: Theme.of(ctx).textTheme.titleLarge)),
+              IconButton(tooltip: 'پاسخ', icon: const Icon(Icons.reply),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  recipient.text = conversation.address;
+                  message.clear();
+                  _compose();
+                }),
+            ]),
+            const Divider(),
+            Expanded(child: ListView.builder(
+              reverse: true,
+              itemCount: conversation.messages.length,
+              itemBuilder: (context, index) {
+                final msg = conversation.messages[index];
+                return Align(
+                  alignment: msg.outgoing ? Alignment.centerLeft : Alignment.centerRight,
+                  child: Padding(padding: const EdgeInsets.symmetric(vertical: 5),
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 520),
+                      padding: const EdgeInsets.all(13),
+                      decoration: BoxDecoration(
+                        color: msg.outgoing
+                            ? Theme.of(context).colorScheme.primaryContainer
+                            : Theme.of(context).colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(16)),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        SelectableText(msg.body),
+                        const SizedBox(height: 4),
+                        Text(msg.date.toLocal().toString().substring(0, 16),
+                          style: Theme.of(context).textTheme.bodySmall),
+                      ]),
+                    )),
+                );
+              },
+            )),
+          ]),
+        ),
+      ),
+    );
   }
   Widget _feature(IconData icon, String title, String subtitle) => Card(
     child: ListTile(contentPadding: const EdgeInsets.all(14),
