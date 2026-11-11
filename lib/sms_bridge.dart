@@ -70,9 +70,13 @@ class SmsBridge {
     }) ?? 'unknown';
   }
 
-  static void listen(Future<void> Function(String) callback) {
-    _channel.setMethodCallHandler((call) => callback(call.method));
+  static void listen(Future<void> Function(String method, Object? arguments) callback) {
+    _channel.setMethodCallHandler((call) => callback(call.method, call.arguments));
   }
+  /// Downloads the release from honarmardomi.ir and opens Android's installer.
+  /// Returns 'installing' or 'needs_permission' (the "install unknown apps" screen was opened).
+  static Future<String> installUpdate(String url) async =>
+    await _channel.invokeMethod<String>('installUpdate', {'url': url}) ?? 'installing';
   static void stopListening() => _channel.setMethodCallHandler(null);
   static Future<String?> pickContact() => _channel.invokeMethod<String>('pickContact');
   /// Opens Android's "default SMS app" dialog; true when PayamYar was chosen.

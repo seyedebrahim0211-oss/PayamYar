@@ -20,25 +20,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _checkUpdate() async {
     setState(() => checking = true);
-    try {
-      final result = await UpdateService.check();
-      if (!mounted) return;
-      if (!result.available || result.url.isEmpty) {
-        store.onNotice?.call('شما آخرین نسخه پیامیار را دارید.');
-      } else {
-        await showDialog<void>(context: context, builder: (ctx) => AlertDialog(
-          title: Text('نسخه جدید ${Jalali.digits(result.version)}'),
-          content: Text(result.notes),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('بعداً')),
-            TextButton(onPressed: () { Navigator.pop(ctx); UpdateService.openDownload(result.url); }, child: const Text('دریافت')),
-          ]));
-      }
-    } catch (_) {
-      store.onNotice?.call('بررسی به‌روزرسانی ممکن نشد؛ اینترنت را بررسی کنید.');
-    } finally {
-      if (mounted) setState(() => checking = false);
+    final found = await store.checkForUpdate(manual: true);
+    if (!mounted) return;
+    setState(() => checking = false);
+    if (!found) {
+      store.onNotice?.call('شما آخرین نسخه پیامیار را دارید.');
+      return;
     }
+    final info = store.update!;
+    final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+      title: Text('نسخه جدید ${Jalali.digits(info.version)}'),
+      content: Text(info.notes.isEmpty ? 'نسخه جدید دریافت و نصب شود؟' : info.notes),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('بعداً')),
+        TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('به‌روزرسانی')),
+      ]));
+    if (ok == true) await store.installUpdate();
   }
 
   Future<void> _templates() async {
@@ -178,10 +175,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ListTile(
                 leading: Icon(Icons.system_update_outlined, color: scheme.primary),
                 title: const Text('بررسی به‌روزرسانی'),
-                trailing: checking
+                subtitle: store.updateProgress != null
+                    ? Text('در حال دریافت نسخه جدید… ${Jalali.digits(((store.updateProgress ?? 0) * 100).round())}٪')
+                    : const Text('دریافت و نصب نسخه جدید از داخل برنامه'),
+                trailing: checking || store.updateProgress != null
                     ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.chevron_left_rounded),
-                onTap: checking ? null : _checkUpdate),
+                onTap: checking || store.updateProgress != null ? null : _checkUpdate),
               ListTile(
                 leading: Icon(Icons.language_rounded, color: scheme.primary),
                 title: const Text('وب‌سایت پیامیار'),
@@ -189,7 +189,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onTap: () => UpdateService.openDownload('https://honarmardomi.ir/payamyar/')),
               const ListTile(
                 leading: Icon(Icons.info_outline_rounded),
-                title: Text('پیامیار نسخه ۱٫۰'),
+                title: Text('پیامیار نسخه ۱٫۰٫۱'),
                 subtitle: Text('از خانواده هنر مردمی • پیام‌های شما فقط روی گوشی خودتان است')),
             ])),
           ]),

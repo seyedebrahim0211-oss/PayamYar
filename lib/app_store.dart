@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'conversation_logic.dart';
 import 'message_logic.dart';
 import 'sms_bridge.dart';
+import 'update_service.dart';
 
 class PendingSend {
   final String id;
@@ -37,6 +38,10 @@ class AppStore extends ChangeNotifier {
   List<Map<dynamic, dynamic>> sims = [];
   int selectedSim = -1;
   final List<PendingSend> pendingSends = [];
+  ReleaseInfo? update;
+  bool updateDismissed = false;
+  /// null when not downloading; 0..1 while the new version downloads.
+  double? updateProgress;
   void Function(String message)? onNotice;
 
   bool get isDefault => permissions.isDefault;
@@ -58,7 +63,12 @@ class AppStore extends ChangeNotifier {
     templates = p.getStringList('templates') ??
         ['در جلسه هستم، بعداً تماس می‌گیرم.', 'رسیدم.', 'ممنون 🌹', 'چند دقیقه دیگر می‌رسم.'];
     if (android) {
-      SmsBridge.listen((event) async {
+      SmsBridge.listen((event, args) async {
+        if (event == 'updateProgress') {
+          updateProgress = ((args as num?)?.toDouble() ?? 0) / 100;
+          notifyListeners();
+          return;
+        }
         if (event == 'composeIntent') {
           onComposeIntent?.call();
           return;
@@ -68,6 +78,7 @@ class AppStore extends ChangeNotifier {
       });
       await checkPermissions();
       if (permissions.canRead) unawaited(loadAll());
+      unawaited(checkForUpdate());
     } else {
       messages = List.of(_sample);
       _regroup();
@@ -102,6 +113,48 @@ class AppStore extends ChangeNotifier {
     await checkPermissions();
     if (ok) unawaited(refresh());
     return ok;
+  }
+
+  /// Reads the release info published on honarmardomi.ir; quiet unless a newer version exists.
+  Future<bool> checkForUpdate({bool manual = false}) async {
+    try {
+      final info = await UpdateService.check();
+      update = info.available && UpdateService.trusted(info.url) ? info : null;
+      if (manual) updateDismissed = false;
+      notifyListeners();
+      return update != null;
+    } catch (_) {
+      if (manual) onNotice?.call('بررسی به‌روزرسانی ممکن نشد؛ اینترنت را بررسی کنید.');
+      return false;
+    }
+  }
+
+  /// Downloads the new version inside the app and opens Android's install screen.
+  Future<void> installUpdate() async {
+    final info = update;
+    if (info == null || updateProgress != null) return;
+    if (!android) {
+      await UpdateService.openDownload(info.url);
+      return;
+    }
+    updateProgress = 0;
+    notifyListeners();
+    try {
+      final state = await SmsBridge.installUpdate(info.url);
+      if (state == 'needs_permission') {
+        onNotice?.call('اجازه «نصب برنامه از پیامیار» را روشن کنید و دوباره «به‌روزرسانی» را بزنید.');
+      }
+    } on PlatformException catch (e) {
+      onNotice?.call(e.message ?? 'به‌روزرسانی انجام نشد.');
+    } finally {
+      updateProgress = null;
+      notifyListeners();
+    }
+  }
+
+  void dismissUpdate() {
+    updateDismissed = true;
+    notifyListeners();
   }
 
   Future<void> finishOnboarding() async {

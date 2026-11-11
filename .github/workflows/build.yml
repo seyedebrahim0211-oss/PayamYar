@@ -81,6 +81,29 @@ jobs:
         with:
           name: PayamYar-Android
           path: dist/*.apk
+      - name: Publish to honarmardomi.ir (main branch, when WordPress secrets exist)
+        if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+        shell: bash
+        env:
+          WP_USER: ${{ secrets.PAYAMYAR_WP_USER }}
+          WP_APP_PASSWORD: ${{ secrets.PAYAMYAR_WP_APP_PASSWORD }}
+        run: |
+          if [ -z "$WP_USER" ] || [ -z "$WP_APP_PASSWORD" ]; then
+            echo "::notice::WordPress secrets are not set; skipping publish. See docs/RELEASE_SIGNING_FA.md."
+            exit 0
+          fi
+          set -euo pipefail
+          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: *//; s/+.*//')
+          NAME="PayamYar-$VERSION.zip"
+          (cd dist && zip -q "../$NAME" *.apk)
+          SITE=https://honarmardomi.ir/wp-json/wp/v2
+          URL=$(curl --fail-with-body -sS -u "$WP_USER:$WP_APP_PASSWORD"             -H "Content-Disposition: attachment; filename=$NAME" -H "Content-Type: application/zip"             --data-binary "@$NAME" "$SITE/media" | jq -r '.source_url')
+          case "$URL" in https://honarmardomi.ir/*) ;; *) echo "Upload failed: $URL"; exit 1 ;; esac
+          NOTES=$(head -n 1 RELEASE_NOTES_FA.txt)
+          JSON=$(jq -cn --arg v "$VERSION" --arg u "$URL" --arg n "$NOTES"             '{version:$v, published:true, android_url:$u, windows_url:"", notes:$n, minimum_supported_version:"1.0.0"}')
+          jq -n --arg c "<div dir=\"ltr\"><pre>$JSON</pre></div>" '{content:$c}' > page.json
+          curl --fail-with-body -sS -u "$WP_USER:$WP_APP_PASSWORD" -H "Content-Type: application/json"             --data @page.json "$SITE/pages/14733" > /dev/null
+          echo "Published $VERSION: $URL"
   windows:
     needs: analyze
     runs-on: windows-latest

@@ -62,6 +62,24 @@ class MainActivity : FlutterActivity() {
                     }
                 }
                 "requestDefault" -> requestDefault(result)
+                "installUpdate" -> {
+                    val url = call.argument<String>("url").orEmpty()
+                    if (!AppUpdater.canInstall(this)) {
+                        // Android asks once: "allow installing apps from PayamYar".
+                        try { AppUpdater.openInstallPermission(this) } catch (_: Exception) { }
+                        result.success("needs_permission")
+                    } else Thread {
+                        try {
+                            val apk = AppUpdater.download(this, url) { p -> runOnUiThread { channel.invokeMethod("updateProgress", p) } }
+                            runOnUiThread {
+                                try { AppUpdater.install(this, apk); result.success("installing") }
+                                catch (e: Exception) { result.error("UPDATE", e.message ?: "نصب انجام نشد.", null) }
+                            }
+                        } catch (e: Exception) {
+                            runOnUiThread { result.error("UPDATE", e.message ?: "دریافت نسخه جدید انجام نشد.", null) }
+                        }
+                    }.start()
+                }
                 "openAppSettings" -> {
                     try {
                         startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)))

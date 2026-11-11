@@ -212,6 +212,8 @@ class _ConversationsPageState extends State<ConversationsPage> {
           body: RefreshIndicator(
             onRefresh: store.android ? store.loadAll : () async {},
             child: CustomScrollView(slivers: [
+              if (store.update != null && !store.updateDismissed && !widget.archive)
+                SliverToBoxAdapter(child: UpdateBanner(store: store)),
               if (store.android && !store.isDefault && !widget.archive)
                 SliverToBoxAdapter(child: _DefaultBanner(store: store)),
               if (store.loadingAll)
@@ -270,6 +272,53 @@ class _ConversationsPageState extends State<ConversationsPage> {
       shape: const StadiumBorder(),
     ),
   );
+}
+
+/// "New version available" card; downloads and installs inside the app.
+class UpdateBanner extends StatelessWidget {
+  final AppStore store;
+  const UpdateBanner({super.key, required this.store});
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final info = store.update!;
+    final progress = store.updateProgress;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+      child: Card(
+        color: scheme.tertiaryContainer,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(Icons.system_update_rounded, color: scheme.onTertiaryContainer),
+              const SizedBox(width: 10),
+              Expanded(child: Text('نسخه جدید پیامیار (${Jalali.digits(info.version)}) آماده است',
+                style: TextStyle(color: scheme.onTertiaryContainer, fontWeight: FontWeight.w700))),
+              if (progress == null)
+                IconButton(tooltip: 'بعداً', onPressed: store.dismissUpdate,
+                  icon: Icon(Icons.close_rounded, color: scheme.onTertiaryContainer)),
+            ]),
+            if (info.notes.isNotEmpty)
+              Padding(padding: const EdgeInsets.only(top: 4),
+                child: Text(info.notes, style: TextStyle(color: scheme.onTertiaryContainer))),
+            const SizedBox(height: 10),
+            if (progress != null) ...[
+              LinearProgressIndicator(value: progress == 0 ? null : progress,
+                borderRadius: const BorderRadius.all(Radius.circular(4))),
+              const SizedBox(height: 6),
+              Text('در حال دریافت… ${Jalali.digits((progress * 100).round())}٪',
+                style: TextStyle(color: scheme.onTertiaryContainer, fontSize: 12)),
+            ] else
+              FilledButton(
+                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(44)),
+                onPressed: store.installUpdate,
+                child: const Text('به‌روزرسانی')),
+          ]),
+        ),
+      ),
+    );
+  }
 }
 
 class _DefaultBanner extends StatelessWidget {

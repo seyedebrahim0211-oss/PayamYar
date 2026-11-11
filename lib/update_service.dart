@@ -38,7 +38,7 @@ class UpdateService {
     final isNewer = _compareVersions(version, current) > 0;
     if (url.isNotEmpty) {
       final uri = Uri.tryParse(url);
-      if (uri == null || uri.scheme != 'https' || uri.host != 'honarmardomi.ir') {
+      if (uri == null || !trusted(url)) {
         throw const FormatException('Invalid update URL');
       }
     }
@@ -60,6 +60,12 @@ class UpdateService {
       if (left != right) return left.compareTo(right);
     }
     return 0;
+  }
+
+  /// Only HTTPS links on honarmardomi.ir are trusted for downloading an update.
+  static bool trusted(String url) {
+    final uri = Uri.tryParse(url);
+    return uri != null && uri.scheme == 'https' && (uri.host == 'honarmardomi.ir' || uri.host == 'www.honarmardomi.ir');
   }
 
   static Future<bool> openDownload(String url) async {
