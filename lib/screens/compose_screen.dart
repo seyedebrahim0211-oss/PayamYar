@@ -176,7 +176,10 @@ class _ComposeScreenState extends State<ComposeScreen> {
         failed.add(number);
       } else {
         if (pending != null) queued.add(pending);
-        if (mounted) setState(() => queuedCount++);
+        if (mounted) {
+          queuedCount++;
+          if (queuedCount % 10 == 0 || queuedCount == targets.length) setState(() {});
+        }
       }
     }
     if (!mounted) return;
@@ -226,7 +229,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
             const SizedBox(width: 8),
             Text('گیرندگان', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
             const Spacer(),
-            Text('$count انتخاب‌شده', style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
+            Text('$count از $maxRecipients', style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
           ]),
           const SizedBox(height: 10),
           Container(
@@ -258,13 +261,15 @@ class _ComposeScreenState extends State<ComposeScreen> {
               if (recipients.isNotEmpty) ...[
                 const SizedBox(height: 4),
                 Wrap(spacing: 6, runSpacing: 4, children: [
-                  for (final number in recipients)
+                  for (final number in recipients.take(8))
                     InputChip(
                       label: Text(contactNames[number] ?? number,
                         textDirection: TextDirection.rtl),
                       tooltip: number,
                       onDeleted: () { setState(() => recipients.remove(number)); _saveDraft(); },
                     ),
+                  if (recipients.length > 8)
+                    Chip(label: Text('و ${recipients.length - 8} نفر دیگر…')),
                 ]),
               ],
               const SizedBox(height: 8),
