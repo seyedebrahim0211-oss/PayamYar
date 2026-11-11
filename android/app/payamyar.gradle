@@ -1,11 +1,12 @@
 // PayamYar build settings, applied after the build.gradle(.kts) that `flutter create` generates.
 // CI appends `apply from` to that generated file, so these values override the template defaults.
 
-// The native SMS code uses APIs from Android 6 (API 23): SubscriptionManager,
-// per-SIM SmsManager and Context.getSystemService(Class).
+// Android 7 (API 24): required by shared_preferences_android and current Flutter;
+// the native SMS code itself needs at least API 23 (SubscriptionManager,
+// per-SIM SmsManager, Context.getSystemService(Class)).
 android {
     defaultConfig {
-        minSdk = 23
+        minSdk = 24
     }
 }
 
