@@ -150,7 +150,11 @@ class _PayamYarState extends State<PayamYar> {
         debugShowCheckedModeBanner: false,
         locale: const Locale('fa', 'IR'),
         supportedLocales: const [Locale('fa', 'IR')],
-        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
         scaffoldMessengerKey: messenger,
         theme: _theme(Brightness.light),
         darkTheme: _theme(Brightness.dark),
