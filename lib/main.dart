@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'message_logic.dart';
+import 'update_service.dart';
 
 void main() => runApp(const PayamYar());
 const brand = Color(0xFF087F81);
@@ -71,6 +72,7 @@ class HomeScreen extends StatefulWidget {
 }
 class _HomeScreenState extends State<HomeScreen> {
   int tab = 0; String query = ''; MessageCategory? filter;
+  bool checking = false;
   final recipient = TextEditingController(), message = TextEditingController();
   Timer? countdown; int remaining = 0; MessageRecord? pending;
   final demo = <MessageRecord>[
@@ -79,6 +81,41 @@ class _HomeScreenState extends State<HomeScreen> {
     MessageRecord(sender:'اپراتور', body:'بسته اینترنت شما فعال شد.', date:DateTime(2026,11,10)),
     MessageRecord(sender:'فروشگاه نمونه', body:'تخفیف ویژه امروز؛ تبلیغ آزمایشی.', date:DateTime(2026,11,9)),
   ];
+
+  Future<void> _checkForUpdates() async {
+    if (checking) return;
+    setState(() => checking = true);
+    try {
+      final result = await UpdateService.check();
+      if (!mounted) return;
+      final msg = !result.available
+          ? 'در حال حاضر نسخه منتشرشده جدیدی وجود ندارد.'
+          : 'نسخه جدید: ${result.version}';
+      if (!result.available || result.url.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      } else {
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('به‌روزرسانی پیامیار'),
+            content: Text('$msg\n${result.notes}'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('بعداً')),
+              FilledButton(onPressed: () {
+                Navigator.pop(ctx);
+                UpdateService.openDownload(result.url);
+              }, child: const Text('دریافت نسخه معتبر')),
+            ],
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('بررسی نسخه ممکن نیست؛ اتصال اینترنت را بررسی کنید.')));
+    } finally {
+      if (mounted) setState(() => checking = false);
+    }
+  }
   @override void dispose() { countdown?.cancel(); recipient.dispose(); message.dispose(); super.dispose(); }
   void _queue() {
     if (pending != null || recipient.text.trim().isEmpty || message.text.trim().isEmpty) return;
@@ -211,7 +248,7 @@ class _HomeScreenState extends State<HomeScreen> {
         Card(color: Theme.of(context).colorScheme.tertiaryContainer,
           child: Padding(padding: const EdgeInsets.all(12), child: Row(children: [
             const Icon(Icons.schedule_send_outlined), const SizedBox(width: 8),
-            Expanded(child: Text('ارسال نمونه تا ${remaining} ثانیه دیگر')),
+            Expanded(child: Text('ارسال نمونه تا $remaining ثانیه دیگر')),
             TextButton(onPressed: _undo, child: const Text('لغو ارسال')),
           ]))),
       ],
@@ -313,6 +350,16 @@ class _HomeScreenState extends State<HomeScreen> {
       const SizedBox(height: 10),
       _feature(Icons.backup_outlined, 'پشتیبان‌گیری امن',
         'در نسخه عملیاتی و پس از بررسی امنیت پیاده‌سازی می‌شود.'),
+      const SizedBox(height: 10),
+      const SizedBox(height: 10),
+      Card(child: ListTile(
+        leading: const Icon(Icons.system_update_outlined),
+        title: const Text('بررسی به‌روزرسانی'),
+        subtitle: const Text('دریافت نسخه معتبر با تأیید کاربر؛ بدون نصب خودکار'),
+        trailing: checking ? const SizedBox(width: 20, height: 20,
+          child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.chevron_left),
+        onTap: checking ? null : _checkForUpdates,
+      )),
       const SizedBox(height: 10),
       _feature(Icons.groups_outlined, 'ارسال گروهی',
         'نیازمند اتصال پیامک واقعی و تأیید هر نوبت ارسال است.'),
