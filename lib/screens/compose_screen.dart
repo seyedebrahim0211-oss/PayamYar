@@ -132,7 +132,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
       if (raw.trim().isEmpty) continue;
       final number = _normalize(raw.trim());
       if (!_isNumber(number)) {
-        store.onNotice?.call('شماره «' + raw.trim() + '» معتبر نیست.');
+        store.onNotice?.call('شماره «${raw.trim()}» معتبر نیست.');
         return null;
       }
       result.add(number);
