@@ -211,14 +211,14 @@ class _HomeScreenState extends State<HomeScreen> {
         Card(color: Theme.of(context).colorScheme.tertiaryContainer,
           child: Padding(padding: const EdgeInsets.all(12), child: Row(children: [
             const Icon(Icons.schedule_send_outlined), const SizedBox(width: 8),
-            Expanded(child: Text('ارسال نمونه تا $""' + remaining.toString() + ' ثانیه دیگر')),
+            Expanded(child: Text('ارسال نمونه تا ${remaining} ثانیه دیگر')),
             TextButton(onPressed: _undo, child: const Text('لغو ارسال')),
           ]))),
       ],
       const SizedBox(height: 18),
       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
         Text('گفتگوها', style: Theme.of(context).textTheme.titleLarge),
-        Text(entries.length.toString() + ' پیام نمونه',
+        Text('${entries.length} پیام نمونه',
           style: Theme.of(context).textTheme.bodySmall),
       ]),
       const SizedBox(height: 12),
@@ -284,7 +284,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 9),
           Wrap(spacing: 10, runSpacing: 9, children: [
             for (int i = 0; i < widget.colors.length; i++)
-              Tooltip(message: 'رنگ شماره ' + (i + 1).toString(),
+              Tooltip(message: 'رنگ شماره ${i + 1}',
                 child: InkWell(onTap: () => change(p: i),
                   child: CircleAvatar(radius: 21, backgroundColor: widget.colors[i],
                     child: i == s.palette
@@ -299,7 +299,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ButtonSegment(value: ThemeMode.dark, label: Text('تاریک')),
           ], selected: {s.mode}, onSelectionChanged: (v) => change(m: v.first)),
           const SizedBox(height: 12),
-          Text('اندازه متن: ' + (s.scale * 100).round().toString() + '٪'),
+          Text('اندازه متن: ${(s.scale * 100).round()}٪'),
           Slider(value: s.scale, min: .85, max: 1.3, divisions: 9,
             onChanged: (v) => change(sc: v)),
           SwitchListTile(title: const Text('چیدمان فشرده'),
