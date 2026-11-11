@@ -113,39 +113,86 @@ class _PolishSheet extends StatefulWidget {
 
 class _PolishSheetState extends State<_PolishSheet> {
   bool fix = true, formal = false, polite = false;
+  late final TextEditingController editor = TextEditingController(text: widget.text);
+
+  @override
+  void dispose() {
+    editor.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final result = TextPolish.apply(widget.text, fix: fix, formalTone: formal, politeTone: polite);
-    final changed = result != widget.text;
+    final result = TextPolish.apply(editor.text, fix: fix, formalTone: formal, politeTone: polite);
+    final changed = result != editor.text;
+    final sms = TextPolish.smsParts(result);
     return Padding(
       padding: EdgeInsets.fromLTRB(16, 0, 16, MediaQuery.viewInsetsOf(context).bottom + 16),
-      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text('ویرایش متن', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
-        const SizedBox(height: 4),
-        Text('ویرایش روی گوشی انجام می‌شود و متن جایی ارسال نمی‌شود.', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
-        const SizedBox(height: 12),
-        Wrap(spacing: 8, runSpacing: 4, children: [
-          FilterChip(label: const Text('املا و نگارش'), selected: fix, onSelected: (v) => setState(() => fix = v)),
-          FilterChip(label: const Text('لحن رسمی'), selected: formal, onSelected: (v) => setState(() => formal = v)),
-          FilterChip(label: const Text('مؤدبانه'), selected: polite, onSelected: (v) => setState(() => polite = v)),
-        ]),
-        const SizedBox(height: 12),
-        Container(
-          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * .35),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(color: scheme.surfaceContainerHigh, borderRadius: BorderRadius.circular(16)),
-          child: SingleChildScrollView(child: Text(result, style: const TextStyle(fontSize: 15, height: 1.8))),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * .8),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(children: [
+              Icon(Icons.auto_fix_high_rounded, color: scheme.primary),
+              const SizedBox(width: 9),
+              Expanded(child: Text('دستیار ویرایش پیام',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800))),
+              TextButton(
+                onPressed: () => setState(() { editor.text = widget.text; fix = true; formal = false; polite = false; }),
+                child: const Text('بازنشانی')),
+            ]),
+            Text('ویرایش محلی روی گوشی است؛ متن به سرور ارسال نمی‌شود.',
+              style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+            const SizedBox(height: 13),
+            TextField(
+              controller: editor,
+              minLines: 3, maxLines: 6, maxLength: 2000,
+              textInputAction: TextInputAction.newline,
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                labelText: 'متن قابل ویرایش',
+                hintText: 'متن دلخواهتان را اصلاح کنید…',
+                prefixIcon: const Icon(Icons.edit_note_rounded),
+                alignLabelWithHint: true,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(18)),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(spacing: 8, runSpacing: 5, children: [
+              FilterChip(avatar: const Icon(Icons.spellcheck_rounded, size: 17),
+                label: const Text('املا و نگارش'), selected: fix, onSelected: (v) => setState(() => fix = v)),
+              FilterChip(label: const Text('لحن رسمی'), selected: formal, onSelected: (v) => setState(() => formal = v)),
+              FilterChip(label: const Text('مؤدبانه'), selected: polite, onSelected: (v) => setState(() => polite = v)),
+            ]),
+            const SizedBox(height: 14),
+            Text('پیش‌نمایش نهایی', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 7),
+            Container(
+              width: double.infinity,
+              constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * .25),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: scheme.primaryContainer.withValues(alpha: .35),
+                border: Border.all(color: scheme.primary.withValues(alpha: .18)),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: SingleChildScrollView(child: SelectableText(result,
+                style: const TextStyle(fontSize: 15.5, height: 1.8))),
+            ),
+            const SizedBox(height: 7),
+            Text('${Jalali.digits(result.length)} نویسه • ${Jalali.digits(sms.parts)} بخش پیامک'
+                '${changed ? " • اصلاح خودکار اعمال شده" : ""}',
+                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+            const SizedBox(height: 15),
+            FilledButton.icon(
+              onPressed: result.trim().isEmpty ? null : () => Navigator.pop(context, result),
+              icon: const Icon(Icons.check_circle_outline_rounded),
+              label: const Text('جایگزینی با متن نهایی'),
+            ),
+          ]),
         ),
-        const SizedBox(height: 8),
-        Text(changed ? 'پیش‌نمایش متن ویرایش‌شده' : 'متن نیازی به تغییر ندارد.',
-          style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
-        const SizedBox(height: 12),
-        FilledButton(
-          onPressed: changed ? () => Navigator.pop(context, result) : null,
-          child: const Text('جایگزینی متن')),
-      ]),
+      ),
     );
   }
 }
