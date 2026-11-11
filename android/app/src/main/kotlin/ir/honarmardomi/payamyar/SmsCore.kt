@@ -103,13 +103,15 @@ object SmsCore {
     }
 
     @Synchronized fun queue(c: Context, address: String, body: String, sim: Int, delayMs: Long = 5000): String {
+        require(delayMs in 0L..(30L * 24 * 60 * 60 * 1000)) { "زمان ارسال باید حداکثر ۳۰ روز آینده باشد." }
         val to = address.replace(Regex("[\\s()-]"), "")
         require(Regex("^\\+?[0-9]{3,15}$").matches(to)) { "شماره گیرنده معتبر نیست." }
         require(body.isNotBlank() && body.length <= 2000) { "متن باید بین ۱ تا ۲۰۰۰ نویسه باشد." }
         check(ContextCompat.checkSelfPermission(c, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) { "مجوز ارسال پیامک لازم است." }
         val subscriptionId = resolveSubscription(c, sim)
         val id = UUID.randomUUID().toString()
-        val item = JSONObject().put("to", to).put("body", body).put("sim", subscriptionId).put("due", System.currentTimeMillis() + delayMs)
+        val item = JSONObject().put("to", to).put("body", body).put("sim", subscriptionId)
+            .put("due", System.currentTimeMillis() + delayMs).put("scheduled", delayMs > 10000)
         check(prefs(c).edit().putString("queue:$id", item.toString()).putString("status:$id", "queued").commit())
         if (delayMs > 0) arm(c, id, item.getLong("due"))
         return id
@@ -153,12 +155,30 @@ object SmsCore {
         c.getSystemService(AlarmManager::class.java).cancel(alarmIntent(c, id))
         return true
     }
+    /** Restore future scheduled sends after restart; never unexpectedly replay expired SMS. */
     @Synchronized fun recover(c: Context) {
-        // A reboot cancels queued sends: do not unexpectedly send an old message later.
-        prefs(c).all.keys.filter { it.startsWith("queue:") }.forEach {
-            prefs(c).edit().remove(it).putString("status:${it.removePrefix("queue:")}", "send_failed:reboot").commit()
+        val now = System.currentTimeMillis()
+        prefs(c).all.keys.filter { it.startsWith("queue:") }.forEach { key ->
+            val id = key.removePrefix("queue:")
+            val entry = runCatching { JSONObject(prefs(c).getString(key, "{}")!!) }.getOrNull()
+            if (entry != null && entry.optBoolean("scheduled") && entry.optLong("due") > now + 5000) {
+                arm(c, id, entry.getLong("due"))
+            } else {
+                prefs(c).edit().remove(key).putString("status:$id", "cancelled_after_restart").commit()
+            }
         }
     }
+    /** Read native queued messages so their scheduled state remains visible after app restart. */
+    @Synchronized fun pending(c: Context): List<Map<String, Any>> =
+        prefs(c).all.keys.filter { it.startsWith("queue:") }.mapNotNull { key ->
+            val id = key.removePrefix("queue:")
+            if (status(c, id) != "queued") return@mapNotNull null
+            try {
+                val item = JSONObject(prefs(c).getString(key, "{}")!!)
+                mapOf("id" to id, "to" to item.getString("to"), "body" to item.getString("body"),
+                    "due" to item.getLong("due"), "scheduled" to item.optBoolean("scheduled"))
+            } catch (_: Exception) { null }
+        }.sortedBy { it["due"] as Long }
     @Synchronized fun dispatch(c: Context, id: String) {
         val raw = prefs(c).getString("queue:$id", null) ?: return
         if (status(c, id) != "queued") return
