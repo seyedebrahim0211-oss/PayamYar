@@ -108,7 +108,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'من می خواهم بیام');
     await tester.pump();
-    await tester.tap(find.byTooltip('ویرایش متن'));
+    await tester.tap(find.byTooltip('ابزارهای پیام'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ویرایش متن'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('جایگزینی متن'));
     await tester.pumpAndSettle();
