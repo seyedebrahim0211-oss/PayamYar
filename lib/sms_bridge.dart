@@ -145,8 +145,10 @@ class SmsBridge {
   static Future<List<Map<dynamic, dynamic>>> subscriptions() async =>
     (await _channel.invokeListMethod<dynamic>('subscriptions') ?? []).map((e) => Map<dynamic, dynamic>.from(e as Map)).toList();
   static Future<Map<String, dynamic>?> composeIntent() => _channel.invokeMapMethod<String, dynamic>('takeComposeIntent');
-  static Future<String> queue(String to, String body, int sim) async =>
-    await _channel.invokeMethod<String>('queueSms', {'to': normalizeNumber(to), 'body': body, 'subscriptionId': sim}) ?? '';
+  static Future<String> queue(String to, String body, int sim, {Duration delay = const Duration(seconds: 5)}) async =>
+    await _channel.invokeMethod<String>('queueSms', {
+      'to': normalizeNumber(to), 'body': body, 'subscriptionId': sim, 'delayMs': delay.inMilliseconds,
+    }) ?? '';
   static Future<bool> cancel(String id) async =>
     await _channel.invokeMethod<bool>('cancelSms', {'requestId': id}) ?? false;
   static Future<void> markRead(List<int> ids) async {
