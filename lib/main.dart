@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'message_logic.dart';
 import 'update_service.dart';
 import 'brand_mark.dart';
+import 'finance_logic.dart';
 
 void main() => runApp(const PayamYar());
 const brand = Color(0xFF087F81);
@@ -304,17 +305,35 @@ class _HomeScreenState extends State<HomeScreen> {
       leading: Icon(icon, color: Theme.of(context).colorScheme.primary),
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
       subtitle: Text(subtitle)));
-  Widget _reports() => ListView(padding: const EdgeInsets.all(18), children: [
-    Text('گزارش‌های هوشمند', style: Theme.of(context).textTheme.headlineSmall),
-    const SizedBox(height: 7),
-    const Text('نمای ساده گزارش‌ها؛ محاسبات واقعی پس از اتصال پیامک فعال می‌شود.'),
-    const SizedBox(height: 18),
-    _feature(Icons.account_balance_wallet_outlined, 'تراکنش‌های مالی',
-      'استخراج مبلغ، ریال و تومان در نسخه عملیاتی.'),
-    const SizedBox(height: 10),
-    _feature(Icons.shield_outlined, 'هشدار پیام‌های مشکوک',
-      'فعلاً تنها قواعد ساده روی پیام‌های نمونه فعال است.'),
-  ]);
+  Widget _reports() {
+    final entries = FinanceLogic.extract(demo);
+    final deposits = FinanceLogic.total(entries, FinanceKind.deposit);
+    final withdrawals = FinanceLogic.total(entries, FinanceKind.withdrawal);
+    final privateMode = widget.settings.hideText;
+    return ListView(padding: const EdgeInsets.all(18), children: [
+      Text('گزارش‌های هوشمند', style: Theme.of(context).textTheme.headlineSmall),
+      const SizedBox(height: 7),
+      const Text('تحلیل محلی پیام‌های نمونه؛ هیچ پیامکی به سرور ارسال نمی‌شود.'),
+      const SizedBox(height: 18),
+      Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('خلاصه مالی آزمایشی', style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 13),
+          Text('مجموع واریز: ${privateMode ? '••••' : FinanceLogic.formatTomans(deposits)}'),
+          const SizedBox(height: 7),
+          Text('مجموع برداشت: ${privateMode ? '••••' : FinanceLogic.formatTomans(withdrawals)}'),
+          const SizedBox(height: 10),
+          Text('${entries.length} تراکنش نمونه شناسایی شد.',
+            style: Theme.of(context).textTheme.bodySmall),
+        ]))),
+      const SizedBox(height: 12),
+      _feature(Icons.shield_outlined, 'هشدار پیام‌های مشکوک',
+        'قواعد ساده روی متن نمونه؛ شناسایی هوش مصنوعی هنوز فعال نیست.'),
+      const SizedBox(height: 10),
+      _feature(Icons.receipt_long_outlined, 'استخراج تراکنش‌ها',
+        'پردازش ریال و تومان روی دستگاه؛ نتیجه باید توسط کاربر بررسی شود.'),
+    ]);
+  }
   Widget _more() {
     final s = widget.settings;
     void change({int? p, ThemeMode? m, double? sc, bool? d, bool? h}) =>
