@@ -8,7 +8,7 @@ class MessageRecord {
 }
 class MessageLogic {
   static MessageCategory category(MessageRecord m) {
-    final s = (m.sender + ' ' + m.body).toLowerCase();
+    final s = ('${m.sender} ${m.body}').toLowerCase();
     if (RegExp(r'بانک|واریز|برداشت|موجودی|تراکنش|atm|card|bank').hasMatch(s)) return MessageCategory.banking;
     if (RegExp(r'تبلیغ|تخفیف|فروش ویژه|حراج|لغو\s*11').hasMatch(s)) return MessageCategory.advertising;
     if (RegExp(r'رمز پویا|کد تایید|کد تأیید|بسته اینترنت|قبض|مرسوله').hasMatch(s)) return MessageCategory.service;
