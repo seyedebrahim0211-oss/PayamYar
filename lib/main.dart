@@ -1,589 +1,194 @@
-import 'dart:async';
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'message_logic.dart';
-import 'update_service.dart';
-import 'brand_mark.dart';
-import 'finance_logic.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'app_settings.dart';
+import 'app_store.dart';
 import 'sms_bridge.dart';
-import 'conversation_logic.dart';
+import 'screens/home_screen.dart';
+import 'screens/onboarding_screen.dart';
+
+export 'app_settings.dart';
 
 void main() => runApp(const PayamYar());
-const brand = Color(0xFF087F81);
+
 class PayamYar extends StatefulWidget {
   const PayamYar({super.key});
-  @override State<PayamYar> createState() => _PayamYarState();
+  @override
+  State<PayamYar> createState() => _PayamYarState();
 }
+
 class _PayamYarState extends State<PayamYar> {
-  final colors = const [brand, Color(0xFF305F91), Color(0xFF75539A), Color(0xFF9F5369), Color(0xFF47765F), Color(0xFFA17A37)];
-  int palette = 0; ThemeMode mode = ThemeMode.system;
-  double scale = 1; bool dense = false; bool hideText = false;
-  @override void initState() { super.initState(); _load(); }
-  Future<void> _load() async {
-    final p = await SharedPreferences.getInstance();
-    if (!mounted) return;
-    setState(() {
-      palette = (p.getInt('palette') ?? 0).clamp(0, 5).toInt();
-      mode = ThemeMode.values[(p.getInt('theme') ?? 0).clamp(0, 2).toInt()];
-      scale = (p.getDouble('scale') ?? 1).clamp(.85, 1.3).toDouble();
-      dense = p.getBool('dense') ?? false;
-      hideText = p.getBool('privatePreview') ?? false;
-    });
-  }
-  Future<void> _save() async {
-    final p = await SharedPreferences.getInstance();
-    await p.setInt('palette', palette);
-    await p.setInt('theme', mode.index);
-    await p.setDouble('scale', scale);
-    await p.setBool('dense', dense);
-    await p.setBool('privatePreview', hideText);
-  }
-  @override Widget build(BuildContext context) {
-    ThemeData theme(Brightness b) {
-      final s = ColorScheme.fromSeed(seedColor: colors[palette], brightness: b);
-      return ThemeData(useMaterial3: true, colorScheme: s,
-        fontFamily: 'Vazirmatn',
-        scaffoldBackgroundColor: b == Brightness.dark ? const Color(0xFF121F24) : const Color(0xFFF8F7F2),
-        cardTheme: CardThemeData(elevation: 0, margin: EdgeInsets.zero, shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18), side: BorderSide(color: s.outlineVariant))),
-        inputDecorationTheme: InputDecorationTheme(filled: true,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none)));
-    }
-    return MaterialApp(
-      title: 'پیامیار', debugShowCheckedModeBanner: false,
-      theme: theme(Brightness.light), darkTheme: theme(Brightness.dark), themeMode: mode,
-      builder: (context, child) => Directionality(textDirection: TextDirection.rtl,
-        child: MediaQuery(data: MediaQuery.of(context).copyWith(
-          textScaler: TextScaler.linear(scale)), child: child!)),
-      home: HomeScreen(colors: colors,
-        settings: SettingsState(palette, mode, scale, dense, hideText),
-        onSettings: (s) { setState(() {
-          palette = s.palette; mode = s.mode; scale = s.scale;
-          dense = s.dense; hideText = s.hideText;
-        }); _save(); }),
-    );
-  }
-}
-class SettingsState {
-  final int palette; final ThemeMode mode; final double scale;
-  final bool dense; final bool hideText;
-  const SettingsState(this.palette, this.mode, this.scale, this.dense, this.hideText);
-}
-class HomeScreen extends StatefulWidget {
-  final SettingsState settings; final ValueChanged<SettingsState> onSettings;
-  final List<Color> colors;
-  const HomeScreen({super.key, required this.settings, required this.onSettings, required this.colors});
-  @override State<HomeScreen> createState() => _HomeScreenState();
-}
-class _HomeScreenState extends State<HomeScreen> {
-  int tab = 0; String query = ''; MessageCategory? filter;
-  DateTimeRange? searchRange;
-  bool checking = false;
-  bool smsLoading = false;
-  bool smsPermissionGranted = false;
-  bool smsAvailable = false;
-  String? smsError;
-  List<MessageRecord> phoneMessages = [];
-  List<MessageRecord> get displayedMessages => smsPermissionGranted && SmsBridge.supported ? phoneMessages : demo;
-  @override void initState() {
+  final settings = AppSettings();
+  final store = AppStore(android: SmsBridge.supported);
+  final messenger = GlobalKey<ScaffoldMessengerState>();
+
+  @override
+  void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _checkForUpdates(silent: true);
-        _refreshSms();
-      }
-    });
-  }
-  final recipient = TextEditingController(), message = TextEditingController();
-  Timer? countdown; int remaining = 0; MessageRecord? pending;
-  final demo = <MessageRecord>[
-    MessageRecord(sender:'هنر مردمی', body:'به پیامیار خوش آمدید. این پیام نمونه است.', date:DateTime(2026,11,11,10)),
-    MessageRecord(sender:'بانک نمونه', body:'واریز ۲۵۰,۰۰۰ تومان به حساب نمونه؛ پیام آزمایشی.', date:DateTime(2026,11,11,9)),
-    MessageRecord(sender:'اپراتور', body:'بسته اینترنت شما فعال شد.', date:DateTime(2026,11,10)),
-    MessageRecord(sender:'فروشگاه نمونه', body:'تخفیف ویژه امروز؛ تبلیغ آزمایشی.', date:DateTime(2026,11,9)),
-  ];
-
-
-  Future<void> _refreshSms() async {
-    if (!SmsBridge.supported || smsLoading) return;
-    setState(() { smsLoading = true; smsError = null; });
-    try {
-      final available = await SmsBridge.available();
-      final status = await SmsBridge.status();
-      if (!mounted) return;
-      List<MessageRecord> messages = [];
-      if (available && status.canRead) {
-        messages = await SmsBridge.read(limit: 500);
-      }
-      if (!mounted) return;
-      setState(() {
-        smsAvailable = available;
-        smsPermissionGranted = status.canRead;
-        phoneMessages = messages;
-      });
-    } catch (_) {
-      if (mounted) setState(() => smsError = 'دریافت پیامک از گوشی ممکن نشد.');
-    } finally {
-      if (mounted) setState(() => smsLoading = false);
-    }
-  }
-
-  Future<void> _requestSmsPermission() async {
-    if (!SmsBridge.supported) return;
-    try {
-      await SmsBridge.request();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('پس از تأیید دسترسی در اندروید، روی تازه‌سازی بزنید.')));
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('درخواست مجوز پیامک انجام نشد.')));
-      }
-    }
-  }
-
-  Future<void> _checkForUpdates({bool silent = false}) async {
-    if (checking) return;
-    setState(() => checking = true);
-    try {
-      final result = await UpdateService.check();
-      if (!mounted) return;
-      final msg = !result.available
-          ? 'در حال حاضر نسخه منتشرشده جدیدی وجود ندارد.'
-          : 'نسخه جدید: ${result.version}';
-      if (!result.available || result.url.isEmpty) {
-        if (!silent) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-      } else {
-        await showDialog<void>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('به‌روزرسانی پیامیار'),
-            content: Text('$msg\n${result.notes}'),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('بعداً')),
-              FilledButton(onPressed: () {
-                Navigator.pop(ctx);
-                UpdateService.openDownload(result.url);
-              }, child: const Text('دریافت نسخه معتبر')),
-            ],
+    store.onNotice = (text) => messenger.currentState
+        ?..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          duration: const Duration(seconds: 4),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          padding: EdgeInsets.zero,
+          content: ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xE91A4246),
+                  border: Border.all(color: const Color(0x668DC7BD)),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.info_outline_rounded, color: Color(0xFFDDC18A), size: 21),
+                  const SizedBox(width: 10),
+                  Flexible(child: Text(text, style: const TextStyle(fontFamily: 'Vazirmatn',
+                    color: Colors.white, fontSize: 13, height: 1.55))),
+                ]),
+              ),
+            ),
           ),
-        );
-      }
-    } catch (_) {
-      if (mounted && !silent) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('بررسی نسخه ممکن نیست؛ اتصال اینترنت را بررسی کنید.')));
-      }
-    } finally {
-      if (mounted) setState(() => checking = false);
-    }
-  }
-  @override void dispose() { countdown?.cancel(); recipient.dispose(); message.dispose(); super.dispose(); }
-  void _queue() {
-    if (pending != null || recipient.text.trim().isEmpty || message.text.trim().isEmpty) return;
-    final item = MessageRecord(sender: recipient.text.trim(), body: message.text.trim(),
-      date: DateTime.now(), outgoing: true);
-    Navigator.of(context).pop();
-    setState(() { pending = item; remaining = 5; tab = 0; });
-    countdown?.cancel();
-    countdown = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) { timer.cancel(); return; }
-      if (remaining > 1) { setState(() => remaining--); return; }
-      timer.cancel();
-      _submitAfterDelay(item);
-
-    });
+        ));
+    settings.load();
+    store.init();
   }
 
-  Future<void> _submitAfterDelay(MessageRecord item) async {
-    if (SmsBridge.supported) {
-      try {
-        final status = await SmsBridge.status();
-        if (!status.canSend) {
-          throw StateError('برای ارسال باید مجوز SMS داده شود.');
-        }
-        final id = await SmsBridge.send(item.sender, item.body);
-        String state = 'pending';
-        for (var attempt = 0; attempt < 6 && state == 'pending'; attempt++) {
-          await Future<void>.delayed(const Duration(milliseconds: 500));
-          state = await SmsBridge.sendStatus(id);
-        }
-        if (!mounted) return;
-        setState(() { pending = null; remaining = 0; });
-        if (state == 'accepted_by_radio') {
-          recipient.clear(); message.clear();
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('ارسال از طرف مودم گوشی تأیید شد؛ تحویل به مخاطب هنوز مشخص نیست.')));
-        } else if (state.startsWith('send_failed')) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('شبکه ارسال پیام را رد کرد؛ پیش‌نویس حفظ شد.')));
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('وضعیت ارسال هنوز نامعلوم است؛ قبل از تلاش مجدد، پیامک‌های ارسالی را بررسی کنید.')));
-        }
-        await _refreshSms();
-      } catch (_) {
-        if (!mounted) return;
-        setState(() { pending = null; remaining = 0; });
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('ارسال موفق نشد؛ شماره و مجوزها را بررسی کنید. متن پیام حفظ شده است.')));
-      }
-    } else {
-      setState(() { demo.insert(0, item); pending = null; remaining = 0; });
-      recipient.clear(); message.clear();
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('پیام فقط به فهرست نمونه افزوده شد.')));
-    }
+  @override
+  void dispose() {
+    store.dispose();
+    settings.dispose();
+    super.dispose();
   }
 
-  void _undo() {
-    countdown?.cancel();
-    setState(() { pending = null; remaining = 0; });
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ارسال نمونه لغو شد.')));
-  }
-  void _compose() {
-    if (pending != null) return;
-    showModalBottomSheet<void>(context: context, isScrollControlled: true, showDragHandle: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(18, 8, 18, MediaQuery.viewInsetsOf(ctx).bottom + 24),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('پیام جدید', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 6),
-          Text(SmsBridge.supported
-              ? 'ارسال واقعی از سیم‌کارت پیش‌فرض پس از ۵ ثانیه و با مجوز اندروید انجام می‌شود.'
-              : 'ارسال در نسخه ویندوز فعلاً فقط نمایشی است.'),
-          const SizedBox(height: 16),
-          TextField(controller: recipient, keyboardType: TextInputType.phone,
-            decoration: const InputDecoration(labelText: 'شماره گیرنده', prefixIcon: Icon(Icons.person_outline))),
-          const SizedBox(height: 12),
-          TextField(controller: message, minLines: 3, maxLines: 5,
-            decoration: const InputDecoration(labelText: 'متن پیام')),
-          const SizedBox(height: 16),
-          FilledButton.icon(onPressed: _queue, icon: const Icon(Icons.send_outlined),
-            label: const Text('ارسال با فرصت لغو ۵ ثانیه‌ای')),
-        ])));
-  }
-  @override Widget build(BuildContext context) {
-    final wide = MediaQuery.sizeOf(context).width >= 800;
-    return Scaffold(
-      appBar: AppBar(title: Row(mainAxisSize: MainAxisSize.min, children: [
-        Container(padding: const EdgeInsets.all(9), decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.primary, borderRadius: BorderRadius.circular(12)),
-          child: const BrandMark()),
-        const SizedBox(width: 11),
-        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('پیامیار', style: TextStyle(fontWeight: FontWeight.w800)),
-          Text('از خانواده هنر مردمی', style: TextStyle(fontSize: 10,
-            color: Theme.of(context).colorScheme.onSurfaceVariant)),
-        ]),
-      ]), actions: [
-        IconButton(tooltip: 'تنظیمات ظاهر', icon: const Icon(Icons.palette_outlined),
-          onPressed: () => setState(() => tab = 2)),
-      ]),
-      body: Row(children: [
-        if (wide) NavigationRail(selectedIndex: tab,
-          labelType: NavigationRailLabelType.all,
-          onDestinationSelected: (v) => setState(() => tab = v),
-          destinations: const [
-            NavigationRailDestination(icon: Icon(Icons.forum_outlined), label: Text('پیام‌ها')),
-            NavigationRailDestination(icon: Icon(Icons.insights_outlined), label: Text('گزارش‌ها')),
-            NavigationRailDestination(icon: Icon(Icons.grid_view_outlined), label: Text('بیشتر')),
-          ]),
-        Expanded(child: Align(alignment: Alignment.topCenter,
-          child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 950),
-            child: tab == 0 ? _messages() : tab == 1 ? _reports() : _more()))),
-      ]),
-      floatingActionButton: tab == 0 ? FloatingActionButton.extended(
-        onPressed: _compose, icon: const Icon(Icons.edit_outlined), label: const Text('پیام جدید')) : null,
-      bottomNavigationBar: wide ? null : NavigationBar(selectedIndex: tab,
-        onDestinationSelected: (v) => setState(() => tab = v), destinations: const [
-          NavigationDestination(icon: Icon(Icons.forum_outlined), label: 'پیام‌ها'),
-          NavigationDestination(icon: Icon(Icons.insights_outlined), label: 'گزارش‌ها'),
-          NavigationDestination(icon: Icon(Icons.grid_view_outlined), label: 'بیشتر'),
-        ]),
+  ThemeData _theme(Brightness b) {
+    final dark = b == Brightness.dark;
+    // Teal identity with a warm gold accent on paper-like backgrounds.
+    final scheme = ColorScheme.fromSeed(seedColor: palettes[settings.palette], brightness: b).copyWith(
+      tertiary: dark ? const Color(0xFFE7C57C) : const Color(0xFF8A6417),
+      tertiaryContainer: dark ? const Color(0xFF4A3A14) : const Color(0xFFFCEBC4),
+      onTertiaryContainer: dark ? const Color(0xFFFCEBC4) : const Color(0xFF3F2E05));
+    final paper = dark ? const Color(0xFF0E1B1F) : const Color(0xFFFAF8F3);
+    final surface = dark ? const Color(0xFF172A30) : Colors.white;
+    final base = dark ? Typography.material2021().white : Typography.material2021().black;
+    TextStyle? fa(TextStyle? s, {double? size, FontWeight? weight, double height = 1.6}) => s?.copyWith(
+      fontFamily: 'Vazirmatn', fontSize: size, fontWeight: weight, height: height, letterSpacing: 0);
+    final text = base.copyWith(
+      headlineSmall: fa(base.headlineSmall, size: 24, weight: FontWeight.w800, height: 1.5),
+      titleLarge: fa(base.titleLarge, size: 20, weight: FontWeight.w800, height: 1.5),
+      titleMedium: fa(base.titleMedium, size: 16, weight: FontWeight.w700),
+      titleSmall: fa(base.titleSmall, size: 14, weight: FontWeight.w700),
+      bodyLarge: fa(base.bodyLarge, size: 16, height: 1.8),
+      bodyMedium: fa(base.bodyMedium, size: 14.5, height: 1.7),
+      bodySmall: fa(base.bodySmall, size: 12.5),
+      labelLarge: fa(base.labelLarge, size: 14, weight: FontWeight.w700),
+      labelMedium: fa(base.labelMedium, size: 12.5, weight: FontWeight.w600),
+      labelSmall: fa(base.labelSmall, size: 11.5, weight: FontWeight.w600),
+    );
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: scheme,
+      fontFamily: 'Vazirmatn',
+      textTheme: text,
+      scaffoldBackgroundColor: paper,
+      appBarTheme: AppBarTheme(
+        backgroundColor: paper,
+        surfaceTintColor: Colors.transparent,
+        scrolledUnderElevation: 0,
+        titleTextStyle: TextStyle(fontFamily: 'Vazirmatn', fontSize: 20, fontWeight: FontWeight.w800, color: scheme.onSurface),
+      ),
+      cardTheme: CardThemeData(
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        color: surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: surface,
+        surfaceTintColor: Colors.transparent,
+        indicatorColor: scheme.primaryContainer,
+        height: 68,
+      ),
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: scheme.primary,
+        foregroundColor: scheme.onPrimary,
+        extendedTextStyle: const TextStyle(fontFamily: 'Vazirmatn', fontWeight: FontWeight.w700, fontSize: 15),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: surface,
+        selectedColor: scheme.primaryContainer,
+        side: BorderSide(color: scheme.outlineVariant.withValues(alpha: .6)),
+        labelStyle: TextStyle(fontFamily: 'Vazirmatn', fontSize: 13, fontWeight: FontWeight.w600, color: scheme.onSurface),
+      ),
+      bottomSheetTheme: BottomSheetThemeData(backgroundColor: paper, surfaceTintColor: Colors.transparent),
+      dialogTheme: DialogThemeData(backgroundColor: surface, surfaceTintColor: Colors.transparent),
+      listTileTheme: const ListTileThemeData(shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(16)))),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: surface,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
+      ),
+      filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(
+        minimumSize: const Size.fromHeight(54),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        textStyle: const TextStyle(fontFamily: 'Vazirmatn', fontSize: 16, fontWeight: FontWeight.w700),
+      )),
+      snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
     );
   }
-  String _name(MessageCategory c) => switch (c) {
-    MessageCategory.personal => 'شخصی', MessageCategory.banking => 'بانکی',
-    MessageCategory.service => 'خدماتی', MessageCategory.advertising => 'تبلیغاتی',
-  };
-  IconData _icon(MessageCategory c) => switch (c) {
-    MessageCategory.personal => Icons.person_outline,
-    MessageCategory.banking => Icons.account_balance_outlined,
-    MessageCategory.service => Icons.receipt_long_outlined,
-    MessageCategory.advertising => Icons.campaign_outlined,
-  };
-  Widget _messages() {
-    final entries = MessageLogic.search(displayedMessages, query,
-      from: searchRange?.start,
-      to: searchRange == null ? null : DateTime(searchRange!.end.year,
-        searchRange!.end.month, searchRange!.end.day, 23, 59, 59, 999)).where(
-      (m) => filter == null || MessageLogic.category(m) == filter).toList();
-    final conversations = ConversationLogic.group(entries);
-    return ListView(padding: const EdgeInsets.fromLTRB(16, 10, 16, 100), children: [
-      Container(padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(colors: [Color(0xFF075D63), brand, Color(0xFF27536B)]),
-          borderRadius: BorderRadius.circular(24)),
-        child: Stack(children: [
-          Positioned(left: 0, top: -24, child: Icon(Icons.auto_awesome_mosaic,
-            size: 105, color: Colors.white.withValues(alpha: .12))),
-          const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('پیام‌هایت، مرتب و امن', style: TextStyle(
-              color: Colors.white, fontSize: 21, fontWeight: FontWeight.w800)),
-            SizedBox(height: 7),
-            Text('سادگی امروز، اصالت دیروز', style: TextStyle(color: Color(0xFFF5DBA5))),
-            SizedBox(height: 10),
-            Text('پیامیار • اطلاعات روی دستگاه شما', style: TextStyle(color: Colors.white70, fontSize: 11)),
-          ]),
-        ])),
-      if (SmsBridge.supported) ...[
-        const SizedBox(height: 12),
-        Card(child: Padding(padding: const EdgeInsets.all(12), child: Row(children: [
-          Icon(smsPermissionGranted ? Icons.verified_user_outlined : Icons.shield_outlined),
-          const SizedBox(width: 9),
-          Expanded(child: Text(smsLoading
-              ? 'در حال خواندن پیامک‌ها...'
-              : smsPermissionGranted
-                  ? 'پیامک‌های گوشی • فقط روی دستگاه'
-                  : smsAvailable ? 'برای دیدن پیامک‌های خود دسترسی را فعال کنید.'
-                      : 'این گوشی قابلیت پیامک ندارد.')),
-          if (!smsPermissionGranted && smsAvailable)
-            TextButton(onPressed: _requestSmsPermission, child: const Text('فعال‌سازی')),
-          IconButton(tooltip: 'تازه‌سازی پیامک‌ها', onPressed: _refreshSms,
-            icon: const Icon(Icons.refresh)),
-        ]))),
-        if (smsError != null) Padding(padding: const EdgeInsets.all(8),
-          child: Text(smsError!, style: const TextStyle(color: Colors.red))),
-      ],
-      const SizedBox(height: 17),
-      TextField(onChanged: (v) => setState(() => query = v),
-        decoration: const InputDecoration(
-          prefixIcon: Icon(Icons.search), hintText: 'جستجو در پیام‌ها و فرستنده‌ها')),
-      const SizedBox(height: 8),
-      Row(children: [
-        TextButton.icon(
-          icon: const Icon(Icons.date_range_outlined),
-          label: Text(searchRange == null ? 'فیلتر تاریخ' : 'بازه تاریخ انتخاب شد'),
-          onPressed: () async {
-            final value = await showDateRangePicker(
-              context: context, firstDate: DateTime(2010),
-              lastDate: DateTime(2100),
-              initialDateRange: searchRange,
-            );
-            if (value != null && mounted) setState(() => searchRange = value);
-          },
-        ),
-        if (searchRange != null)
-          IconButton(
-            tooltip: 'حذف فیلتر تاریخ', icon: const Icon(Icons.close),
-            onPressed: () => setState(() => searchRange = null),
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: settings,
+      builder: (context, _) => MaterialApp(
+        title: 'پیامیار',
+        debugShowCheckedModeBanner: false,
+        locale: const Locale('fa', 'IR'),
+        supportedLocales: const [Locale('fa', 'IR')],
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        scaffoldMessengerKey: messenger,
+        theme: _theme(Brightness.light),
+        darkTheme: _theme(Brightness.dark),
+        themeMode: settings.mode,
+        builder: (context, child) => Directionality(
+          textDirection: TextDirection.rtl,
+          child: MediaQuery(
+            data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(settings.scale)),
+            child: child!,
           ),
-      ]),
-      const SizedBox(height: 12),
-      SizedBox(height: 44, child: ListView(scrollDirection: Axis.horizontal, children: [
-        Padding(padding: const EdgeInsets.only(left: 7),
-          child: ChoiceChip(label: const Text('همه'), selected: filter == null,
-            onSelected: (_) => setState(() => filter = null))),
-        for (final c in MessageCategory.values)
-          Padding(padding: const EdgeInsets.only(left: 7),
-            child: ChoiceChip(label: Text(_name(c)), selected: filter == c,
-              onSelected: (_) => setState(() => filter = c))),
-      ])),
-      if (pending != null) ...[
-        const SizedBox(height: 14),
-        Card(color: Theme.of(context).colorScheme.tertiaryContainer,
-          child: Padding(padding: const EdgeInsets.all(12), child: Row(children: [
-            const Icon(Icons.schedule_send_outlined), const SizedBox(width: 8),
-            Expanded(child: Text('ارسال نمونه تا $remaining ثانیه دیگر')),
-            TextButton(onPressed: _undo, child: const Text('لغو ارسال')),
-          ]))),
-      ],
-      const SizedBox(height: 18),
-      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        Text('گفتگوها', style: Theme.of(context).textTheme.titleLarge),
-        Text('${conversations.length} گفتگو',
-          style: Theme.of(context).textTheme.bodySmall),
-      ]),
-      const SizedBox(height: 12),
-      for (final conversation in conversations) ...[
-        Builder(builder: (context) {
-          final m = conversation.latest;
-          return
-        Card(child: ListTile(
-          contentPadding: EdgeInsets.symmetric(
-            horizontal: 14, vertical: widget.settings.dense ? 0 : 8),
-          leading: CircleAvatar(
-            backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-            child: Icon(_icon(MessageLogic.category(m)))),
-          title: Text(m.sender, style: const TextStyle(fontWeight: FontWeight.bold)),
-          subtitle: Text(widget.settings.hideText ? 'متن پیام مخفی است' :
-            conversation.count > 1 ? '${m.body} • ${conversation.count} پیام' : m.body,
-            maxLines: 1, overflow: TextOverflow.ellipsis),
-          trailing: MessageLogic.suspicious(m.body)
-            ? const Icon(Icons.warning_amber_outlined, color: Colors.orange)
-            : const Icon(Icons.chevron_left),
-          onTap: () => _openConversation(conversation),
-        )); }),
-        const SizedBox(height: 9),
-      ],
-      if (entries.isEmpty) const Padding(padding: EdgeInsets.all(24),
-        child: Text('موردی پیدا نشد.')),
-    ]);
-  }
-  void _openConversation(Conversation conversation) {
-    showModalBottomSheet<void>(
-      context: context, isScrollControlled: true, useSafeArea: true,
-      showDragHandle: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(16, 0, 16, MediaQuery.viewInsetsOf(ctx).bottom + 16),
-        child: SizedBox(
-          height: MediaQuery.sizeOf(ctx).height * .7,
-          child: Column(children: [
-            Row(children: [
-              Expanded(child: Text(conversation.address,
-                style: Theme.of(ctx).textTheme.titleLarge)),
-              IconButton(tooltip: 'پاسخ', icon: const Icon(Icons.reply),
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  recipient.text = conversation.address;
-                  message.clear();
-                  _compose();
-                }),
-            ]),
-            const Divider(),
-            Expanded(child: ListView.builder(
-              reverse: true,
-              itemCount: conversation.messages.length,
-              itemBuilder: (context, index) {
-                final msg = conversation.messages[index];
-                return Align(
-                  alignment: msg.outgoing ? Alignment.centerLeft : Alignment.centerRight,
-                  child: Padding(padding: const EdgeInsets.symmetric(vertical: 5),
-                    child: Container(
-                      constraints: const BoxConstraints(maxWidth: 520),
-                      padding: const EdgeInsets.all(13),
-                      decoration: BoxDecoration(
-                        color: msg.outgoing
-                            ? Theme.of(context).colorScheme.primaryContainer
-                            : Theme.of(context).colorScheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(16)),
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        SelectableText(msg.body),
-                        const SizedBox(height: 4),
-                        Text(msg.date.toLocal().toString().substring(0, 16),
-                          style: Theme.of(context).textTheme.bodySmall),
-                      ]),
-                    )),
-                );
-              },
-            )),
-          ]),
         ),
+        home: RootGate(store: store, settings: settings),
       ),
     );
   }
-  Widget _feature(IconData icon, String title, String subtitle) => Card(
-    child: ListTile(contentPadding: const EdgeInsets.all(14),
-      leading: Icon(icon, color: Theme.of(context).colorScheme.primary),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-      subtitle: Text(subtitle)));
-  Widget _reports() {
-    final entries = FinanceLogic.extract(displayedMessages);
-    final deposits = FinanceLogic.total(entries, FinanceKind.deposit);
-    final withdrawals = FinanceLogic.total(entries, FinanceKind.withdrawal);
-    final privateMode = widget.settings.hideText;
-    return ListView(padding: const EdgeInsets.all(18), children: [
-      Text('گزارش‌های هوشمند', style: Theme.of(context).textTheme.headlineSmall),
-      const SizedBox(height: 7),
-      const Text('تحلیل محلی پیام‌های در دسترس؛ هیچ پیامکی به سرور ارسال نمی‌شود.'),
-      const SizedBox(height: 18),
-      Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('خلاصه مالی برآوردی', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 13),
-          Text('مجموع واریز: ${privateMode ? '••••' : FinanceLogic.formatTomans(deposits)}'),
-          const SizedBox(height: 7),
-          Text('مجموع برداشت: ${privateMode ? '••••' : FinanceLogic.formatTomans(withdrawals)}'),
-          const SizedBox(height: 10),
-          Text('${entries.length} تراکنش با قواعد ابتدایی شناسایی شد.',
-            style: Theme.of(context).textTheme.bodySmall),
-        ]))),
-      const SizedBox(height: 12),
-      _feature(Icons.shield_outlined, 'هشدار پیام‌های مشکوک',
-        'قواعد ساده روی متن نمونه؛ شناسایی هوش مصنوعی هنوز فعال نیست.'),
-      const SizedBox(height: 10),
-      _feature(Icons.receipt_long_outlined, 'استخراج تراکنش‌ها',
-        'پردازش ریال و تومان روی دستگاه؛ نتیجه باید توسط کاربر بررسی شود.'),
-    ]);
-  }
-  Widget _more() {
-    final s = widget.settings;
-    void change({int? p, ThemeMode? m, double? sc, bool? d, bool? h}) =>
-      widget.onSettings(SettingsState(p ?? s.palette, m ?? s.mode, sc ?? s.scale,
-        d ?? s.dense, h ?? s.hideText));
-    return ListView(padding: const EdgeInsets.all(18), children: [
-      Text('تنظیمات و امکانات', style: Theme.of(context).textTheme.headlineSmall),
-      const SizedBox(height: 16),
-      Card(child: Padding(padding: const EdgeInsets.all(17),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('شخصی‌سازی', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 13),
-          const Text('رنگ برنامه'),
-          const SizedBox(height: 9),
-          Wrap(spacing: 10, runSpacing: 9, children: [
-            for (int i = 0; i < widget.colors.length; i++)
-              Tooltip(message: 'رنگ شماره ${i + 1}',
-                child: InkWell(onTap: () => change(p: i),
-                  child: CircleAvatar(radius: 21, backgroundColor: widget.colors[i],
-                    child: i == s.palette
-                      ? const Icon(Icons.check, color: Colors.white) : null))),
-          ]),
-          const SizedBox(height: 18),
-          const Text('حالت نمایش'),
-          const SizedBox(height: 9),
-          SegmentedButton<ThemeMode>(segments: const [
-            ButtonSegment(value: ThemeMode.system, label: Text('خودکار')),
-            ButtonSegment(value: ThemeMode.light, label: Text('روشن')),
-            ButtonSegment(value: ThemeMode.dark, label: Text('تاریک')),
-          ], selected: {s.mode}, onSelectionChanged: (v) => change(m: v.first)),
-          const SizedBox(height: 12),
-          Text('اندازه متن: ${(s.scale * 100).round()}٪'),
-          Slider(value: s.scale, min: .85, max: 1.3, divisions: 9,
-            onChanged: (v) => change(sc: v)),
-          SwitchListTile(title: const Text('چیدمان فشرده'),
-            value: s.dense, onChanged: (v) => change(d: v)),
-          SwitchListTile(title: const Text('مخفی کردن پیش‌نمایش'),
-            value: s.hideText, onChanged: (v) => change(h: v)),
-        ]))),
-      const SizedBox(height: 12),
-      Card(child: ListTile(
-        leading: const Icon(Icons.language_outlined),
-        title: const Text('صفحه پیامیار در هنر مردمی'),
-        subtitle: const Text('معرفی اپ، اطلاعات نسخه و راهنمای دریافت'),
-        trailing: const Icon(Icons.open_in_new),
-        onTap: () => UpdateService.openDownload('https://honarmardomi.ir/payamyar/'),
-      )),
-      const SizedBox(height: 10),
-      _feature(Icons.phonelink_lock, 'اتصال گوشی و ویندوز',
-        'در انتظار تکمیل جفت‌سازی رمزگذاری‌شده.'),
-      const SizedBox(height: 10),
-      _feature(Icons.backup_outlined, 'پشتیبان‌گیری امن',
-        'در نسخه عملیاتی و پس از بررسی امنیت پیاده‌سازی می‌شود.'),
-      const SizedBox(height: 10),
-      const SizedBox(height: 10),
-      Card(child: ListTile(
-        leading: const Icon(Icons.system_update_outlined),
-        title: const Text('بررسی به‌روزرسانی'),
-        subtitle: const Text('دریافت نسخه معتبر با تأیید کاربر؛ بدون نصب خودکار'),
-        trailing: checking ? const SizedBox(width: 20, height: 20,
-          child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.chevron_left),
-        onTap: checking ? null : _checkForUpdates,
-      )),
-      const SizedBox(height: 10),
-      _feature(Icons.groups_outlined, 'ارسال گروهی',
-        'نیازمند اتصال پیامک واقعی و تأیید هر نوبت ارسال است.'),
-    ]);
+}
+
+/// Shows the welcome/permission pages until the phone's messages can be read, then the inbox.
+class RootGate extends StatelessWidget {
+  final AppStore store;
+  final AppSettings settings;
+  const RootGate({super.key, required this.store, required this.settings});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: store,
+      builder: (context, _) {
+        if (!store.initialized) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+        if (store.needsOnboarding) return OnboardingScreen(store: store);
+        return HomeShell(store: store, settings: settings);
+      },
+    );
   }
 }

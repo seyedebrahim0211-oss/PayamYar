@@ -1,4 +1,4 @@
-name: PayamYar Android and Windows (preview)
+name: PayamYar Android and Windows
 'on':
   workflow_dispatch:
   push:
@@ -7,6 +7,9 @@ name: PayamYar Android and Windows (preview)
     branches: [main]
 permissions:
   contents: read
+concurrency:
+  group: payamyar-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   analyze:
     runs-on: ubuntu-latest
@@ -28,6 +31,7 @@ jobs:
   android:
     needs: analyze
     runs-on: ubuntu-latest
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -40,13 +44,77 @@ jobs:
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/main/ofl/vazirmatn/Vazirmatn%5Bwght%5D.ttf' --output assets/fonts/Vazirmatn.ttf
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/main/ofl/vazirmatn/OFL.txt' --output assets/fonts/OFL.txt
       - run: flutter create --project-name payamyar --org ir.honarmardomi --platforms android --no-overwrite .
+      - name: Apply PayamYar Gradle settings (minSdk, release signing)
+        shell: bash
+        run: |
+          f=android/app/build.gradle.kts
+          if [ -f "$f" ]; then
+            printf '\napply(from = "payamyar.gradle")\n' >> "$f"
+          else
+            f=android/app/build.gradle
+            printf "\napply from: 'payamyar.gradle'\n" >> "$f"
+          fi
+          tail -n 3 "$f"
       - run: flutter pub get
-      - run: flutter build apk --debug
+      - name: Reuse the same fallback signing key across runs
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: payamyar-fallback-signing-key-v1
+      - name: Build release APK (own key from secrets, otherwise the cached fallback key)
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.PAYAMYAR_KEYSTORE_BASE64 }}
+          PAYAMYAR_KEYSTORE_PASSWORD: ${{ secrets.PAYAMYAR_KEYSTORE_PASSWORD }}
+          PAYAMYAR_KEY_ALIAS: ${{ secrets.PAYAMYAR_KEY_ALIAS }}
+          PAYAMYAR_KEY_PASSWORD: ${{ secrets.PAYAMYAR_KEY_PASSWORD }}
+        run: |
+          mkdir -p dist
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            export PAYAMYAR_KEYSTORE_PATH="$RUNNER_TEMP/payamyar-release.jks"
+            echo "$KEYSTORE_BASE64" | base64 --decode > "$PAYAMYAR_KEYSTORE_PATH"
+            flutter build apk --release
+            cp build/app/outputs/flutter-apk/app-release.apk dist/PayamYar-release.apk
+            rm -f "$PAYAMYAR_KEYSTORE_PATH"
+          else
+            echo "::warning::Signing secrets are not set; signing the release APK with the cached fallback key. See docs/RELEASE_SIGNING_FA.md."
+            flutter build apk --release
+            cp build/app/outputs/flutter-apk/app-release.apk dist/PayamYar.apk
+          fi
       - uses: actions/upload-artifact@v4
         with:
-          name: PayamYar-Android-preview
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          name: PayamYar-Android
+          path: dist/*.apk
+      - name: Publish to honarmardomi.ir (main branch, when WordPress secrets exist)
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || github.event_name == 'push')
+        shell: bash
+        env:
+          WP_USER: ${{ secrets.PAYAMYAR_WP_USER }}
+          WP_APP_PASSWORD: ${{ secrets.PAYAMYAR_WP_APP_PASSWORD }}
+          KEYSTORE_BASE64: ${{ secrets.PAYAMYAR_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::notice::A dedicated release signing key is required; skipping public publication."
+            exit 0
+          fi
+          if [ -z "$WP_USER" ] || [ -z "$WP_APP_PASSWORD" ]; then
+            echo "::notice::WordPress secrets are not set; skipping publish. See docs/RELEASE_SIGNING_FA.md."
+            exit 0
+          fi
+          set -euo pipefail
+          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: *//; s/+.*//')
+          NAME="PayamYar-$VERSION.zip"
+          (cd dist && zip -q "../$NAME" *.apk)
+          SITE=https://honarmardomi.ir/wp-json/wp/v2
+          URL=$(curl --fail-with-body -sS -u "$WP_USER:$WP_APP_PASSWORD"             -H "Content-Disposition: attachment; filename=$NAME" -H "Content-Type: application/zip"             --data-binary "@$NAME" "$SITE/media" | jq -r '.source_url')
+          case "$URL" in https://honarmardomi.ir/*) ;; *) echo "Upload failed: $URL"; exit 1 ;; esac
+          NOTES=$(head -n 1 RELEASE_NOTES_FA.txt)
+          JSON=$(jq -cn --arg v "$VERSION" --arg u "$URL" --arg n "$NOTES"             '{version:$v, published:true, android_url:$u, windows_url:"", notes:$n, minimum_supported_version:"1.0.0"}')
+          jq -n --arg c "<div dir=\"ltr\"><pre>$JSON</pre></div>" '{content:$c}' > page.json
+          curl --fail-with-body -sS -u "$WP_USER:$WP_APP_PASSWORD" -H "Content-Type: application/json"             --data @page.json "$SITE/pages/14733" > /dev/null
+          echo "Published $VERSION: $URL"
   windows:
+    if: github.ref == 'refs/heads/main'
     needs: analyze
     runs-on: windows-latest
     steps:
@@ -66,5 +134,67 @@ jobs:
       - run: flutter build windows --release
       - uses: actions/upload-artifact@v4
         with:
-          name: PayamYar-Windows-preview
+          name: PayamYar-Windows
           path: build/windows/x64/runner/Release/
+
+  github_release:
+    name: Publish signed Android APK to Releases
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: android
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: PayamYar-Android
+          path: release-apk
+      - name: Confirm dedicated signing key and release APK
+        id: ready
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.PAYAMYAR_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ] && [ -s release-apk/PayamYar-release.apk ]; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::A stable signing key is required; skipping Releases publication."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Read version
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(sed -n 's/^version: *\([0-9][0-9.]*\).*/\1/p' pubspec.yaml)
+          test -n "$VERSION"
+          echo "number=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Create GitHub prerelease with installable APK
+        if: steps.ready.outputs.signed == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.number }}
+          name: پیامیار Android v${{ steps.version.outputs.number }}
+          target_commitish: ${{ github.sha }}
+          prerelease: true
+          generate_release_notes: false
+          body_path: RELEASE_NOTES_FA.txt
+          files: release-apk/PayamYar-release.apk
+          fail_on_unmatched_files: true
+
+      - name: Create GitHub preview for private repository
+        if: steps.ready.outputs.signed == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.number }}-preview
+          name: پیامیار ${{ steps.version.outputs.number }} - نسخه آزمایشی اندروید
+          target_commitish: ${{ github.sha }}
+          prerelease: true
+          generate_release_notes: false
+          body: |
+            نسخه آزمایشی برای بررسی روی گوشی. این فایل با کلید جایگزین محیط ساخت امضا شده است.
+            ممکن است روی نسخه قبلی نصب نشود و برای به‌روزرسانی بدون حذف برنامه مناسب نیست.
+            این فایل را با نسخه رسمی امضاشده اشتباه نگیرید. تا زمان تأیید نسخه واقعی،
+            این انتشار برای استفاده روزمره به‌عنوان پیامک‌رسان اصلی توصیه نمی‌شود.
+          files: release-apk/PayamYar.apk
+          fail_on_unmatched_files: true

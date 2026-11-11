@@ -1,191 +1,331 @@
 package ir.honarmardomi.payamyar
 
 import android.Manifest
-import android.app.Activity
-import android.app.PendingIntent
-import android.content.BroadcastReceiver
-import android.content.Context
+import android.app.role.RoleManager
+import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.database.Cursor
+import android.database.ContentObserver
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.provider.BlockedNumberContract
+import android.provider.ContactsContract
+import android.provider.Settings
 import android.provider.Telephony
-import android.telephony.SmsManager
-import android.telephony.SubscriptionManager
+import android.telecom.TelecomManager
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.util.concurrent.Executors
 
-/**
- * This build is deliberately NOT eligible to become default SMS handler yet:
- * MMS delivery and robust inbound handling are not implemented.
- * Android's existing default SMS app remains responsible for inbound messages.
- */
 class MainActivity : FlutterActivity() {
-    private val channelName = "ir.honarmardomi.payamyar/sms"
-    private val permissions = arrayOf(Manifest.permission.READ_SMS, Manifest.permission.SEND_SMS)
-    private val permissionRequestCode = 2104
+    private var observing = false
+    private var contactResult: MethodChannel.Result? = null
+    private var permissionResult: MethodChannel.Result? = null
+    private var defaultResult: MethodChannel.Result? = null
+    private lateinit var channel: MethodChannel
+    private val worker = Executors.newSingleThreadExecutor()
+    private val handler = Handler(Looper.getMainLooper())
+    private val observer = object : ContentObserver(handler) {
+        override fun onChange(selfChange: Boolean) { channel.invokeMethod("messagesChanged", null) }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
-            .setMethodCallHandler { call, result ->
-                try {
-                    when (call.method) {
-                        "isAvailable" -> result.success(
-                            packageManager.hasSystemFeature(PackageManager.FEATURE_TELEPHONY_MESSAGING))
-                        "permissionStatus" -> result.success(permissionStatus())
-                        "requestPermissions" -> {
-                            ActivityCompat.requestPermissions(
-                                this, permissions, permissionRequestCode)
-                            result.success(true) // Dialog launched, NOT permission granted.
-                        }
-                        "readMessages" -> {
-                            if (!has(Manifest.permission.READ_SMS)) {
-                                result.error("PERMISSION", "SMS read permission is not granted", null)
-                            } else {
-                                val limit = (call.argument<Int>("limit") ?: 200).coerceIn(1, 500)
-                                result.success(readMessages(limit))
-                            }
-                        }
-                        "sendSms" -> {
-                            if (!has(Manifest.permission.SEND_SMS)) {
-                                result.error("PERMISSION", "SMS send permission is not granted", null)
-                            } else {
-                                val to = call.argument<String>("to")?.trim().orEmpty()
-                                val body = call.argument<String>("body").orEmpty()
-                                val subscriptionId = call.argument<Int>("subscriptionId")
-                                if (!isValidNumber(to) || body.isBlank() || body.length > 2000) {
-                                    result.error("INVALID", "Invalid recipient or message", null)
-                                } else {
-                                    result.success(sendSms(to, body, subscriptionId))
-                                }
-                            }
-                        }
-                        "subscriptions" -> result.success(getSubscriptions())
-                        "sendStatus" -> {
-                            val id = call.argument<String>("requestId").orEmpty()
-                            if (!Regex("^[0-9]{10,20}$").matches(id)) {
-                                result.error("INVALID", "Invalid request id", null)
-                            } else {
-                                result.success(getSharedPreferences(
-                                    "payamyar_sms_status", Context.MODE_PRIVATE)
-                                    .getString(id, "unknown"))
-                            }
-                        }
-                        else -> result.notImplemented()
+        channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "ir.honarmardomi.payamyar/sms")
+        channel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "pickContact" -> {
+                    if (contactResult != null) result.error("BUSY", "Contact picker is already open", null)
+                    else {
+                        contactResult = result
+                        try { startActivityForResult(Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI), 2110) }
+                        catch (e: Exception) { contactResult = null; result.error("CONTACTS", "دفترچه مخاطبان در دسترس نیست.", null) }
                     }
-                } catch (ex: SecurityException) {
-                    result.error("SECURITY", "Permission denied", null)
-                } catch (ex: Exception) {
-                    result.error("NATIVE_ERROR", ex.javaClass.simpleName, null)
+                }
+                "requestPermissions" -> {
+                    // Completes after the user answers the Android dialog, with the new permission state.
+                    permissionResult?.success(permissionMap())
+                    permissionResult = null
+                    val permissions = mutableListOf(Manifest.permission.READ_SMS, Manifest.permission.SEND_SMS,
+                        Manifest.permission.RECEIVE_SMS, Manifest.permission.READ_PHONE_STATE, Manifest.permission.READ_CONTACTS)
+                    if (Build.VERSION.SDK_INT >= 33) permissions.add(Manifest.permission.POST_NOTIFICATIONS)
+                    val missing = permissions.filter { !has(it) }
+                    if (missing.isEmpty()) result.success(permissionMap())
+                    else {
+                        permissionResult = result
+                        ActivityCompat.requestPermissions(this, missing.toTypedArray(), 2104)
+                    }
+                }
+                "requestDefault" -> requestDefault(result)
+                "loadAllMessages" -> {
+                    // One pass over the inbox on its own thread; pages are pushed to Dart as they are read.
+                    val generation = call.argument<Int>("generation") ?: 0
+                    Thread {
+                        try {
+                            val total = SmsCore.stream(this) { page ->
+                                runOnUiThread { channel.invokeMethod("messagesPage", page + ("generation" to generation)) }
+                            }
+                            runOnUiThread { result.success(total) }
+                        } catch (e: Exception) {
+                            runOnUiThread { result.error("SMS_ERROR", e.message ?: "SMS read failed", null) }
+                        }
+                    }.start()
+                }
+                "specialAccess" -> result.success(specialAccess())
+                "requestBatteryExemption" -> {
+                    try {
+                        startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+                        result.success(true)
+                    } catch (e: Exception) {
+                        try { startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)); result.success(true) }
+                        catch (e2: Exception) { result.success(false) }
+                    }
+                }
+                "requestExactAlarm" -> {
+                    try {
+                        if (Build.VERSION.SDK_INT >= 31) startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName")))
+                        result.success(true)
+                    } catch (e: Exception) { result.success(false) }
+                }
+                "openNotificationSettings" -> {
+                    try {
+                        if (Build.VERSION.SDK_INT >= 26) startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
+                        result.success(true)
+                    } catch (e: Exception) { result.success(false) }
+                }
+                "clearNotifications" -> { Notifier.cancel(this, call.argument<String>("address").orEmpty()); result.success(null) }
+                "installUpdate" -> {
+                    val url = call.argument<String>("url").orEmpty()
+                    if (!AppUpdater.canInstall(this)) {
+                        // Android asks once: "allow installing apps from PayamYar".
+                        try { AppUpdater.openInstallPermission(this) } catch (_: Exception) { }
+                        result.success("needs_permission")
+                    } else Thread {
+                        try {
+                            val apk = AppUpdater.download(this, url) { p -> runOnUiThread { channel.invokeMethod("updateProgress", p) } }
+                            runOnUiThread {
+                                try { AppUpdater.install(this, apk); result.success("installing") }
+                                catch (e: Exception) { result.error("UPDATE", e.message ?: "نصب انجام نشد.", null) }
+                            }
+                        } catch (e: Exception) {
+                            runOnUiThread { result.error("UPDATE", e.message ?: "دریافت نسخه جدید انجام نشد.", null) }
+                        }
+                    }.start()
+                }
+                "openAppSettings" -> {
+                    try {
+                        startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)))
+                        result.success(true)
+                    } catch (e: Exception) { result.success(false) }
+                }
+                "manageBlocked" -> {
+                    try {
+                        startActivity(getSystemService(TelecomManager::class.java).createManageBlockedNumbersIntent())
+                        result.success(true)
+                    } catch (e: Exception) { result.success(false) }
+                }
+                "takeComposeIntent" -> {
+                    val data = intent
+                    val address = data.data?.schemeSpecificPart?.substringBefore('?').orEmpty()
+                    val open = data.getStringExtra("open_address")
+                    result.success(if (open != null) mapOf("open" to open)
+                        else if (data.action == Intent.ACTION_SENDTO) mapOf("to" to address,
+                        "body" to (data.getStringExtra("sms_body") ?: "")) else null)
+                    intent = Intent(this, MainActivity::class.java)
+                }
+                else -> worker.execute {
+                    try {
+                        val value: Any? = when (call.method) {
+                            "isAvailable" -> packageManager.hasSystemFeature(if (Build.VERSION.SDK_INT >= 33) PackageManager.FEATURE_TELEPHONY_MESSAGING else PackageManager.FEATURE_TELEPHONY)
+                            "permissionStatus" -> permissionMap()
+                            "readMessages" -> SmsCore.read(this, call.argument<Int>("limit") ?: 300)
+                            "subscriptions" -> SmsCore.subscriptions(this)
+                            "pendingSms" -> SmsCore.pending(this)
+                            "contactNames" -> contactNames(call.argument<List<String>>("addresses").orEmpty())
+                            "listContacts" -> listContacts()
+                            "blockNumber" -> blockNumber(call.argument<String>("address").orEmpty())
+                            "queueSms" -> SmsCore.queue(this, call.argument<String>("to").orEmpty(),
+                                call.argument<String>("body").orEmpty(), call.argument<Int>("subscriptionId") ?: -1,
+                                (call.argument<Number>("delayMs")?.toLong() ?: 5000L)).also { id ->
+                                    // The alarm owns scheduled sends, even after the UI is closed.
+                                    // Only the short five-second undo gets a foreground fallback.
+                                    val delay = call.argument<Number>("delayMs")?.toLong() ?: 5000L
+                                    if (delay <= 10000L) handler.postDelayed({ worker.execute { SmsCore.dispatch(this, id) } }, delay + 100L)
+                                }
+                            "cancelSms" -> SmsCore.cancel(this, call.argument<String>("requestId").orEmpty())
+                            "sendStatus" -> SmsCore.status(this, call.argument<String>("requestId").orEmpty())
+                            "markRead" -> SmsCore.mutate(this, call.argument<List<Number>>("ids").orEmpty(), false)
+                            "deleteMessages" -> SmsCore.mutate(this, call.argument<List<Number>>("ids").orEmpty(), true)
+                            else -> { runOnUiThread { result.notImplemented() }; return@execute }
+                        }
+                        runOnUiThread { result.success(value) }
+                    } catch (e: Exception) {
+                        runOnUiThread { result.error("SMS_ERROR", e.message ?: "SMS operation failed", null) }
+                    }
                 }
             }
+        }
+        observeMessages()
     }
 
-    private fun has(permission: String): Boolean =
-        ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+    /** Opens Android's official "default SMS app" dialog and completes with whether PayamYar was chosen. */
+    private fun requestDefault(result: MethodChannel.Result) {
+        if (SmsCore.isDefault(this)) { result.success(true); return }
+        defaultResult?.success(false)
+        defaultResult = null
+        try {
+            if (Build.VERSION.SDK_INT >= 29) {
+                val role = getSystemService(RoleManager::class.java)
+                if (!role.isRoleAvailable(RoleManager.ROLE_SMS)) { result.success(false); return }
+                defaultResult = result
+                startActivityForResult(role.createRequestRoleIntent(RoleManager.ROLE_SMS), 2105)
+            } else {
+                defaultResult = result
+                @Suppress("DEPRECATION")
+                startActivityForResult(Intent(Telephony.Sms.Intents.ACTION_CHANGE_DEFAULT).putExtra(Telephony.Sms.Intents.EXTRA_PACKAGE_NAME, packageName), 2105)
+            }
+        } catch (e: Exception) {
+            defaultResult = null
+            result.success(false)
+        }
+    }
 
-    private fun permissionStatus(): Map<String, Boolean> = mapOf(
+    private fun permissionMap() = mapOf(
         "read" to has(Manifest.permission.READ_SMS),
-        "send" to has(Manifest.permission.SEND_SMS)
-    )
+        "send" to has(Manifest.permission.SEND_SMS),
+        "contacts" to has(Manifest.permission.READ_CONTACTS),
+        "default" to SmsCore.isDefault(this))
 
-    private fun isValidNumber(value: String): Boolean =
-        Regex("^\\+?[0-9]{4,15}$").matches(
-            value.replace(" ", "").replace("-", ""))
+    private fun specialAccess(): Map<String, Boolean> {
+        val power = getSystemService(android.os.PowerManager::class.java)
+        val alarms = getSystemService(android.app.AlarmManager::class.java)
+        return mapOf(
+            "battery" to power.isIgnoringBatteryOptimizations(packageName),
+            "exactAlarm" to (Build.VERSION.SDK_INT < 31 || alarms.canScheduleExactAlarms()),
+            "notifications" to androidx.core.app.NotificationManagerCompat.from(this).areNotificationsEnabled())
+    }
 
-    private fun readMessages(limit: Int): List<Map<String, Any?>> {
-        val entries = mutableListOf<Map<String, Any?>>()
-        val projection = arrayOf("_id", "address", "body", "date", "type", "read")
+    private fun phoneKey(number: String): String {
+        val digits = StringBuilder()
+        for (ch in number) {
+            val d = Character.digit(ch, 10)
+            if (d >= 0) digits.append(d)
+        }
+        return if (digits.length > 10) digits.substring(digits.length - 10) else digits.toString()
+    }
+
+    /** Display names for phone numbers: the phone book is read in ONE query and matched by the last 10 digits. */
+    private fun contactNames(addresses: List<String>): Map<String, String> {
+        if (!has(Manifest.permission.READ_CONTACTS)) return emptyMap()
+        val book = HashMap<String, String>()
+        contentResolver.query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+            arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER, ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME),
+            null, null, null)?.use {
+            while (it.moveToNext()) {
+                val number = it.getString(0) ?: continue
+                val name = it.getString(1)
+                val key = phoneKey(number)
+                if (key.length >= 7 && !name.isNullOrBlank() && !book.containsKey(key)) book[key] = name
+            }
+        }
+        val names = HashMap<String, String>()
+        for (address in addresses) {
+            if (address.any { it.isLetter() }) continue
+            val key = phoneKey(address)
+            val name = if (key.length >= 7) book[key] else null
+            if (name != null) names[address] = name
+        }
+        return names
+    }
+
+    /** The in-app contact selector reads the phone book once, not one contact at a time.
+     * It returns only display name and telephone number, never any contact data to a server.
+     */
+    private fun listContacts(): List<Map<String, String>> {
+        check(has(Manifest.permission.READ_CONTACTS)) { "برای دیدن مخاطبان، اجازه دفترچه تلفن را بدهید." }
+        val entries = LinkedHashMap<String, Map<String, String>>()
         contentResolver.query(
-            Telephony.Sms.CONTENT_URI, projection, null, null, "date DESC"
+            ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+            arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                ContactsContract.CommonDataKinds.Phone.NUMBER),
+            null, null, ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " COLLATE LOCALIZED ASC"
         )?.use { cursor ->
-            val id = cursor.getColumnIndexOrThrow("_id")
-            val address = cursor.getColumnIndexOrThrow("address")
-            val body = cursor.getColumnIndexOrThrow("body")
-            val date = cursor.getColumnIndexOrThrow("date")
-            val type = cursor.getColumnIndexOrThrow("type")
-            val read = cursor.getColumnIndexOrThrow("read")
-            while (cursor.moveToNext() && entries.size < limit) {
-                entries.add(mapOf(
-                    "id" to cursor.getLong(id),
-                    "sender" to (cursor.getString(address) ?: ""),
-                    "body" to (cursor.getString(body) ?: ""),
-                    "date" to cursor.getLong(date),
-                    "outgoing" to (cursor.getInt(type) == Telephony.Sms.MESSAGE_TYPE_SENT),
-                    "read" to (cursor.getInt(read) != 0)
-                ))
+            while (cursor.moveToNext()) {
+                val name = cursor.getString(0)?.trim().orEmpty()
+                val raw = cursor.getString(1)?.trim().orEmpty()
+                val digits = buildString {
+                    raw.forEach { ch -> val digit = Character.digit(ch, 10); if (digit >= 0) append(digit) }
+                }
+                if (digits.length !in 7..15) continue
+                val number = if (raw.startsWith("+")) "+$digits" else digits
+                val key = phoneKey(number)
+                if (key.length >= 7 && !entries.containsKey(key))
+                    entries[key] = mapOf("name" to (name.ifEmpty { number }), "number" to number)
             }
         }
-        return entries
+        return entries.values.toList()
     }
 
-    private fun getSubscriptions(): List<Map<String, Any?>> {
-        // Avoid READ_PHONE_STATE or privileged subscription data in this pilot.
-        // INVALID_SUBSCRIPTION_ID means use the system's default SMS SIM.
-        return listOf(mapOf(
-            "id" to SubscriptionManager.INVALID_SUBSCRIPTION_ID,
-            "label" to "سیم‌کارت پیش‌فرض دستگاه"
-        ))
+    private fun blockNumber(address: String): Boolean {
+        check(address.isNotBlank()) { "شماره معتبر نیست." }
+        check(BlockedNumberContract.canCurrentUserBlockNumbers(this)) { "برای مسدود کردن، پیامیار باید پیامک‌رسان پیش‌فرض باشد." }
+        contentResolver.insert(BlockedNumberContract.BlockedNumbers.CONTENT_URI, ContentValues().apply {
+            put(BlockedNumberContract.BlockedNumbers.COLUMN_ORIGINAL_NUMBER, address)
+        })
+        return true
     }
 
-    private fun sendSms(to: String, body: String, subscriptionId: Int?): String {
-        val cleanedTo = to.replace(" ", "").replace("-", "")
-        val manager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            if (subscriptionId != null &&
-                subscriptionId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
-                getSystemService(SmsManager::class.java).createForSubscriptionId(subscriptionId)
-            } else {
-                getSystemService(SmsManager::class.java)
-            }
-        } else {
-            @Suppress("DEPRECATION")
-            if (subscriptionId != null &&
-                subscriptionId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
-                SmsManager.getSmsManagerForSubscriptionId(subscriptionId)
-            } else {
-                SmsManager.getDefault()
+    private fun observeMessages() {
+        if (!observing && has(Manifest.permission.READ_SMS)) {
+            try {
+                contentResolver.registerContentObserver(Telephony.Sms.CONTENT_URI, true, observer)
+                observing = true
+            } catch (_: SecurityException) {
+                // Permission was revoked between the check and the registration.
             }
         }
-        val id = System.currentTimeMillis().toString()
-        val parts = manager.divideMessage(body)
-        val sent = ArrayList<PendingIntent>(parts.size)
-        val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        for (part in parts.indices) {
-            val intent = Intent(this, SendStatusReceiver::class.java).apply {
-                action = "ir.honarmardomi.payamyar.SMS_SENT"
-                putExtra("requestId", id)
-                putExtra("part", part)
-                putExtra("parts", parts.size)
-            }
-            sent.add(PendingIntent.getBroadcast(this, ((System.nanoTime() + part) and 0x7fffffff).toInt(), intent, flags))
-        }
-        getSharedPreferences("payamyar_sms_status", Context.MODE_PRIVATE)
-            .edit().putString(id, "pending").apply()
-        manager.sendMultipartTextMessage(cleanedTo, null, parts, sent, null)
-        return id // request queued by Android, not proof of carrier delivery
     }
-}
-
-class SendStatusReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) {
-        val requestId = intent.getStringExtra("requestId") ?: return
-        val parts = intent.getIntExtra("parts", 1).coerceAtLeast(1)
-        val prefs = context.getSharedPreferences("payamyar_sms_status", Context.MODE_PRIVATE)
-        val previous = prefs.getString(requestId, "pending") ?: "pending"
-        if (previous.startsWith("send_failed")) return
-        if (resultCode != Activity.RESULT_OK) {
-            prefs.edit().putString(requestId, "send_failed:$resultCode").apply()
-            return
-        }
-        val acknowledged = prefs.getInt("$requestId:acknowledged", 0) + 1
-        prefs.edit()
-            .putInt("$requestId:acknowledged", acknowledged)
-            .putString(requestId, if (acknowledged >= parts) "accepted_by_radio" else "pending")
-            .apply()
+    override fun onResume() {
+        super.onResume()
+        if (::channel.isInitialized) observeMessages()
     }
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 2110) {
+            val result = contactResult ?: return
+            contactResult = null
+            try {
+                var number: String? = null
+                if (resultCode == android.app.Activity.RESULT_OK && data?.data != null) {
+                    contentResolver.query(data.data!!, arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER), null, null, null)?.use {
+                        if (it.moveToFirst()) number = it.getString(0)
+                    }
+                }
+                result.success(number)
+            } catch (_: Exception) { result.error("CONTACTS", "خواندن شماره مخاطب ممکن نشد.", null) }
+        }
+        if (requestCode == 2105) {
+            observeMessages()
+            defaultResult?.success(SmsCore.isDefault(this))
+            defaultResult = null
+            channel.invokeMethod("messagesChanged", null)
+        }
+    }
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        observeMessages()
+        if (requestCode == 2104) {
+            permissionResult?.success(permissionMap())
+            permissionResult = null
+        }
+        channel.invokeMethod("messagesChanged", null)
+    }
+    private fun has(permission: String) = ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); channel.invokeMethod("composeIntent", null) }
+    override fun onDestroy() { if (observing) contentResolver.unregisterContentObserver(observer); super.onDestroy() }
 }

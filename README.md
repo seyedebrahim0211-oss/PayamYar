@@ -1,9 +1,15 @@
+# پیامیار ۱٫۰ — پیام‌رسان SMS اندروید
+
+جزئیات امکانات، راه‌اندازی و محدودیت‌ها: [راهنمای SMS](docs/ANDROID_SMS_FA.md).
+آزمون‌های گوشی واقعی: [چک‌لیست پذیرش](docs/SMS_DEVICE_TESTS.md).
+امضای ثابت نسخه اندروید: [راهنمای امضا](docs/RELEASE_SIGNING_FA.md).
+
 # پیامیار | PayamYar
 
 سامانه مستقل مدیریت پیامک با رابط فارسی، راست‌چین و الهام‌گرفته از هویت سنتی ایرانی **هنر مردمی**.
 
 **وب‌سایت معرفی:** https://honarmardomi.ir/payamyar/  
-**وضعیت فعلی:** پیش‌نمایش فنی نسخه `0.3.1` — نه اپلیکیشن پیامک‌رسان آماده انتشار.
+**وضعیت فعلی:** نسخه `1.0.0` — پیام‌رسان SMS اندروید با قابلیت جایگزینی پیام‌رسان پیش‌فرض.
 
 ## آنچه هم‌اکنون در مخزن پیاده‌سازی شده
 - رابط کاربری واکنش‌گرا برای اندروید و ویندوز با ۳ بخش اصلی پیام‌ها، گزارش‌ها و بیشتر
@@ -25,7 +31,7 @@
 - نسخه عمومی برای به‌روزرسانی خودکار باید روی https://honarmardomi.ir/ میزبانی شود. مخزن GitHub خصوصی است.
 
 ## ساخت از سورس
-GitHub Actions → `PayamYar Android and Windows (preview)` → آخرین اجرای موفق → Artifacts.
+GitHub Actions → `PayamYar Android and Windows` → آخرین اجرای موفق → Artifacts → `PayamYar-Android`.
 
 برای ساخت دستی: Flutter Stable را نصب کرده و ابتدا فونت دارای مجوز OFL را در `assets/fonts/Vazirmatn.ttf` و متن مجوز را در `assets/fonts/OFL.txt` قرار دهید. سپس:
 
@@ -34,10 +40,11 @@ flutter create --project-name payamyar --org ir.honarmardomi --platforms android
 flutter pub get
 flutter analyze
 flutter test
-flutter build apk --debug
+flutter build apk --release
 ```
 
 برای خروجی ویندوز به Visual Studio با ابزار Desktop development with C++ نیاز است.
 
 ## حریم خصوصی
-هیچ‌گونه SMS حقیقی در نسخه فعلی خوانده، ارسال یا با سرور همگام نمی‌شود. از ذخیره رمز، توکن، کلید امضا و داده شخصی در GitHub خودداری کنید. نسخه فعلی را جایگزین برنامه اصلی SMS دستگاه نکنید.
+پیامک‌ها فقط روی گوشی خوانده و نگهداری می‌شوند و با هیچ سروری همگام نمی‌شوند. تنها ارتباط اینترنتی، بررسی نسخه جدید از honarmardomi.ir است. کلید امضا و رمزها را فقط در Secrets گیت‌هاب نگه دارید، نه در فایل‌های مخزن.
+

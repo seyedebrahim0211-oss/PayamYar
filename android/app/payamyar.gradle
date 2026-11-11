@@ -1,0 +1,32 @@
+// PayamYar build settings, applied after the build.gradle(.kts) that `flutter create` generates.
+// CI appends `apply from` to that generated file, so these values override the template defaults.
+
+// Android 7 (API 24): required by shared_preferences_android and current Flutter;
+// the native SMS code itself needs at least API 23 (SubscriptionManager,
+// per-SIM SmsManager, Context.getSystemService(Class)).
+android {
+    defaultConfig {
+        minSdk = 24
+    }
+}
+
+// Release signing comes only from environment variables (in CI: repository secrets).
+// No key or password is stored in the repository.
+def payamyarKeystore = System.getenv("PAYAMYAR_KEYSTORE_PATH")
+if (payamyarKeystore) {
+    android {
+        signingConfigs {
+            payamyarRelease {
+                storeFile = file(payamyarKeystore)
+                storePassword = System.getenv("PAYAMYAR_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("PAYAMYAR_KEY_ALIAS")
+                keyPassword = System.getenv("PAYAMYAR_KEY_PASSWORD")
+            }
+        }
+        buildTypes {
+            release {
+                signingConfig = signingConfigs.payamyarRelease
+            }
+        }
+    }
+}
