@@ -104,6 +104,19 @@ class SmsBridge {
   /// Returns 'installing' or 'needs_permission' (the "install unknown apps" screen was opened).
   static Future<String> installUpdate(String url) async =>
     await _channel.invokeMethod<String>('installUpdate', {'url': url}) ?? 'installing';
+  /// Phone-book entries for the in-app multi-select UI. Permission is requested by the caller.
+  static Future<List<Map<String, String>>> listContacts() async {
+    if (!supported) return [];
+    final raw = await _channel.invokeListMethod<dynamic>('listContacts') ?? [];
+    return raw.map((entry) {
+      final map = Map<dynamic, dynamic>.from(entry as Map);
+      return <String, String>{
+        'name': map['name']?.toString() ?? '',
+        'number': map['number']?.toString() ?? '',
+      };
+    }).toList(growable: false);
+  }
+
   static Future<String?> pickContact() => _channel.invokeMethod<String>('pickContact');
   /// Opens Android's "default SMS app" dialog; true when PayamYar was chosen.
   static Future<bool> requestDefault() async => await _channel.invokeMethod<bool>('requestDefault') ?? false;
