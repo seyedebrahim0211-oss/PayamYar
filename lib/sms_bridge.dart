@@ -74,6 +74,10 @@ class SmsBridge {
     await _channel.invokeMethod<String>('queueSms', {'to': normalizeNumber(to), 'body': body, 'subscriptionId': sim}) ?? '';
   static Future<bool> cancel(String id) async =>
     await _channel.invokeMethod<bool>('cancelSms', {'requestId': id}) ?? false;
-  static Future<void> markRead(List<int> ids) => _channel.invokeMethod<void>('markRead', {'ids': ids});
+  static Future<void> markRead(List<int> ids) async {
+    for (var start = 0; start < ids.length; start += 500) {
+      await _channel.invokeMethod<void>('markRead', {'ids': ids.sublist(start, (start + 500).clamp(0, ids.length))});
+    }
+  }
   static Future<void> delete(List<int> ids) => _channel.invokeMethod<void>('deleteMessages', {'ids': ids});
 }

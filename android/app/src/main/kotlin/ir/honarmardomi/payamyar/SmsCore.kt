@@ -20,6 +20,7 @@ object SmsCore {
     fun isDefault(c: Context) = Telephony.Sms.getDefaultSmsPackage(c) == c.packageName
     fun status(c: Context, id: String): String = prefs(c).getString("status:$id", "unknown") ?: "unknown"
     fun read(c: Context, limit: Int, before: Long?, beforeId: Long?): List<Map<String, Any?>> {
+        if (isDefault(c)) drainIncoming(c)
         val rows = mutableListOf<Map<String, Any?>>()
         val selection = if (before != null && beforeId != null) "date < ? OR (date = ? AND _id < ?)" else null
         val args = if (selection != null) arrayOf(before.toString(), before.toString(), beforeId.toString()) else null
@@ -101,7 +102,7 @@ object SmsCore {
                 PendingIntent.getBroadcast(c, 0, Intent(c, SendStatusReceiver::class.java)
                     .setData(Uri.parse("payamyar:status/$id/$delivered/$part"))
                     .putExtra("id", id).putExtra("part", part).putExtra("parts", parts.size).putExtra("delivered", delivered),
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+                    PendingIntent.FLAG_UPDATE_CURRENT or (if (delivered && Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else if (delivered) 0 else PendingIntent.FLAG_IMMUTABLE))
             })
             manager.sendMultipartTextMessage(item.getString("to"), null, parts, callbacks(false), callbacks(true))
         } catch (e: Exception) {
@@ -113,6 +114,16 @@ object SmsCore {
     @Synchronized fun receipt(c: Context, intent: Intent, code: Int) {
         val id = intent.getStringExtra("id") ?: return
         val delivered = intent.getBooleanExtra("delivered", false)
+        var deliveryFailure = false
+        if (delivered) {
+            val pdu = intent.getByteArrayExtra("pdu") ?: return
+            @Suppress("DEPRECATION")
+            val report = intent.getStringExtra("format")?.let { android.telephony.SmsMessage.createFromPdu(pdu, it) }
+                ?: android.telephony.SmsMessage.createFromPdu(pdu)
+            val reportStatus = report?.status ?: return
+            if (reportStatus < 0 || reportStatus in 32..63) return
+            deliveryFailure = reportStatus >= 64
+        }
         val count = intent.getIntExtra("parts", 1)
         val key = "acks:$id:$delivered"
         val set = prefs(c).getStringSet(key, emptySet())!!.toMutableSet()
@@ -120,7 +131,7 @@ object SmsCore {
         val previous = status(c, id)
         val next = when {
             previous.startsWith("send_failed") || previous == "delivered" -> previous
-            code != Activity.RESULT_OK -> if (delivered) "delivery_failed" else "send_failed:$code"
+            code != Activity.RESULT_OK || deliveryFailure -> if (delivered) "delivery_failed" else "send_failed:$code"
             previous == "delivery_failed" -> previous
             set.size < count -> previous
             delivered -> "delivered"
@@ -137,6 +148,49 @@ object SmsCore {
             if (values.size() > 0) c.contentResolver.update(Uri.parse(row), values, null, null)
         }
         if (next.startsWith("send_failed")) notify(c, id.hashCode(), "ارسال پیامک ناموفق بود", "برای بررسی پیام ارسال‌نشده، پیامیار را باز کنید.")
+    }
+    @Synchronized fun drainIncoming(c: Context) {
+        val dir = java.io.File(c.filesDir, "incoming_sms")
+        dir.listFiles()?.filter { it.extension == "json" }?.forEach { file ->
+            try {
+                val item = JSONObject(file.readText())
+                val address = item.getString("address")
+                val body = item.getString("body")
+                val sent = item.getLong("sent")
+                val sim = item.getInt("sim")
+                // Retry a saved journal after provider errors without duplicating a completed insert.
+                var exists = false
+                c.contentResolver.query(Telephony.Sms.Inbox.CONTENT_URI, arrayOf("_id"),
+                    "address = ? AND body = ? AND date_sent = ? AND sub_id = ?",
+                    arrayOf(address, body, sent.toString(), sim.toString()), null)?.use { exists = it.moveToFirst() }
+                if (!exists) {
+                    val uri = c.contentResolver.insert(Telephony.Sms.Inbox.CONTENT_URI, ContentValues().apply {
+                        put("address", address); put("body", body); put("date", item.getLong("received"))
+                        put("date_sent", sent); put("read", 0); put("seen", 0); put("sub_id", sim)
+                        put("thread_id", Telephony.Threads.getOrCreateThreadId(c, address))
+                    })
+                    check(uri != null)
+                    notify(c, uri.lastPathSegment?.toIntOrNull() ?: 1, address, "پیامک جدید دریافت شد")
+                }
+                file.delete()
+            } catch (_: Exception) {
+                // Keep the private journal for retry on the next inbox refresh.
+            }
+        }
+    }
+    @Synchronized fun receive(c: Context, intent: Intent) {
+        val parts = Telephony.Sms.Intents.getMessagesFromIntent(intent)
+        if (parts.isEmpty()) return
+        val item = JSONObject().put("address", parts[0].originatingAddress ?: "ناشناس")
+            .put("body", parts.joinToString("") { it.messageBody ?: "" })
+            .put("sent", parts[0].timestampMillis).put("received", System.currentTimeMillis())
+            .put("sim", intent.getIntExtra("subscription", -1))
+        val dir = java.io.File(c.filesDir, "incoming_sms").apply { mkdirs() }
+        val file = android.util.AtomicFile(java.io.File(dir, "${UUID.randomUUID()}.json"))
+        val output = file.startWrite()
+        try { output.write(item.toString().toByteArray(Charsets.UTF_8)); file.finishWrite(output) }
+        catch (e: Exception) { file.failWrite(output); throw e }
+        drainIncoming(c)
     }
     fun mutate(c: Context, ids: List<Number>, delete: Boolean): Int {
         check(isDefault(c)) { "ابتدا پیامیار را پیامک‌رسان پیش‌فرض کنید." }
@@ -175,7 +229,7 @@ class BootReceiver : BroadcastReceiver() {
 class SendStatusReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val pending = goAsync(); val code = resultCode
-        Thread { try { SmsCore.receipt(context, intent, code) } finally { pending.finish() } }.start()
+        Thread { try { SmsCore.receipt(context, intent, code) } catch (_: Exception) { } finally { pending.finish() } }.start()
     }
 }
 class IncomingSmsReceiver : BroadcastReceiver() {
@@ -184,18 +238,9 @@ class IncomingSmsReceiver : BroadcastReceiver() {
         val pending = goAsync()
         Thread {
             try {
-                val parts = Telephony.Sms.Intents.getMessagesFromIntent(intent)
-                if (parts.isNotEmpty()) {
-                    val address = parts[0].originatingAddress ?: "ناشناس"
-                    val body = parts.joinToString("") { it.messageBody ?: "" }
-                    val uri = context.contentResolver.insert(Telephony.Sms.Inbox.CONTENT_URI, ContentValues().apply {
-                        put("address", address); put("body", body); put("date", System.currentTimeMillis())
-                        put("date_sent", parts[0].timestampMillis); put("read", 0); put("seen", 0)
-                        put("sub_id", intent.getIntExtra("subscription", -1))
-                        put("thread_id", Telephony.Threads.getOrCreateThreadId(context, address))
-                    })
-                    SmsCore.notify(context, uri?.lastPathSegment?.toIntOrNull() ?: 1, address, "پیامک جدید دریافت شد")
-                }
+                SmsCore.receive(context, intent)
+            } catch (_: Exception) {
+                SmsCore.notify(context, 3, "خطا در ذخیره پیامک", "فضای ذخیره‌سازی و مجوزهای پیامیار را بررسی کنید.")
             } finally { pending.finish() }
         }.start()
     }
@@ -204,6 +249,7 @@ class IncomingSmsReceiver : BroadcastReceiver() {
 class MmsReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.WAP_PUSH_DELIVER_ACTION) return
+        if (!SmsCore.isDefault(context)) return
         val data = intent.getByteArrayExtra("data") ?: return
         val dir = java.io.File(context.filesDir, "pending_mms").apply { mkdirs() }
         java.io.File(dir, "${System.currentTimeMillis()}.pdu").writeBytes(data)

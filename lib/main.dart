@@ -137,6 +137,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final id = p.getString('last_queue');
     if (SmsBridge.supported && id != null) {
       final state = await SmsBridge.sendStatus(id);
+      if (mounted && (state == 'queued' || state == 'pending')) {
+        queuedId = id;
+        final item = MessageRecord(sender: p.getString('last_queue_to') ?? recipient.text,
+          body: p.getString('last_queue_body') ?? message.text, date: DateTime.now(), outgoing: true);
+        setState(() { pending = item; remaining = 0; });
+        _watchSend(item);
+      }
       if (mounted && state.startsWith('send_failed')) _notice('ارسال قبلی ناموفق بود؛ متن پیش‌نویس حفظ شده است.');
       if ((state == 'accepted_by_radio' || state == 'delivered') &&
           recipient.text == p.getString('last_queue_to') && message.text == p.getString('last_queue_body')) {
