@@ -359,6 +359,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               decoration: const InputDecoration(labelText: 'سیم‌کارت ارسال'),
               items: sims.map((s) => DropdownMenuItem<int>(value: s['id'] as int, child: Text(s['label'].toString()))).toList(),
               onChanged: (v) => selectedSim = v ?? -1),
+          if (SmsBridge.supported) TextButton.icon(icon: const Icon(Icons.contacts_outlined), label: const Text('انتخاب از مخاطبان'),
+            onPressed: () async {
+              try { final value = await SmsBridge.pickContact(); if (value != null && mounted) { recipient.text = value; _saveDraft(); } }
+              catch (_) { _notice('دفترچه مخاطبان در دسترس نیست.'); }
+            }),
           const SizedBox(height: 12),
           TextField(controller: recipient, textDirection: TextDirection.ltr, onChanged: (_) => _saveDraft(), keyboardType: TextInputType.phone,
             decoration: const InputDecoration(labelText: 'شماره گیرنده', prefixIcon: Icon(Icons.person_outline))),
@@ -711,13 +716,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         onTap: () => UpdateService.openDownload('https://honarmardomi.ir/payamyar/'),
       )),
       const SizedBox(height: 10),
-      _feature(Icons.phonelink_lock, 'اتصال گوشی و ویندوز',
-        'در انتظار تکمیل جفت‌سازی رمزگذاری‌شده.'),
-      const SizedBox(height: 10),
-      _feature(Icons.backup_outlined, 'پشتیبان‌گیری امن',
-        'در نسخه عملیاتی و پس از بررسی امنیت پیاده‌سازی می‌شود.'),
-      const SizedBox(height: 10),
-      const SizedBox(height: 10),
       Card(child: ListTile(
         leading: const Icon(Icons.system_update_outlined),
         title: const Text('بررسی به‌روزرسانی'),
@@ -727,8 +725,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         onTap: checking ? null : _checkForUpdates,
       )),
       const SizedBox(height: 10),
-      _feature(Icons.groups_outlined, 'ارسال گروهی',
-        'نیازمند اتصال پیامک واقعی و تأیید هر نوبت ارسال است.'),
+      _feature(Icons.info_outline, 'نسخه ۰٫۵ • آزمایشی SMS',
+        'MMS، RCS و اتصال ویندوز پشتیبانی نمی‌شوند. اعلان‌ها متن پیام را نمایش نمی‌دهند.'),
     ]);
   }
 }

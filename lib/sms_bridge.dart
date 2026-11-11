@@ -66,6 +66,7 @@ class SmsBridge {
     _channel.setMethodCallHandler((call) => callback(call.method));
   }
   static void stopListening() => _channel.setMethodCallHandler(null);
+  static Future<String?> pickContact() => _channel.invokeMethod<String>('pickContact');
   static Future<void> requestDefault() => _channel.invokeMethod<void>('requestDefault');
   static Future<List<Map<dynamic, dynamic>>> subscriptions() async =>
     (await _channel.invokeListMethod<dynamic>('subscriptions') ?? []).map((e) => Map<dynamic, dynamic>.from(e as Map)).toList();

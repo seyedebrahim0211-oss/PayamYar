@@ -17,6 +17,7 @@ import io.flutter.plugin.common.MethodChannel
 import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
+    private var contactResult: MethodChannel.Result? = null
     private lateinit var channel: MethodChannel
     private val worker = Executors.newSingleThreadExecutor()
     private val handler = Handler(Looper.getMainLooper())
@@ -28,6 +29,14 @@ class MainActivity : FlutterActivity() {
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "ir.honarmardomi.payamyar/sms")
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
+                "pickContact" -> {
+                    if (contactResult != null) result.error("BUSY", "Contact picker is already open", null)
+                    else {
+                        contactResult = result
+                        try { startActivityForResult(Intent(Intent.ACTION_PICK, android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI), 2110) }
+                        catch (e: Exception) { contactResult = null; result.error("CONTACTS", "دفترچه مخاطبان در دسترس نیست.", null) }
+                    }
+                }
                 "requestPermissions" -> {
                     val permissions = mutableListOf(Manifest.permission.READ_SMS, Manifest.permission.SEND_SMS,
                         Manifest.permission.RECEIVE_SMS, Manifest.permission.READ_PHONE_STATE)
@@ -79,6 +88,23 @@ class MainActivity : FlutterActivity() {
             }
         }
         contentResolver.registerContentObserver(Telephony.Sms.CONTENT_URI, true, observer)
+    }
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 2110) {
+            val result = contactResult ?: return
+            contactResult = null
+            try {
+                var number: String? = null
+                if (resultCode == android.app.Activity.RESULT_OK && data?.data != null) {
+                    contentResolver.query(data.data!!, arrayOf(android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER), null, null, null)?.use {
+                        if (it.moveToFirst()) number = it.getString(0)
+                    }
+                }
+                result.success(number)
+            } catch (_: Exception) { result.error("CONTACTS", "خواندن شماره مخاطب ممکن نشد.", null) }
+        }
+        if (requestCode == 2105) channel.invokeMethod("messagesChanged", null)
     }
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
