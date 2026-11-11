@@ -204,13 +204,25 @@ class _HomeScreenState extends State<HomeScreen> {
           throw StateError('برای ارسال باید مجوز SMS داده شود.');
         }
         final id = await SmsBridge.send(item.sender, item.body);
+        String state = 'pending';
+        for (var attempt = 0; attempt < 6 && state == 'pending'; attempt++) {
+          await Future<void>.delayed(const Duration(milliseconds: 500));
+          state = await SmsBridge.sendStatus(id);
+        }
         if (!mounted) return;
         setState(() { pending = null; remaining = 0; });
-        recipient.clear(); message.clear();
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('پیام به اندروید تحویل داده شد (درخواست $id). این به معنی تحویل به مخاطب نیست.')));
-        await Future<void>.delayed(const Duration(milliseconds: 800));
-        if (mounted) await _refreshSms();
+        if (state == 'accepted_by_radio') {
+          recipient.clear(); message.clear();
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('ارسال از طرف مودم گوشی تأیید شد؛ تحویل به مخاطب هنوز مشخص نیست.')));
+        } else if (state.startsWith('send_failed')) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('شبکه ارسال پیام را رد کرد؛ پیش‌نویس حفظ شد.')));
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('وضعیت ارسال هنوز نامعلوم است؛ قبل از تلاش مجدد، پیامک‌های ارسالی را بررسی کنید.')));
+        }
+        await _refreshSms();
       } catch (_) {
         if (!mounted) return;
         setState(() { pending = null; remaining = 0; });
