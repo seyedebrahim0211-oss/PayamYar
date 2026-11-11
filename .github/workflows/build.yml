@@ -159,7 +159,6 @@ jobs:
             echo "signed=false" >> "$GITHUB_OUTPUT"
           fi
       - name: Read version
-        if: steps.ready.outputs.signed == 'true'
         id: version
         shell: bash
         run: |
@@ -177,4 +176,21 @@ jobs:
           generate_release_notes: false
           body_path: RELEASE_NOTES_FA.txt
           files: release-apk/PayamYar-release.apk
+          fail_on_unmatched_files: true
+
+      - name: Create GitHub preview for private repository
+        if: steps.ready.outputs.signed == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.number }}-preview
+          name: پیامیار ${{ steps.version.outputs.number }} - نسخه آزمایشی اندروید
+          target_commitish: ${{ github.sha }}
+          prerelease: true
+          generate_release_notes: false
+          body: |
+            نسخه آزمایشی برای بررسی روی گوشی. این فایل با کلید جایگزین محیط ساخت امضا شده است.
+            ممکن است روی نسخه قبلی نصب نشود و برای به‌روزرسانی بدون حذف برنامه مناسب نیست.
+            این فایل را با نسخه رسمی امضاشده اشتباه نگیرید. تا زمان تأیید نسخه واقعی،
+            این انتشار برای استفاده روزمره به‌عنوان پیامک‌رسان اصلی توصیه نمی‌شود.
+          files: release-apk/PayamYar.apk
           fail_on_unmatched_files: true
