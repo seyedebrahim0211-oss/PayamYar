@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'message_logic.dart';
@@ -75,22 +76,41 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.settings, required this.onSettings, required this.colors});
   @override State<HomeScreen> createState() => _HomeScreenState();
 }
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   int tab = 0; String query = ''; MessageCategory? filter;
   DateTimeRange? searchRange;
   bool checking = false;
   bool smsLoading = false;
   bool smsPermissionGranted = false;
   bool smsAvailable = false;
+  bool defaultSms = false;
+  bool loadingOlder = false;
+  bool hasOlder = false;
+  bool submitting = false;
+  int selectedSim = -1;
+  List<Map<dynamic, dynamic>> sims = [];
+  String? queuedId;
+  Timer? refreshDebounce;
+  final archived = <String>{};
+  bool showArchive = false;
+  bool unreadOnly = false;
   String? smsError;
   List<MessageRecord> phoneMessages = [];
-  List<MessageRecord> get displayedMessages => smsPermissionGranted && SmsBridge.supported ? phoneMessages : demo;
+  List<MessageRecord> get displayedMessages => SmsBridge.supported ? phoneMessages : demo;
   @override void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _restoreDraft();
+    if (SmsBridge.supported) SmsBridge.listen((event) async {
+      if (event == 'composeIntent') { await _takeIntent(); return; }
+      refreshDebounce?.cancel();
+      refreshDebounce = Timer(const Duration(milliseconds: 400), _refreshSms);
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _checkForUpdates(silent: true);
         _refreshSms();
+        _takeIntent();
       }
     });
   }
@@ -104,8 +124,63 @@ class _HomeScreenState extends State<HomeScreen> {
   ];
 
 
+  @override void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) { _refreshSms(); _takeIntent(); }
+    if (state == AppLifecycleState.paused) _saveDraft();
+  }
+  Future<void> _restoreDraft() async {
+    final p = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    recipient.text = p.getString('draft_to') ?? '';
+    message.text = p.getString('draft_body') ?? '';
+    archived.addAll(p.getStringList('archived') ?? []);
+    final id = p.getString('last_queue');
+    if (SmsBridge.supported && id != null) {
+      final state = await SmsBridge.sendStatus(id);
+      if (mounted && state.startsWith('send_failed')) _notice('ارسال قبلی ناموفق بود؛ متن پیش‌نویس حفظ شده است.');
+      if ((state == 'accepted_by_radio' || state == 'delivered') &&
+          recipient.text == p.getString('last_queue_to') && message.text == p.getString('last_queue_body')) {
+        recipient.clear(); message.clear(); await _saveDraft();
+        await p.remove('last_queue');
+      }
+    }
+    if (mounted) setState(() {});
+  }
+  Future<void> _saveDraft() async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString('draft_to', recipient.text);
+    await p.setString('draft_body', message.text);
+    await p.setStringList('archived', archived.toList());
+  }
+  void _notice(String text) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text))); }
+  Future<void> _takeIntent() async {
+    if (!SmsBridge.supported) return;
+    final value = await SmsBridge.composeIntent();
+    if (value == null || !mounted) return;
+    recipient.text = value['to']?.toString() ?? '';
+    message.text = value['body']?.toString() ?? '';
+    _compose();
+  }
+  Future<void> _makeDefault() async {
+    final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('پیامک‌رسان پیش‌فرض'),
+      content: const Text('پیامیار مسئول دریافت و نگهداری SMS می‌شود و می‌تواند پیام‌ها را حذف یا خوانده‌شده کند. این نسخه MMS (عکس و پیام چندرسانه‌ای) را دانلود و ارسال نمی‌کند. اگر MMS استفاده می‌کنید، برنامه فعلی را پیش‌فرض نگه دارید.'),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('فعلاً نه')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('انتخاب برای SMS'))]));
+    if (ok == true) await SmsBridge.requestDefault();
+  }
+  Future<void> _older() async {
+    if (loadingOlder || smsLoading || phoneMessages.isEmpty) return;
+    setState(() => loadingOlder = true);
+    try {
+      final rows = await SmsBridge.read(before: phoneMessages.last);
+      if (mounted) setState(() { phoneMessages.addAll(rows); hasOlder = rows.length == 500; });
+    } catch (_) { _notice('بارگذاری پیام‌های قدیمی‌تر انجام نشد.'); }
+    finally { if (mounted) setState(() => loadingOlder = false); }
+  }
+
   Future<void> _refreshSms() async {
-    if (!SmsBridge.supported || smsLoading) return;
+    if (!mounted || !SmsBridge.supported || smsLoading || loadingOlder) return;
     setState(() { smsLoading = true; smsError = null; });
     try {
       final available = await SmsBridge.available();
@@ -114,9 +189,19 @@ class _HomeScreenState extends State<HomeScreen> {
       List<MessageRecord> messages = [];
       if (available && status.canRead) {
         messages = await SmsBridge.read(limit: 500);
+        final target = phoneMessages.length;
+        var page = messages;
+        while (page.length == 500 && messages.length < target) {
+          page = await SmsBridge.read(before: messages.last);
+          messages.addAll(page);
+        }
+        hasOlder = page.length == 500;
+        sims = await SmsBridge.subscriptions();
+        if (!sims.any((s) => s['id'] == selectedSim)) selectedSim = -1;
       }
       if (!mounted) return;
       setState(() {
+        defaultSms = status.isDefault;
         smsAvailable = available;
         smsPermissionGranted = status.canRead;
         phoneMessages = messages;
@@ -134,7 +219,7 @@ class _HomeScreenState extends State<HomeScreen> {
       await SmsBridge.request();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('پس از تأیید دسترسی در اندروید، روی تازه‌سازی بزنید.')));
+        content: Text('دسترسی‌ها را در پنجره اندروید تأیید کنید؛ پیام‌ها پس از بازگشت بارگذاری می‌شوند.')));
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -179,68 +264,74 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) setState(() => checking = false);
     }
   }
-  @override void dispose() { countdown?.cancel(); recipient.dispose(); message.dispose(); super.dispose(); }
-  void _queue() {
-    if (pending != null || recipient.text.trim().isEmpty || message.text.trim().isEmpty) return;
-    final item = MessageRecord(sender: recipient.text.trim(), body: message.text.trim(),
-      date: DateTime.now(), outgoing: true);
-    Navigator.of(context).pop();
-    setState(() { pending = item; remaining = 5; tab = 0; });
-    countdown?.cancel();
-    countdown = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) { timer.cancel(); return; }
-      if (remaining > 1) { setState(() => remaining--); return; }
-      timer.cancel();
-      _submitAfterDelay(item);
-
-    });
+  @override void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    SmsBridge.stopListening(); refreshDebounce?.cancel(); countdown?.cancel();
+    recipient.dispose(); message.dispose(); super.dispose();
   }
-
-  Future<void> _submitAfterDelay(MessageRecord item) async {
+  Future<void> _queue() async {
+    if (pending != null || submitting || recipient.text.trim().isEmpty || message.text.trim().isEmpty) return;
+    submitting = true;
+    final item = MessageRecord(sender: recipient.text.trim(), body: message.text.trim(), date: DateTime.now(), outgoing: true);
+    try {
+      await _saveDraft();
+      if (SmsBridge.supported) {
+        queuedId = await SmsBridge.queue(item.sender, item.body, selectedSim);
+        final p = await SharedPreferences.getInstance();
+        await p.setString('last_queue', queuedId!);
+        await p.setString('last_queue_to', item.sender);
+        await p.setString('last_queue_body', item.body);
+      }
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      setState(() { pending = item; remaining = 5; tab = 0; });
+      final deadline = DateTime.now().add(const Duration(seconds: 5));
+      countdown?.cancel();
+      countdown = Timer.periodic(const Duration(milliseconds: 250), (timer) async {
+        if (!mounted) { timer.cancel(); return; }
+        final left = deadline.difference(DateTime.now()).inMilliseconds;
+        if (left > 0) { setState(() => remaining = (left / 1000).ceil()); return; }
+        timer.cancel();
+        setState(() => remaining = 0);
+        await _watchSend(item);
+      });
+    } on PlatformException catch (e) { _notice(e.message ?? 'ارسال ممکن نشد.'); }
+    catch (_) { _notice('ارسال ممکن نشد؛ متن پیش‌نویس حفظ شده است.'); }
+    finally { submitting = false; }
+  }
+  Future<void> _watchSend(MessageRecord item) async {
     if (SmsBridge.supported) {
       try {
-        final status = await SmsBridge.status();
-        if (!status.canSend) {
-          throw StateError('برای ارسال باید مجوز SMS داده شود.');
-        }
-        final id = await SmsBridge.send(item.sender, item.body);
-        String state = 'pending';
-        for (var attempt = 0; attempt < 6 && state == 'pending'; attempt++) {
-          await Future<void>.delayed(const Duration(milliseconds: 500));
-          state = await SmsBridge.sendStatus(id);
+        String state = 'queued';
+        for (var attempt = 0; attempt < 15 && (state == 'queued' || state == 'pending'); attempt++) {
+          state = await SmsBridge.sendStatus(queuedId!);
+          if (state == 'queued' || state == 'pending') await Future<void>.delayed(const Duration(seconds: 1));
         }
         if (!mounted) return;
-        setState(() { pending = null; remaining = 0; });
-        if (state == 'accepted_by_radio') {
-          recipient.clear(); message.clear();
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('ارسال از طرف مودم گوشی تأیید شد؛ تحویل به مخاطب هنوز مشخص نیست.')));
+        if (state == 'accepted_by_radio' || state == 'delivered') {
+          recipient.clear(); message.clear(); await _saveDraft();
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove('last_queue');
+          _notice(state == 'delivered' ? 'پیام تحویل داده شد.' : 'ارسال تأیید شد؛ گزارش تحویل در گفتگو نمایش داده می‌شود.');
         } else if (state.startsWith('send_failed')) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('شبکه ارسال پیام را رد کرد؛ پیش‌نویس حفظ شد.')));
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('وضعیت ارسال هنوز نامعلوم است؛ قبل از تلاش مجدد، پیامک‌های ارسالی را بررسی کنید.')));
-        }
+          _notice('ارسال ناموفق بود؛ پیش‌نویس حفظ شده است. سیم‌کارت و مجوزها را بررسی کنید.');
+        } else { _notice('وضعیت ارسال هنوز قطعی نیست؛ پیش از ارسال مجدد، گفتگو را بررسی کنید.'); }
         await _refreshSms();
-      } catch (_) {
-        if (!mounted) return;
-        setState(() { pending = null; remaining = 0; });
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('ارسال موفق نشد؛ شماره و مجوزها را بررسی کنید. متن پیام حفظ شده است.')));
-      }
+      } catch (_) { _notice('وضعیت ارسال دریافت نشد؛ پیش از تلاش مجدد گفتگو را بررسی کنید.'); }
     } else {
-      setState(() { demo.insert(0, item); pending = null; remaining = 0; });
-      recipient.clear(); message.clear();
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('پیام فقط به فهرست نمونه افزوده شد.')));
+      demo.insert(0, item); recipient.clear(); message.clear();
+      _notice('پیام فقط به فهرست نمونه ویندوز افزوده شد.');
     }
+    if (mounted) setState(() { pending = null; remaining = 0; });
   }
-
-  void _undo() {
+  Future<void> _undo() async {
+    if (remaining <= 0) return;
+    if (SmsBridge.supported && !await SmsBridge.cancel(queuedId!)) {
+      _notice('مهلت لغو تمام شده است.'); return;
+    }
     countdown?.cancel();
-    setState(() { pending = null; remaining = 0; });
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ارسال نمونه لغو شد.')));
+    if (mounted) setState(() { pending = null; remaining = 0; });
+    _notice('ارسال لغو شد؛ متن در پیش‌نویس باقی ماند.');
   }
   void _compose() {
     if (pending != null) return;
@@ -251,13 +342,19 @@ class _HomeScreenState extends State<HomeScreen> {
           Text('پیام جدید', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 6),
           Text(SmsBridge.supported
-              ? 'ارسال واقعی از سیم‌کارت پیش‌فرض پس از ۵ ثانیه و با مجوز اندروید انجام می‌شود.'
+              ? 'ارسال SMS با هزینه اپراتور؛ تا ۵ ثانیه قابل لغو است. در پس‌زمینه ممکن است اندروید ارسال را به تأخیر بیندازد.'
               : 'ارسال در نسخه ویندوز فعلاً فقط نمایشی است.'),
           const SizedBox(height: 16),
-          TextField(controller: recipient, keyboardType: TextInputType.phone,
+          if (SmsBridge.supported && sims.isNotEmpty)
+            DropdownButtonFormField<int>(initialValue: selectedSim,
+              decoration: const InputDecoration(labelText: 'سیم‌کارت ارسال'),
+              items: sims.map((s) => DropdownMenuItem<int>(value: s['id'] as int, child: Text(s['label'].toString()))).toList(),
+              onChanged: (v) => selectedSim = v ?? -1),
+          const SizedBox(height: 12),
+          TextField(controller: recipient, textDirection: TextDirection.ltr, onChanged: (_) => _saveDraft(), keyboardType: TextInputType.phone,
             decoration: const InputDecoration(labelText: 'شماره گیرنده', prefixIcon: Icon(Icons.person_outline))),
           const SizedBox(height: 12),
-          TextField(controller: message, minLines: 3, maxLines: 5,
+          TextField(controller: message, onChanged: (_) => _saveDraft(), maxLength: 2000, minLines: 3, maxLines: 5,
             decoration: const InputDecoration(labelText: 'متن پیام')),
           const SizedBox(height: 16),
           FilledButton.icon(onPressed: _queue, icon: const Icon(Icons.send_outlined),
@@ -320,7 +417,9 @@ class _HomeScreenState extends State<HomeScreen> {
       to: searchRange == null ? null : DateTime(searchRange!.end.year,
         searchRange!.end.month, searchRange!.end.day, 23, 59, 59, 999)).where(
       (m) => filter == null || MessageLogic.category(m) == filter).toList();
-    final conversations = ConversationLogic.group(entries);
+    final conversations = ConversationLogic.group(entries).where((c) =>
+      archived.contains(ConversationLogic.normalize(c.address)) == showArchive &&
+      (!unreadOnly || c.messages.any((m) => !m.read && !m.outgoing))).toList();
     return ListView(padding: const EdgeInsets.fromLTRB(16, 10, 16, 100), children: [
       Container(padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
@@ -349,14 +448,25 @@ class _HomeScreenState extends State<HomeScreen> {
                   ? 'پیامک‌های گوشی • فقط روی دستگاه'
                   : smsAvailable ? 'برای دیدن پیامک‌های خود دسترسی را فعال کنید.'
                       : 'این گوشی قابلیت پیامک ندارد.')),
-          if (!smsPermissionGranted && smsAvailable)
-            TextButton(onPressed: _requestSmsPermission, child: const Text('فعال‌سازی')),
+          if (smsAvailable)
+            TextButton(onPressed: _requestSmsPermission, child: Text(smsPermissionGranted ? 'مجوزها' : 'فعال‌سازی')),
           IconButton(tooltip: 'تازه‌سازی پیامک‌ها', onPressed: _refreshSms,
             icon: const Icon(Icons.refresh)),
         ]))),
+        if (smsAvailable && !defaultSms)
+          Card(child: ListTile(title: const Text('فعال‌سازی مدیریت کامل SMS'),
+            subtitle: const Text('دریافت پس‌زمینه، حذف و خوانده‌شده؛ نیازمند انتخاب پیش‌فرض'),
+            trailing: const Icon(Icons.chevron_left), onTap: _makeDefault)),
         if (smsError != null) Padding(padding: const EdgeInsets.all(8),
           child: Text(smsError!, style: const TextStyle(color: Colors.red))),
       ],
+      const SizedBox(height: 12),
+      Wrap(spacing: 8, children: [
+        FilterChip(label: const Text('خوانده‌نشده'), selected: unreadOnly, onSelected: (v) => setState(() => unreadOnly = v)),
+        FilterChip(label: const Text('بایگانی'), selected: showArchive, onSelected: (v) => setState(() => showArchive = v)),
+      ]),
+      if (hasOlder) TextButton.icon(onPressed: loadingOlder ? null : _older,
+        icon: const Icon(Icons.history), label: Text(loadingOlder ? 'در حال بارگذاری...' : 'بارگذاری پیام‌های قدیمی‌تر برای نمایش و جستجو')),
       const SizedBox(height: 17),
       TextField(onChanged: (v) => setState(() => query = v),
         decoration: const InputDecoration(
@@ -396,8 +506,8 @@ class _HomeScreenState extends State<HomeScreen> {
         Card(color: Theme.of(context).colorScheme.tertiaryContainer,
           child: Padding(padding: const EdgeInsets.all(12), child: Row(children: [
             const Icon(Icons.schedule_send_outlined), const SizedBox(width: 8),
-            Expanded(child: Text('ارسال نمونه تا $remaining ثانیه دیگر')),
-            TextButton(onPressed: _undo, child: const Text('لغو ارسال')),
+            Expanded(child: Text(remaining > 0 ? 'ارسال تا $remaining ثانیه دیگر' : 'در انتظار تأیید ارسال…')),
+            TextButton(onPressed: remaining > 0 ? _undo : null, child: const Text('لغو ارسال')),
           ]))),
       ],
       const SizedBox(height: 18),
@@ -417,7 +527,7 @@ class _HomeScreenState extends State<HomeScreen> {
           leading: CircleAvatar(
             backgroundColor: Theme.of(context).colorScheme.primaryContainer,
             child: Icon(_icon(MessageLogic.category(m)))),
-          title: Text(m.sender, style: const TextStyle(fontWeight: FontWeight.bold)),
+          title: Text('${m.sender}${conversation.messages.any((m) => !m.read && !m.outgoing) ? ' • جدید' : ''}', style: const TextStyle(fontWeight: FontWeight.bold)),
           subtitle: Text(widget.settings.hideText ? 'متن پیام مخفی است' :
             conversation.count > 1 ? '${m.body} • ${conversation.count} پیام' : m.body,
             maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -433,6 +543,10 @@ class _HomeScreenState extends State<HomeScreen> {
     ]);
   }
   void _openConversation(Conversation conversation) {
+    if (defaultSms) {
+      final ids = conversation.messages.where((m) => m.id != null && !m.read).map((m) => m.id!).toList();
+      if (ids.isNotEmpty) SmsBridge.markRead(ids).then((_) => _refreshSms()).catchError((Object _) { _notice('تغییر وضعیت پیام انجام نشد.'); });
+    }
     showModalBottomSheet<void>(
       context: context, isScrollControlled: true, useSafeArea: true,
       showDragHandle: true,
@@ -444,6 +558,11 @@ class _HomeScreenState extends State<HomeScreen> {
             Row(children: [
               Expanded(child: Text(conversation.address,
                 style: Theme.of(ctx).textTheme.titleLarge)),
+              IconButton(tooltip: showArchive ? 'خروج از بایگانی' : 'بایگانی', icon: const Icon(Icons.archive_outlined), onPressed: () {
+                final key = ConversationLogic.normalize(conversation.address);
+                setState(() { if (!archived.remove(key)) archived.add(key); });
+                _saveDraft(); Navigator.pop(ctx);
+              }),
               IconButton(tooltip: 'پاسخ', icon: const Icon(Icons.reply),
                 onPressed: () {
                   Navigator.pop(ctx);
@@ -471,6 +590,23 @@ class _HomeScreenState extends State<HomeScreen> {
                         borderRadius: BorderRadius.circular(16)),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         SelectableText(msg.body),
+                        Row(mainAxisSize: MainAxisSize.min, children: [
+                          IconButton(tooltip: 'کپی', icon: const Icon(Icons.copy, size: 18), onPressed: () => Clipboard.setData(ClipboardData(text: msg.body))),
+                          IconButton(tooltip: 'بازارسال', icon: const Icon(Icons.forward, size: 18), onPressed: () {
+                            Navigator.pop(ctx); recipient.clear(); message.text = msg.body; _compose();
+                          }),
+                          if (defaultSms && msg.id != null)
+                            IconButton(tooltip: 'حذف', icon: const Icon(Icons.delete_outline, size: 18), onPressed: () async {
+                              final ok = await showDialog<bool>(context: ctx, builder: (dialog) => AlertDialog(
+                                title: const Text('حذف پیام از گوشی؟'), content: const Text('این حذف دائمی است و در سایر پیامک‌رسان‌ها هم اعمال می‌شود.'),
+                                actions: [TextButton(onPressed: () => Navigator.pop(dialog, false), child: const Text('انصراف')),
+                                  FilledButton(onPressed: () => Navigator.pop(dialog, true), child: const Text('حذف'))]));
+                              if (ok != true) return;
+                              try { await SmsBridge.delete([msg.id!]); if (ctx.mounted) Navigator.pop(ctx); await _refreshSms(); }
+                              catch (_) { _notice('حذف انجام نشد؛ پیش‌فرض بودن پیامیار را بررسی کنید.'); }
+                            }),
+                        ]),
+                        if (msg.outgoing) Text(msg.type == 5 ? 'ارسال ناموفق' : msg.type == 4 || msg.type == 6 ? 'در حال ارسال' : msg.delivery == 0 ? 'تحویل داده شد' : msg.delivery >= 64 ? 'تحویل ناموفق' : 'ارسال شده • تحویل تأیید نشده'),
                         const SizedBox(height: 4),
                         Text(msg.date.toLocal().toString().substring(0, 16),
                           style: Theme.of(context).textTheme.bodySmall),
@@ -512,7 +648,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ]))),
       const SizedBox(height: 12),
       _feature(Icons.shield_outlined, 'هشدار پیام‌های مشکوک',
-        'قواعد ساده روی متن نمونه؛ شناسایی هوش مصنوعی هنوز فعال نیست.'),
+        'شناسایی نشانه‌های رایج کلاهبرداری روی دستگاه؛ هشدار قطعی نیست.'),
       const SizedBox(height: 10),
       _feature(Icons.receipt_long_outlined, 'استخراج تراکنش‌ها',
         'پردازش ریال و تومان روی دستگاه؛ نتیجه باید توسط کاربر بررسی شود.'),
@@ -587,3 +723,4 @@ class _HomeScreenState extends State<HomeScreen> {
     ]);
   }
 }
+

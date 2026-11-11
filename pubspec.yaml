@@ -1,7 +1,7 @@
 name: payamyar
-description: SMS companion preview Android and Windows
+description: Persian SMS messenger for Android
 publish_to: none
-version: 0.4.0+5
+version: 0.5.0+6
 environment:
   sdk: '>=3.4.0 <4.0.0'
 dependencies:
@@ -23,3 +23,4 @@ flutter:
     - family: Vazirmatn
       fonts:
         - asset: assets/fonts/Vazirmatn.ttf
+

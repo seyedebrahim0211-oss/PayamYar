@@ -1,10 +1,14 @@
 enum MessageCategory { personal, banking, service, advertising }
 class MessageRecord {
+  final int? id;
+  final bool read;
+  final int type;
+  final int delivery;
   final String sender;
   final String body;
   final DateTime date;
   final bool outgoing;
-  const MessageRecord({required this.sender, required this.body, required this.date, this.outgoing = false});
+  const MessageRecord({required this.sender, required this.body, required this.date, this.outgoing = false, this.id, this.read = true, this.type = 1, this.delivery = -1});
 }
 class MessageLogic {
   static MessageCategory category(MessageRecord m) {
@@ -23,3 +27,4 @@ class MessageLogic {
     source.where((m) => (term.isEmpty || ('${m.sender} ${m.body}').toLowerCase().contains(term.toLowerCase())) &&
       (from == null || !m.date.isBefore(from)) && (to == null || !m.date.isAfter(to))).toList();
 }
+
