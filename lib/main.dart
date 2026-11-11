@@ -22,8 +22,8 @@ class _PayamYarState extends State<PayamYar> {
     final p = await SharedPreferences.getInstance();
     if (!mounted) return;
     setState(() {
-      palette = (p.getInt('palette') ?? 0).clamp(0, colors.length-1);
-      mode = ThemeMode.values[(p.getInt('theme') ?? 0).clamp(0, 2)];
+      palette = (p.getInt('palette') ?? 0).clamp(0, colors.length-1).toInt();
+      mode = ThemeMode.values[(p.getInt('theme') ?? 0).clamp(0, 2).toInt()];
       scale = p.getDouble('scale') ?? 1;
       dense = p.getBool('dense') ?? false;
       privatePreview = p.getBool('privatePreview') ?? true;
@@ -164,7 +164,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ],selected:{s.mode},onSelectionChanged:(v)=>change(m:v.first)),
       const SizedBox(height:20),
       Text('اندازه نوشته‌ها: ${(s.scale*100).round()}٪'),
-      Slider(value:s.scale.clamp(.85,1.3),min:.85,max:1.3,divisions:9,onChanged:(v)=>change(sc:v)),
+      Slider(value:s.scale.clamp(.85,1.3).toDouble(),min:.85,max:1.3,divisions:9,onChanged:(v)=>change(sc:v)),
       SwitchListTile(title:const Text('چیدمان فشرده'),value:s.dense,onChanged:(v)=>change(d:v)),
       SwitchListTile(title:const Text('مخفی‌کردن پیش‌نمایش پیام'),value:s.privatePreview,onChanged:(v)=>change(hide:v)),
       const SizedBox(height:15),
