@@ -1,7 +1,7 @@
 name: payamyar
-description: Persian SMS manager - Honar Mardomi (development preview)
+description: Persian SMS manager development preview
 publish_to: none
-version: 0.2.0+2
+version: 0.3.0+3
 environment:
   sdk: '>=3.4.0 <4.0.0'
 dependencies:
