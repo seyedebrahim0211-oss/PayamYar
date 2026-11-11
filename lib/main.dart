@@ -1,5 +1,6 @@
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'app_settings.dart';
 import 'app_store.dart';
 import 'sms_bridge.dart';
@@ -147,6 +148,9 @@ class _PayamYarState extends State<PayamYar> {
       builder: (context, _) => MaterialApp(
         title: 'پیامیار',
         debugShowCheckedModeBanner: false,
+        locale: const Locale('fa', 'IR'),
+        supportedLocales: const [Locale('fa', 'IR')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
         scaffoldMessengerKey: messenger,
         theme: _theme(Brightness.light),
         darkTheme: _theme(Brightness.dark),
