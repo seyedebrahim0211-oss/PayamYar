@@ -182,9 +182,9 @@ class SendStatusReceiver : BroadcastReceiver() {
             prefs.edit().putString(requestId, "send_failed:$resultCode").apply()
             return
         }
-        val acknowledged = prefs.getInt("$" + "{requestId}:acknowledged", 0) + 1
+        val acknowledged = prefs.getInt("$requestId:acknowledged", 0) + 1
         prefs.edit()
-            .putInt("$" + "{requestId}:acknowledged", acknowledged)
+            .putInt("$requestId:acknowledged", acknowledged)
             .putString(requestId, if (acknowledged >= parts) "accepted_by_radio" else "pending")
             .apply()
     }
