@@ -145,6 +145,7 @@ class MainActivity : FlutterActivity() {
                             "permissionStatus" -> permissionMap()
                             "readMessages" -> SmsCore.read(this, call.argument<Int>("limit") ?: 300)
                             "subscriptions" -> SmsCore.subscriptions(this)
+                            "pendingSms" -> SmsCore.pending(this)
                             "contactNames" -> contactNames(call.argument<List<String>>("addresses").orEmpty())
                             "listContacts" -> listContacts()
                             "blockNumber" -> blockNumber(call.argument<String>("address").orEmpty())
