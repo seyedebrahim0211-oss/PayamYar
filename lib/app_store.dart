@@ -604,7 +604,10 @@ class AppStore extends ChangeNotifier {
       onNotice?.call('شبکه وضعیت ارسال را تأیید نکرد؛ پیش از ارسال مجدد، پوشه پیام‌های ارسالی را بررسی کنید.');
     }
     notifyListeners();
-    await refresh();
+    // Coalesce per-recipient confirmations; a 500-recipient batch must not
+    // re-query the entire SMS inbox hundreds of times.
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 800), () => unawaited(refresh()));
   }
 
   static MessageRecord _copy(MessageRecord m, {bool? read}) => MessageRecord(
