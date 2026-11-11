@@ -165,6 +165,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
     }
     setState(() { sending = true; queuedCount = 0; });
     final failed = <String>[];
+    final queued = <PendingSend>[];
     PendingSend? lastPending;
     for (final number in targets) {
       final pending = await store.send(number, text);
@@ -172,6 +173,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
         failed.add(number);
       } else {
         lastPending = pending;
+        if (pending != null) queued.add(pending);
         if (mounted) setState(() => queuedCount++);
       }
     }
@@ -213,7 +215,17 @@ class _ComposeScreenState extends State<ComposeScreen> {
       ..showSnackBar(SnackBar(
         content: Text('${targets.length - failed.length} پیامک در صف ارسال قرار گرفت. '
           '${failed.isEmpty ? 'برای پیگیری وضعیت، گفتگوها را ببینید.' : '${failed.length} شماره ثبت نشد؛ متن برای تلاش مجدد محفوظ است.'}'),
-        duration: const Duration(seconds: 6),
+        duration: const Duration(seconds: 5),
+        action: queued.isEmpty ? null : SnackBarAction(
+          label: 'لغو گروه',
+          onPressed: () async {
+            var cancelled = 0;
+            for (final request in queued) {
+              if (await store.undo(request)) cancelled++;
+            }
+            store.onNotice?.call('$cancelled پیامک از صف ارسال لغو شد.');
+          },
+        ),
       ));
   }
 
