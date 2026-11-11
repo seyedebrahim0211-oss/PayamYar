@@ -111,7 +111,7 @@ void main() {
     await tester.pump();
     await tester.longPress(find.byTooltip('ارسال (لمس طولانی: ارسال زمان‌دار)'));
     await tester.pumpAndSettle();
-    expect(find.text('انتخاب روز ارسال'), findsWidgets);
+    expect(find.byType(DatePickerDialog), findsOneWidget);
   });
 
   testWidgets('Message composer exposes up to 500 recipients', (tester) async {
