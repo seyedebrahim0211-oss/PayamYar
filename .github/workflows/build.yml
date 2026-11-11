@@ -7,6 +7,9 @@ name: PayamYar Android and Windows
     branches: [main]
 permissions:
   contents: read
+concurrency:
+  group: payamyar-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   analyze:
     runs-on: ubuntu-latest
@@ -28,6 +31,7 @@ jobs:
   android:
     needs: analyze
     runs-on: ubuntu-latest
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
