@@ -13,7 +13,8 @@ class PendingSend {
   final String to;
   final String body;
   final DateTime deadline;
-  PendingSend(this.id, this.to, this.body, this.deadline);
+  final bool scheduled;
+  PendingSend(this.id, this.to, this.body, this.deadline, {this.scheduled = false});
 }
 
 /// Per-conversation values computed once while messages are grouped, so list rows are cheap to draw.
@@ -111,6 +112,18 @@ class AppStore extends ChangeNotifier {
       SmsBridge.listen(_onNativeEvent);
       await checkPermissions();
       if (permissions.canRead) unawaited(loadAll());
+      try {
+        final queued = await SmsBridge.pending();
+        for (final item in queued) {
+          final due = DateTime.fromMillisecondsSinceEpoch((item['due'] as num).toInt());
+          if (due.isAfter(DateTime.now())) {
+            final pending = PendingSend(item['id'] as String, item['to'] as String,
+              item['body'] as String, due, scheduled: item['scheduled'] == true);
+            pendingSends.add(pending);
+            unawaited(_watch(pending));
+          }
+        }
+      } catch (_) { /* A queue read failure must not block the inbox. */ }
       unawaited(checkForUpdate());
     } else {
       messages = _sample();
@@ -520,7 +533,7 @@ class AppStore extends ChangeNotifier {
   }
 
   /// Queues an SMS with a 5-second undo window. Returns null if sending failed to start.
-  Future<PendingSend?> send(String to, String body) async {
+  Future<PendingSend?> send(String to, String body, {DateTime? scheduledAt}) async {
     final text = body.trim();
     final target = to.trim();
     if (text.isEmpty || target.isEmpty) return null;
@@ -531,8 +544,16 @@ class AppStore extends ChangeNotifier {
       return null;
     }
     try {
-      final id = await SmsBridge.queue(target, text, selectedSim);
-      final pending = PendingSend(id, target, text, DateTime.now().add(const Duration(seconds: 5)));
+      final now = DateTime.now();
+      final delay = scheduledAt == null
+          ? const Duration(seconds: 5)
+          : scheduledAt.difference(now);
+      if (delay.inMilliseconds < 5000 || delay > const Duration(days: 30)) {
+        onNotice?.call('زمان ارسال را بین ۵ ثانیه تا ۳۰ روز آینده تنظیم کنید.');
+        return null;
+      }
+      final id = await SmsBridge.queue(target, text, selectedSim, delay: delay);
+      final pending = PendingSend(id, target, text, now.add(delay), scheduled: scheduledAt != null);
       pendingSends.add(pending);
       notifyListeners();
       unawaited(_watch(pending));
@@ -559,14 +580,15 @@ class AppStore extends ChangeNotifier {
     final wait = p.deadline.difference(DateTime.now());
     if (wait > Duration.zero) await Future<void>.delayed(wait);
     var state = 'queued';
-    for (var i = 0; i < 25 && (state == 'queued' || state == 'pending'); i++) {
+    for (var i = 0; i < 120 && (state == 'queued' || state == 'pending'); i++) {
       try {
         state = await SmsBridge.sendStatus(p.id);
       } catch (_) {
         break;
       }
       if (state == 'cancelled') break;
-      if (state == 'queued' || state == 'pending') await Future<void>.delayed(const Duration(milliseconds: 600));
+      if (state == 'queued' || state == 'pending') await Future<void>.delayed(
+        p.scheduled ? const Duration(seconds: 3) : const Duration(milliseconds: 600));
     }
     pendingSends.remove(p);
     if (state.startsWith('send_failed')) {
@@ -576,6 +598,8 @@ class AppStore extends ChangeNotifier {
           : 'ارسال پیامک انجام نشد: $reason');
     } else if (state == 'delivery_failed') {
       onNotice?.call('گزارش تحویل پیامک ناموفق است؛ ممکن است پیام در شبکه پذیرفته شده باشد.');
+    } else if (state == 'send_unconfirmed') {
+      onNotice?.call('شبکه وضعیت ارسال را تأیید نکرد؛ پیش از ارسال مجدد، پوشه پیام‌های ارسالی را بررسی کنید.');
     }
     notifyListeners();
     await refresh();
