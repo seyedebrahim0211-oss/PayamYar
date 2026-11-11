@@ -345,7 +345,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _compose() {
     if (pending != null) return;
     showModalBottomSheet<void>(context: context, isScrollControlled: true, showDragHandle: true,
-      builder: (ctx) => Padding(
+      builder: (ctx) => SingleChildScrollView(child: Padding(
         padding: EdgeInsets.fromLTRB(18, 8, 18, MediaQuery.viewInsetsOf(ctx).bottom + 24),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Text('پیام جدید', style: Theme.of(context).textTheme.titleLarge),
@@ -373,7 +373,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           const SizedBox(height: 16),
           FilledButton.icon(onPressed: _queue, icon: const Icon(Icons.send_outlined),
             label: const Text('ارسال با فرصت لغو ۵ ثانیه‌ای')),
-        ])));
+        ]))));
   }
   @override Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 800;
