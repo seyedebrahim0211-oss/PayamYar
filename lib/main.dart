@@ -5,6 +5,7 @@ import 'message_logic.dart';
 import 'update_service.dart';
 import 'brand_mark.dart';
 import 'finance_logic.dart';
+import 'sms_bridge.dart';
 
 void main() => runApp(const PayamYar());
 const brand = Color(0xFF087F81);
@@ -76,10 +77,19 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int tab = 0; String query = ''; MessageCategory? filter;
   bool checking = false;
+  bool smsLoading = false;
+  bool smsPermissionGranted = false;
+  bool smsAvailable = false;
+  String? smsError;
+  List<MessageRecord> phoneMessages = [];
+  List<MessageRecord> get displayedMessages => smsPermissionGranted && SmsBridge.supported ? phoneMessages : demo;
   @override void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _checkForUpdates(silent: true);
+      if (mounted) {
+        _checkForUpdates(silent: true);
+        _refreshSms();
+      }
     });
   }
   final recipient = TextEditingController(), message = TextEditingController();
@@ -90,6 +100,44 @@ class _HomeScreenState extends State<HomeScreen> {
     MessageRecord(sender:'اپراتور', body:'بسته اینترنت شما فعال شد.', date:DateTime(2026,11,10)),
     MessageRecord(sender:'فروشگاه نمونه', body:'تخفیف ویژه امروز؛ تبلیغ آزمایشی.', date:DateTime(2026,11,9)),
   ];
+
+
+  Future<void> _refreshSms() async {
+    if (!SmsBridge.supported || smsLoading) return;
+    setState(() { smsLoading = true; smsError = null; });
+    try {
+      final available = await SmsBridge.available();
+      final status = await SmsBridge.status();
+      if (!mounted) return;
+      List<MessageRecord> messages = [];
+      if (available && status.canRead) {
+        messages = await SmsBridge.read(limit: 500);
+      }
+      if (!mounted) return;
+      setState(() {
+        smsAvailable = available;
+        smsPermissionGranted = status.canRead;
+        phoneMessages = messages;
+      });
+    } catch (_) {
+      if (mounted) setState(() => smsError = 'دریافت پیامک از گوشی ممکن نشد.');
+    } finally {
+      if (mounted) setState(() => smsLoading = false);
+    }
+  }
+
+  Future<void> _requestSmsPermission() async {
+    if (!SmsBridge.supported) return;
+    try {
+      await SmsBridge.request();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('پس از تأیید دسترسی در اندروید، روی تازه‌سازی بزنید.')));
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('درخواست مجوز پیامک انجام نشد.')));
+    }
+  }
 
   Future<void> _checkForUpdates({bool silent = false}) async {
     if (checking) return;
@@ -139,12 +187,40 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) { timer.cancel(); return; }
       if (remaining > 1) { setState(() => remaining--); return; }
       timer.cancel();
+      _submitAfterDelay(item);
+
+    });
+  }
+
+  Future<void> _submitAfterDelay(MessageRecord item) async {
+    if (SmsBridge.supported) {
+      try {
+        final status = await SmsBridge.status();
+        if (!status.canSend) {
+          throw StateError('برای ارسال باید مجوز SMS داده شود.');
+        }
+        final id = await SmsBridge.send(item.sender, item.body);
+        if (!mounted) return;
+        setState(() { pending = null; remaining = 0; });
+        recipient.clear(); message.clear();
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('پیام به اندروید تحویل داده شد (درخواست $id). این به معنی تحویل به مخاطب نیست.')));
+        await Future<void>.delayed(const Duration(milliseconds: 800));
+        if (mounted) await _refreshSms();
+      } catch (_) {
+        if (!mounted) return;
+        setState(() { pending = null; remaining = 0; });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('ارسال موفق نشد؛ شماره و مجوزها را بررسی کنید. متن پیام حفظ شده است.')));
+      }
+    } else {
       setState(() { demo.insert(0, item); pending = null; remaining = 0; });
       recipient.clear(); message.clear();
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('پیام به فهرست نمونه اضافه شد؛ SMS واقعی ارسال نشد.')));
-    });
+        content: Text('پیام فقط به فهرست نمونه افزوده شد.')));
+    }
   }
+
   void _undo() {
     countdown?.cancel();
     setState(() { pending = null; remaining = 0; });
@@ -158,7 +234,9 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Text('پیام جدید', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 6),
-          const Text('ارسال در این نسخه فقط نمایشی است.'),
+          Text(SmsBridge.supported
+              ? 'ارسال واقعی از سیم‌کارت پیش‌فرض پس از ۵ ثانیه و با مجوز اندروید انجام می‌شود.'
+              : 'ارسال در نسخه ویندوز فعلاً فقط نمایشی است.'),
           const SizedBox(height: 16),
           TextField(controller: recipient, keyboardType: TextInputType.phone,
             decoration: const InputDecoration(labelText: 'شماره گیرنده', prefixIcon: Icon(Icons.person_outline))),
@@ -167,7 +245,7 @@ class _HomeScreenState extends State<HomeScreen> {
             decoration: const InputDecoration(labelText: 'متن پیام')),
           const SizedBox(height: 16),
           FilledButton.icon(onPressed: _queue, icon: const Icon(Icons.send_outlined),
-            label: const Text('ارسال نمونه (لغو تا ۵ ثانیه)')),
+            label: const Text('ارسال با فرصت لغو ۵ ثانیه‌ای')),
         ])));
   }
   @override Widget build(BuildContext context) {
@@ -221,7 +299,7 @@ class _HomeScreenState extends State<HomeScreen> {
     MessageCategory.advertising => Icons.campaign_outlined,
   };
   Widget _messages() {
-    final entries = MessageLogic.search(demo, query).where(
+    final entries = MessageLogic.search(displayedMessages, query).where(
       (m) => filter == null || MessageLogic.category(m) == filter).toList();
     return ListView(padding: const EdgeInsets.fromLTRB(16, 10, 16, 100), children: [
       Container(padding: const EdgeInsets.all(24),
@@ -237,9 +315,28 @@ class _HomeScreenState extends State<HomeScreen> {
             SizedBox(height: 7),
             Text('سادگی امروز، اصالت دیروز', style: TextStyle(color: Color(0xFFF5DBA5))),
             SizedBox(height: 10),
-            Text('نسخه نمایشی • پیام‌های نمونه', style: TextStyle(color: Colors.white70, fontSize: 11)),
+            Text('پیامیار • اطلاعات روی دستگاه شما', style: TextStyle(color: Colors.white70, fontSize: 11)),
           ]),
         ])),
+      if (SmsBridge.supported) ...[
+        const SizedBox(height: 12),
+        Card(child: Padding(padding: const EdgeInsets.all(12), child: Row(children: [
+          Icon(smsPermissionGranted ? Icons.verified_user_outlined : Icons.shield_outlined),
+          const SizedBox(width: 9),
+          Expanded(child: Text(smsLoading
+              ? 'در حال خواندن پیامک‌ها...'
+              : smsPermissionGranted
+                  ? 'پیامک‌های گوشی • فقط روی دستگاه'
+                  : smsAvailable ? 'برای دیدن پیامک‌های خود دسترسی را فعال کنید.'
+                      : 'این گوشی قابلیت پیامک ندارد.')),
+          if (!smsPermissionGranted && smsAvailable)
+            TextButton(onPressed: _requestSmsPermission, child: const Text('فعال‌سازی')),
+          IconButton(tooltip: 'تازه‌سازی پیامک‌ها', onPressed: _refreshSms,
+            icon: const Icon(Icons.refresh)),
+        ]))),
+        if (smsError != null) Padding(padding: const EdgeInsets.all(8),
+          child: Text(smsError!, style: const TextStyle(color: Colors.red))),
+      ],
       const SizedBox(height: 17),
       TextField(onChanged: (v) => setState(() => query = v),
         decoration: const InputDecoration(
@@ -266,7 +363,7 @@ class _HomeScreenState extends State<HomeScreen> {
       const SizedBox(height: 18),
       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
         Text('گفتگوها', style: Theme.of(context).textTheme.titleLarge),
-        Text('${entries.length} پیام نمونه',
+        Text('${entries.length} پیام',
           style: Theme.of(context).textTheme.bodySmall),
       ]),
       const SizedBox(height: 12),
@@ -291,7 +388,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   Text(m.sender, style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 14), Text(m.body),
                   const SizedBox(height: 16),
-                  const Text('این داده نمایشی است؛ SMS واقعی خوانده نشده است.'),
+                  Text(SmsBridge.supported && smsPermissionGranted
+                      ? 'این پیامک از حافظه پیامک گوشی خوانده شده است.'
+                      : 'این داده نمایشی است.'),
                 ]))),
         )),
         const SizedBox(height: 9),
@@ -306,24 +405,24 @@ class _HomeScreenState extends State<HomeScreen> {
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
       subtitle: Text(subtitle)));
   Widget _reports() {
-    final entries = FinanceLogic.extract(demo);
+    final entries = FinanceLogic.extract(displayedMessages);
     final deposits = FinanceLogic.total(entries, FinanceKind.deposit);
     final withdrawals = FinanceLogic.total(entries, FinanceKind.withdrawal);
     final privateMode = widget.settings.hideText;
     return ListView(padding: const EdgeInsets.all(18), children: [
       Text('گزارش‌های هوشمند', style: Theme.of(context).textTheme.headlineSmall),
       const SizedBox(height: 7),
-      const Text('تحلیل محلی پیام‌های نمونه؛ هیچ پیامکی به سرور ارسال نمی‌شود.'),
+      const Text('تحلیل محلی پیام‌های در دسترس؛ هیچ پیامکی به سرور ارسال نمی‌شود.'),
       const SizedBox(height: 18),
       Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(
         crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('خلاصه مالی آزمایشی', style: Theme.of(context).textTheme.titleLarge),
+          Text('خلاصه مالی برآوردی', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 13),
           Text('مجموع واریز: ${privateMode ? '••••' : FinanceLogic.formatTomans(deposits)}'),
           const SizedBox(height: 7),
           Text('مجموع برداشت: ${privateMode ? '••••' : FinanceLogic.formatTomans(withdrawals)}'),
           const SizedBox(height: 10),
-          Text('${entries.length} تراکنش نمونه شناسایی شد.',
+          Text('${entries.length} تراکنش با قواعد ابتدایی شناسایی شد.',
             style: Theme.of(context).textTheme.bodySmall),
         ]))),
       const SizedBox(height: 12),
