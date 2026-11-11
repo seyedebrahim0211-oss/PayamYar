@@ -134,8 +134,10 @@ class _HomeScreenState extends State<HomeScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('پس از تأیید دسترسی در اندروید، روی تازه‌سازی بزنید.')));
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('درخواست مجوز پیامک انجام نشد.')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('درخواست مجوز پیامک انجام نشد.')));
+      }
     }
   }
 
