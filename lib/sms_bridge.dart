@@ -41,11 +41,29 @@ class SmsBridge {
     }).toList();
   }
 
+  static String normalizeNumber(String value) {
+    const persian = '۰۱۲۳۴۵۶۷۸۹';
+    const arabic = '٠١٢٣٤٥٦٧٨٩';
+    return value.split('').map((c) {
+      final p = persian.indexOf(c);
+      if (p >= 0) return p.toString();
+      final a = arabic.indexOf(c);
+      return a >= 0 ? a.toString() : c;
+    }).join();
+  }
+
+  static Future<String> sendStatus(String requestId) async {
+    if (!supported) return 'unsupported';
+    return await _channel.invokeMethod<String>('sendStatus', {
+      'requestId': requestId,
+    }) ?? 'unknown';
+  }
+
   /// Returns Android's request identifier, not confirmation of delivery.
   static Future<String> send(String to, String body) async {
     if (!supported) throw UnsupportedError('Sending requires Android');
     return await _channel.invokeMethod<String>('sendSms', {
-      'to': to, 'body': body,
+      'to': normalizeNumber(to), 'body': body,
     }) ?? '';
   }
 }
