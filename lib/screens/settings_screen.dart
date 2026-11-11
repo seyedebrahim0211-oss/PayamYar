@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../app_settings.dart';
 import '../app_store.dart';
 import '../jalali.dart';
@@ -19,6 +20,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool checking = false;
+  late final Future<PackageInfo> packageInfo = PackageInfo.fromPlatform();
   AppStore get store => widget.store;
   AppSettings get settings => widget.settings;
 
@@ -28,7 +30,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     setState(() => checking = false);
     if (!found) {
-      store.onNotice?.call('شما آخرین نسخه پیامیار را دارید.');
+      if (!store.updateCheckFailed) {
+        store.onNotice?.call('شما آخرین نسخه پیامیار را دارید.');
+      }
       return;
     }
     final info = store.update!;
@@ -170,10 +174,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: const Text('وب‌سایت پیامیار'),
                 subtitle: const Text('honarmardomi.ir/payamyar'),
                 onTap: () => UpdateService.openDownload('https://honarmardomi.ir/payamyar/')),
-              const ListTile(
-                leading: Icon(Icons.info_outline_rounded),
-                title: Text('پیامیار نسخه ۱٫۱'),
-                subtitle: Text('از خانواده هنر مردمی • پیام‌های شما فقط روی گوشی خودتان است')),
+              FutureBuilder<PackageInfo>(
+                future: packageInfo,
+                builder: (context, snapshot) => ListTile(
+                  leading: const Icon(Icons.info_outline_rounded),
+                  title: Text(snapshot.hasData
+                      ? 'پیامیار نسخه ${Jalali.digits(snapshot.data!.version)}'
+                      : 'درباره پیامیار'),
+                  subtitle: const Text('از خانواده هنر مردمی • پیام‌های شما فقط روی گوشی خودتان است'),
+                ),
+              ),
             ])),
           ]),
         );
