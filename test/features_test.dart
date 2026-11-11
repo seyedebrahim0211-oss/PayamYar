@@ -100,6 +100,29 @@ void main() {
     expect(find.byIcon(Icons.push_pin_rounded), findsOneWidget);
   });
 
+  testWidgets('Conversation has a right-hand hold-to-schedule send control', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(const PayamYar());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('09121234567'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('ارسال (لمس طولانی: ارسال زمان‌دار)'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'یادآوری');
+    await tester.pump();
+    await tester.longPress(find.byTooltip('ارسال (لمس طولانی: ارسال زمان‌دار)'));
+    await tester.pumpAndSettle();
+    expect(find.text('انتخاب روز ارسال'), findsWidgets);
+  });
+
+  testWidgets('Message composer exposes up to 500 recipients', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(const PayamYar());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('پیام جدید'));
+    await tester.pumpAndSettle();
+    expect(find.text('0 از 500'), findsOneWidget);
+  });
+
   testWidgets('text editor sheet rewrites the reply box', (tester) async {
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(const PayamYar());
@@ -112,7 +135,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('ویرایش متن'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('جایگزینی متن'));
+    await tester.tap(find.text('جایگزینی با متن نهایی'));
     await tester.pumpAndSettle();
     expect(find.text('من می‌خواهم بیام'), findsOneWidget);
   });
