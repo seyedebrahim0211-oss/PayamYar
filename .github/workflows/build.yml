@@ -40,12 +40,42 @@ jobs:
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/main/ofl/vazirmatn/Vazirmatn%5Bwght%5D.ttf' --output assets/fonts/Vazirmatn.ttf
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/main/ofl/vazirmatn/OFL.txt' --output assets/fonts/OFL.txt
       - run: flutter create --project-name payamyar --org ir.honarmardomi --platforms android --no-overwrite .
+      - name: Apply PayamYar Gradle settings (minSdk, release signing)
+        shell: bash
+        run: |
+          f=android/app/build.gradle.kts
+          if [ -f "$f" ]; then
+            printf '\napply(from = "payamyar.gradle")\n' >> "$f"
+          else
+            f=android/app/build.gradle
+            printf "\napply from: 'payamyar.gradle'\n" >> "$f"
+          fi
+          tail -n 3 "$f"
       - run: flutter pub get
-      - run: flutter build apk --debug
+      - name: Build APK (release if signing secrets exist, otherwise debug)
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.PAYAMYAR_KEYSTORE_BASE64 }}
+          PAYAMYAR_KEYSTORE_PASSWORD: ${{ secrets.PAYAMYAR_KEYSTORE_PASSWORD }}
+          PAYAMYAR_KEY_ALIAS: ${{ secrets.PAYAMYAR_KEY_ALIAS }}
+          PAYAMYAR_KEY_PASSWORD: ${{ secrets.PAYAMYAR_KEY_PASSWORD }}
+        run: |
+          mkdir -p dist
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            export PAYAMYAR_KEYSTORE_PATH="$RUNNER_TEMP/payamyar-release.jks"
+            echo "$KEYSTORE_BASE64" | base64 --decode > "$PAYAMYAR_KEYSTORE_PATH"
+            flutter build apk --release
+            cp build/app/outputs/flutter-apk/app-release.apk dist/PayamYar-release.apk
+            rm -f "$PAYAMYAR_KEYSTORE_PATH"
+          else
+            echo "::warning::Signing secrets are not set; building a debug APK (each run uses a different debug key)."
+            flutter build apk --debug
+            cp build/app/outputs/flutter-apk/app-debug.apk dist/PayamYar-debug.apk
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: PayamYar-Android-preview
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          path: dist/*.apk
   windows:
     needs: analyze
     runs-on: windows-latest

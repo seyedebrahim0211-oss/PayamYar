@@ -2,6 +2,7 @@
 
 جزئیات امکانات، راه‌اندازی و محدودیت‌ها: [راهنمای SMS](docs/ANDROID_SMS_FA.md).
 آزمون‌های گوشی واقعی: [چک‌لیست پذیرش](docs/SMS_DEVICE_TESTS.md).
+امضای ثابت نسخه اندروید: [راهنمای امضا](docs/RELEASE_SIGNING_FA.md).
 
 # پیامیار | PayamYar
 

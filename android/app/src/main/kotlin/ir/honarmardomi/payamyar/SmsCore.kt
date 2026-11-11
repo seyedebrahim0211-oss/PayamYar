@@ -57,7 +57,27 @@ object SmsCore {
         Intent(c, QueueReceiver::class.java).setData(Uri.parse("payamyar:queue/$id")).putExtra("id", id),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     private fun arm(c: Context, id: String, due: Long) {
-        c.getSystemService(AlarmManager::class.java).setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, due, alarmIntent(c, id))
+        val alarms = c.getSystemService(AlarmManager::class.java)
+        // Exact alarm keeps the 5 s undo window honest when the app is in the background.
+        // Android 12+ may deny exact alarms (default on Android 14); then fall back to an inexact one.
+        if (Build.VERSION.SDK_INT < 31 || alarms.canScheduleExactAlarms())
+            alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, due, alarmIntent(c, id))
+        else alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, due, alarmIntent(c, id))
+    }
+    const val ACTION_DRAIN = "ir.honarmardomi.payamyar.DRAIN_INCOMING"
+    private fun incomingDir(c: Context) = java.io.File(c.filesDir, "incoming_sms")
+    fun hasPendingIncoming(c: Context) = incomingDir(c).listFiles()?.any { it.extension == "json" } == true
+    /** Retry saved incoming SMS that could not be written to the provider, without needing the app to open. */
+    fun scheduleDrain(c: Context, delayMs: Long) {
+        val intent = PendingIntent.getBroadcast(c, 1, Intent(c, QueueReceiver::class.java).setAction(ACTION_DRAIN),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        c.getSystemService(AlarmManager::class.java)
+            .setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + delayMs, intent)
+    }
+    fun drainAndReschedule(c: Context, retryMs: Long) {
+        if (!isDefault(c)) return
+        drainIncoming(c)
+        if (hasPendingIncoming(c)) scheduleDrain(c, retryMs)
     }
     @Synchronized fun cancel(c: Context, id: String): Boolean {
         if (status(c, id) != "queued") return false
@@ -151,7 +171,7 @@ object SmsCore {
         if (next.startsWith("send_failed")) notify(c, id.hashCode(), "ارسال پیامک ناموفق بود", "برای بررسی پیام ارسال‌نشده، پیامیار را باز کنید.")
     }
     @Synchronized fun drainIncoming(c: Context) {
-        val dir = java.io.File(c.filesDir, "incoming_sms")
+        val dir = incomingDir(c)
         dir.listFiles()?.filter { it.extension == "json" }?.forEach { file ->
             try {
                 val item = JSONObject(file.readText())
@@ -186,12 +206,13 @@ object SmsCore {
             .put("body", parts.joinToString("") { it.messageBody ?: "" })
             .put("sent", parts[0].timestampMillis).put("received", System.currentTimeMillis())
             .put("sim", intent.getIntExtra("subscription", -1))
-        val dir = java.io.File(c.filesDir, "incoming_sms").apply { mkdirs() }
+        val dir = incomingDir(c).apply { mkdirs() }
         val file = android.util.AtomicFile(java.io.File(dir, "${UUID.randomUUID()}.json"))
         val output = file.startWrite()
         try { output.write(item.toString().toByteArray(Charsets.UTF_8)); file.finishWrite(output) }
         catch (e: Exception) { file.failWrite(output); throw e }
         drainIncoming(c)
+        if (hasPendingIncoming(c)) scheduleDrain(c, 60_000)
     }
     fun mutate(c: Context, ids: List<Number>, delete: Boolean): Int {
         check(isDefault(c)) { "ابتدا پیامیار را پیامک‌رسان پیش‌فرض کنید." }
@@ -221,11 +242,27 @@ object SmsCore {
 class QueueReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val pending = goAsync()
-        Thread { try { SmsCore.dispatch(context, intent.getStringExtra("id") ?: "") } finally { pending.finish() } }.start()
+        Thread {
+            try {
+                if (intent.action == SmsCore.ACTION_DRAIN) SmsCore.drainAndReschedule(context, 15 * 60_000L)
+                else SmsCore.dispatch(context, intent.getStringExtra("id") ?: "")
+            } catch (_: Exception) {
+            } finally { pending.finish() }
+        }.start()
     }
 }
 class BootReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) { SmsCore.recover(context) }
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
+        val pending = goAsync()
+        Thread {
+            try {
+                SmsCore.recover(context)
+                SmsCore.drainAndReschedule(context, 15 * 60_000L)
+            } catch (_: Exception) {
+            } finally { pending.finish() }
+        }.start()
+    }
 }
 class SendStatusReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
