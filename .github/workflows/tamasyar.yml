@@ -34,6 +34,13 @@ jobs:
           echo "ANDROID_HOME=$ANDROID_HOME"
           ls "$ANDROID_HOME/platforms" || true
           test -f "$ANDROID_HOME/platforms/android-35/android.jar"
+      - name: Install shared Vazirmatn font from the licensed original source
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/assets
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/main/ofl/vazirmatn/Vazirmatn%5Bwght%5D.ttf' --output app/src/main/assets/Vazirmatn.ttf
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/main/ofl/vazirmatn/OFL.txt' --output app/src/main/assets/OFL.txt
+          test -s app/src/main/assets/Vazirmatn.ttf
       - name: Build test APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
       - uses: actions/upload-artifact@v4
