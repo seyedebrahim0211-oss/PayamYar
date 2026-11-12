@@ -133,6 +133,9 @@ class SmsBridge {
   static Future<void> requestBatteryExemption() => _channel.invokeMethod<bool>('requestBatteryExemption');
   static Future<void> requestExactAlarm() => _channel.invokeMethod<bool>('requestExactAlarm');
   static Future<void> openNotificationSettings() => _channel.invokeMethod<bool>('openNotificationSettings');
+  static Future<void> openNotificationChannel(String channel) async {
+    if (supported) await _channel.invokeMethod<bool>('openNotificationChannel', {'channel': channel});
+  }
   static Future<void> clearNotifications(String address) async {
     if (supported) await _channel.invokeMethod<void>('clearNotifications', {'address': address});
   }
