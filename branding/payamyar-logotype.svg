@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 220" width="640" height="220" direction="rtl">
+  <title>پیامیار — لوگوتایپ</title>
+  <defs>
+    <style>@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@600;900&amp;display=swap');
+      .word{font-family:Vazirmatn,Tahoma,sans-serif;font-weight:900;font-size:104px;fill:#0B3C44}
+      .tag{font-family:Vazirmatn,Tahoma,sans-serif;font-weight:600;font-size:25px;fill:#5B7C78}</style>
+    <linearGradient id="tile" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#12A7A2"/><stop offset=".55" stop-color="#087F81"/><stop offset="1" stop-color="#05545A"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="220" fill="#FAF8F3"/>
+  <!-- emblem tile (right side for RTL reading) -->
+  <g transform="translate(450 30)">
+    <rect width="160" height="160" rx="48" fill="url(#tile)"/>
+    <path fill="#FFFFFF" fill-opacity=".08" d="M80 12l20 20h28v28l20 20-20 20v28h-28l-20 20-20-20H32v-28L12 80l20-20V32h28z"/>
+    <g transform="translate(-1 -1) scale(1.48)">
+      <path fill="#003B3F" fill-opacity=".2" d="M42,37.5H66A10,10 0 0 1 76,47.5V59.5A10,10 0 0 1 66,69.5H64L57,78.5L56,69.5H42A10,10 0 0 1 32,59.5V47.5A10,10 0 0 1 42,37.5Z" transform="translate(-26 -27)"/>
+      <path fill="#FFFFFF" d="M42,35H66A10,10 0 0 1 76,45V57A10,10 0 0 1 66,67H64L57,76L56,67H42A10,10 0 0 1 32,57V45A10,10 0 0 1 42,35Z" transform="translate(-26 -27)"/>
+      <path fill="#087F81" d="M54,41.6L56.64,44.63L60.65,44.35L60.37,48.36L63.4,51L60.37,53.64L60.65,57.65L56.64,57.37L54,60.4L51.36,57.37L47.35,57.65L47.63,53.64L44.6,51L47.63,48.36L47.35,44.35L51.36,44.63Z" transform="translate(-26 -27)"/>
+      <circle cx="28" cy="24" r="2.6" fill="#FFFFFF"/>
+      <path fill="#FFD27A" d="M75,25Q76,33 84,34Q76,35 75,43Q74,35 66,34Q74,33 75,25Z" transform="translate(-26 -27)"/>
+    </g>
+  </g>
+  <!-- wordmark -->
+  <text class="word" x="425" y="128" text-anchor="start">پیامیار</text>
+  <path fill="#FFD27A" d="M414 30q2 14 16 16q-14 2-16 16q-2-14-16-16q14-2 16-16z"/>
+  <rect x="120" y="150" width="305" height="4" rx="2" fill="#E7C57C"/>
+  <text class="tag" x="425" y="190" text-anchor="start">پیام‌رسان هوشمند فارسی · هنر مردمی</text>
+</svg>

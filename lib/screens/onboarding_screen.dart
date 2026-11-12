@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../app_store.dart';
+import '../brand_mark.dart';
 import '../sms_bridge.dart';
 
 /// First-run pages: (1) grant SMS, contacts and notification access, (2) make PayamYar the default SMS app.
@@ -67,8 +68,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               const SizedBox(width: 6),
               _Dot(active: !permissionStep, color: scheme.primary),
             ]),
+            const SizedBox(height: 18),
+            const PayamYarLogotype(height: 48, tagline: true),
             const Spacer(),
-            const SizedBox(width: 260, height: 230, child: CustomPaint(painter: OnboardingArt())),
+            const SizedBox(width: 260, height: 210, child: CustomPaint(painter: OnboardingArt())),
             const SizedBox(height: 28),
             Text(title, textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),

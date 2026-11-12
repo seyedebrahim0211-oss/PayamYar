@@ -7,6 +7,7 @@ import '../conversation_logic.dart';
 import '../jalali.dart';
 import '../message_logic.dart';
 import '../sms_bridge.dart';
+import '../update_service.dart' show formatBytes;
 import 'compose_screen.dart';
 import 'conversation_screen.dart';
 import 'reports_screen.dart';
@@ -200,16 +201,10 @@ class _ConversationsPageState extends State<ConversationsPage> {
             title: widget.archive
                 ? const Text('بایگانی')
                 : Row(mainAxisSize: MainAxisSize.min, children: [
-                    Container(
-                      padding: const EdgeInsets.all(9),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(begin: Alignment.topRight, end: Alignment.bottomLeft,
-                          colors: [Color(0xFF12A7A2), Color(0xFF05545A)]),
-                        borderRadius: BorderRadius.circular(14)),
-                      child: const BrandMark()),
+                    const BrandTile(size: 42),
                     const SizedBox(width: 12),
                     Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                      const Text('پیامیار'),
+                      const Text('پیامیار', style: TextStyle(fontFamily: 'Vazirmatn', fontWeight: FontWeight.w900, fontSize: 21)),
                       Text(unread > 0 ? '${Jalali.digits(unread)} گفتگوی خوانده‌نشده' : 'همه پیام‌ها خوانده شده',
                         style: TextStyle(fontSize: 12, fontWeight: FontWeight.w400,
                           color: unread > 0 ? scheme.primary : scheme.onSurfaceVariant)),
@@ -351,50 +346,101 @@ class _SwipeBackground extends StatelessWidget {
   }
 }
 
-/// "New version available" card; downloads and installs inside the app.
+/// "New version available" card; downloads, verifies and opens Android's installer inside the app.
 class UpdateBanner extends StatelessWidget {
   final AppStore store;
   const UpdateBanner({super.key, required this.store});
+
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final info = store.update!;
     final progress = store.updateProgress;
+    final error = store.updateError;
+    final downloading = progress != null;
+    const ink = Colors.white;
+    final meta = [
+      'نسخه ${Jalali.digits(info.version)}',
+      if (info.sizeLabel.isNotEmpty) info.sizeLabel,
+      'از هنر مردمی',
+    ].join('  •  ');
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-      child: Card(
-        color: scheme.tertiaryContainer,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Icon(Icons.system_update_rounded, color: scheme.onTertiaryContainer),
-              const SizedBox(width: 10),
-              Expanded(child: Text('نسخه جدید پیامیار (${Jalali.digits(info.version)}) آماده است',
-                style: TextStyle(color: scheme.onTertiaryContainer, fontWeight: FontWeight.w700))),
-              if (progress == null)
-                IconButton(tooltip: 'بعداً', onPressed: store.dismissUpdate,
-                  icon: Icon(Icons.close_rounded, color: scheme.onTertiaryContainer)),
-            ]),
-            if (info.notes.isNotEmpty)
-              Padding(padding: const EdgeInsets.only(top: 4),
-                child: Text(info.notes, style: TextStyle(color: scheme.onTertiaryContainer))),
-            const SizedBox(height: 10),
-            if (progress != null) ...[
-              LinearProgressIndicator(value: progress == 0 ? null : progress,
-                borderRadius: const BorderRadius.all(Radius.circular(4))),
-              const SizedBox(height: 6),
-              Text('دریافت امن از هنر مردمی… ${Jalali.digits((progress * 100).round())}٪',
-                style: TextStyle(color: scheme.onTertiaryContainer, fontSize: 12)),
-            ] else
-              FilledButton(
-                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(44)),
-                onPressed: store.installUpdate,
-                child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(Icons.download_for_offline_rounded, size: 20),
-                  SizedBox(width: 8),
-                  Text('دریافت و نصب از داخل پیامیار'),
-                ])),
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
+      child: Semantics(
+        container: true,
+        label: 'به‌روزرسانی پیامیار',
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            gradient: const LinearGradient(begin: Alignment.topRight, end: Alignment.bottomLeft,
+              colors: [Color(0xFF0B8C8A), Color(0xFF075A61), Color(0xFF0B3C44)]),
+            boxShadow: const [BoxShadow(color: Color(0x33075A61), blurRadius: 18, offset: Offset(0, 8))],
+          ),
+          child: Stack(children: [
+            const Positioned(left: -18, top: -22, child: Opacity(opacity: .10,
+              child: Icon(Icons.auto_awesome_rounded, size: 120, color: Color(0xFFFFD27A)))),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Container(
+                    width: 44, height: 44,
+                    decoration: BoxDecoration(color: const Color(0x26FFFFFF), borderRadius: BorderRadius.circular(14)),
+                    child: Icon(error != null ? Icons.wifi_off_rounded : Icons.rocket_launch_rounded,
+                      color: const Color(0xFFFFD27A)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(error != null ? 'دریافت به‌روزرسانی کامل نشد' : 'پیامیار تازه‌تر آماده است',
+                      style: const TextStyle(color: ink, fontWeight: FontWeight.w800, fontSize: 15.5)),
+                    Text(meta, style: const TextStyle(color: Color(0xFFCFE9E4), fontSize: 12)),
+                  ])),
+                  if (!downloading)
+                    IconButton(tooltip: 'بعداً', onPressed: store.dismissUpdate,
+                      icon: const Icon(Icons.close_rounded, color: Color(0xFFCFE9E4))),
+                ]),
+                if (error != null)
+                  Padding(padding: const EdgeInsets.only(top: 10),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(color: const Color(0x33000000), borderRadius: BorderRadius.circular(12)),
+                      child: Text(error, style: const TextStyle(color: Color(0xFFFFE2D6), fontSize: 12.5, height: 1.7))))
+                else if (info.notes.isNotEmpty && !downloading)
+                  Padding(padding: const EdgeInsets.only(top: 10),
+                    child: Text(info.notes, maxLines: 4, overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Color(0xFFE6F4F1), fontSize: 13, height: 1.75))),
+                const SizedBox(height: 12),
+                if (progress != null) ...[
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      minHeight: 8,
+                      value: progress == 0 ? null : progress,
+                      color: const Color(0xFFFFD27A),
+                      backgroundColor: const Color(0x33FFFFFF)),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(children: [
+                    const Icon(Icons.verified_user_rounded, size: 15, color: Color(0xFFCFE9E4)),
+                    const SizedBox(width: 6),
+                    Expanded(child: Text(
+                      progress >= 1 ? 'در حال بررسی امضا و صحت فایل…' : 'دریافت امن… ${Jalali.digits((progress * 100).round())}٪',
+                      style: const TextStyle(color: ink, fontSize: 12.5, fontWeight: FontWeight.w600))),
+                    if (store.updateTotal > 0)
+                      Text('${formatBytes(store.updateReceived)} از ${formatBytes(store.updateTotal)}',
+                        style: const TextStyle(color: Color(0xFFCFE9E4), fontSize: 11.5)),
+                  ]),
+                ] else
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(48),
+                      backgroundColor: const Color(0xFFFFD27A),
+                      foregroundColor: const Color(0xFF3A2A05)),
+                    onPressed: store.installUpdate,
+                    icon: Icon(error != null ? Icons.refresh_rounded : Icons.download_for_offline_rounded, size: 20),
+                    label: Text(error != null ? 'تلاش دوباره' : 'دریافت و نصب به‌روزرسانی')),
+              ]),
+            ),
           ]),
         ),
       ),

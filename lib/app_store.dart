@@ -79,6 +79,11 @@ class AppStore extends ChangeNotifier {
   bool updateCheckFailed = false;
   /// null when not downloading; 0..1 while the new version downloads.
   double? updateProgress;
+  /// Bytes received / expected during an in-app update download.
+  int updateReceived = 0;
+  int updateTotal = 0;
+  /// Last update failure shown on the update card with a retry button; null when none.
+  String? updateError;
   bool updatePermissionPending = false;
   void Function(String message)? onNotice;
   VoidCallback? onComposeIntent;
@@ -144,7 +149,14 @@ class AppStore extends ChangeNotifier {
       case 'messagesPage':
         _onPage(args);
       case 'updateProgress':
-        updateProgress = ((args as num?)?.toDouble() ?? 0) / 100;
+        if (args is Map) {
+          final percent = (args['percent'] as num?)?.toInt() ?? -1;
+          updateReceived = (args['done'] as num?)?.toInt() ?? 0;
+          updateTotal = (args['total'] as num?)?.toInt() ?? 0;
+          updateProgress = percent < 0 ? 0 : percent / 100;
+        } else {
+          updateProgress = ((args as num?)?.toDouble() ?? 0) / 100;
+        }
         notifyListeners();
       case 'composeIntent':
         onComposeIntent?.call();
@@ -222,9 +234,13 @@ class AppStore extends ChangeNotifier {
       return;
     }
     updateProgress = 0;
+    updateReceived = 0;
+    updateTotal = info.sizeBytes;
+    updateError = null;
+    updateDismissed = false;
     notifyListeners();
     try {
-      final state = await SmsBridge.installUpdate(info.url, sha256: info.sha256);
+      final state = await SmsBridge.installUpdate(info.url, sha256: info.sha256, size: info.sizeBytes);
       if (state == 'needs_permission') {
         updatePermissionPending = true;
         onNotice?.call('مجوز نصب را برای پیامیار فعال کنید؛ پس از بازگشت، دریافت و نصب خودکار ادامه می‌یابد.');
@@ -233,7 +249,9 @@ class AppStore extends ChangeNotifier {
         onNotice?.call('فایل با موفقیت بررسی شد. نصب نسخه جدید را در پنجره اندروید تأیید کنید.');
       }
     } on PlatformException catch (e) {
-      onNotice?.call(e.message ?? 'به‌روزرسانی انجام نشد.');
+      updateError = e.message ?? 'به‌روزرسانی انجام نشد.';
+    } catch (_) {
+      updateError = 'به‌روزرسانی انجام نشد؛ اتصال اینترنت را بررسی و دوباره تلاش کنید.';
     } finally {
       updateProgress = null;
       notifyListeners();

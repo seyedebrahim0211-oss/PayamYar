@@ -28,4 +28,21 @@ void main() {
       expect(UpdateService.trusted('https://user:pass@honarmardomi.ir/app.apk'), isFalse);
     });
   });
+
+  group('Release metadata helpers', () {
+    test('formats sizes in Persian', () {
+      expect(formatBytes(0), '');
+      expect(formatBytes(512 * 1024), '۵۱۲ کیلوبایت');
+      expect(formatBytes(25 * 1024 * 1024 + 300 * 1024), '۲۵٫۳ مگابایت');
+    });
+    test('compares semantic versions numerically', () {
+      expect(UpdateService.compareVersions('1.6.10', '1.6.9'), greaterThan(0));
+      expect(UpdateService.compareVersions('1.6.1+20', '1.6.1'), 0);
+      expect(UpdateService.compareVersions('1.5.0', '1.6.0'), lessThan(0));
+    });
+    test('size label is empty when the site does not report a size', () {
+      const info = ReleaseInfo(version: '1.6.1', available: true, url: '', notes: '');
+      expect(info.sizeLabel, '');
+    });
+  });
 }

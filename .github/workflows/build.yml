@@ -75,6 +75,17 @@ jobs:
             -storepass "$PAYAMYAR_KEYSTORE_PASSWORD" -keypass "$PAYAMYAR_KEY_PASSWORD" \
             -dname "CN=CI Build Test Only, O=PayamYar"
           flutter build apk --release
+          # Same identity checks as the official build, so they are proven before a release relies on them.
+          aapt="$(find "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/opt/android-sdk}}/build-tools" -maxdepth 2 -type f -name aapt2 | sort -V | tail -n 1)"
+          badging="$("$aapt" dump badging build/app/outputs/flutter-apk/app-release.apk | head -n 1)"
+          echo "$badging"
+          want_name="$(sed -n 's/^version: *\([0-9][0-9.]*\)+\([0-9]*\).*/\1/p' pubspec.yaml)"
+          want_code="$(sed -n 's/^version: *\([0-9][0-9.]*\)+\([0-9]*\).*/\2/p' pubspec.yaml)"
+          echo "$badging" | grep -q "name='ir.honarmardomi.payamyar'" || { echo "::error::Wrong applicationId"; exit 1; }
+          echo "$badging" | grep -q "versionCode='$want_code'" || { echo "::error::versionCode is not $want_code"; exit 1; }
+          echo "$badging" | grep -q "versionName='$want_name'" || { echo "::error::versionName is not $want_name"; exit 1; }
+          signer="$(find "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/opt/android-sdk}}/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)"
+          "$signer" verify --verbose build/app/outputs/flutter-apk/app-release.apk | grep "Verified using v2 scheme (APK Signature Scheme v2): true"
           # Disposable APK is not exported or published. Production always requires
           # pinned GitHub Secrets and the original permanent private key.
           rm -f "$PAYAMYAR_KEYSTORE_PATH"
@@ -132,6 +143,27 @@ jobs:
             echo "::error::Built APK is signed with the wrong certificate; abort release."
             exit 1
           fi
+          if ! grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" "$RUNNER_TEMP/apk-verify.txt"; then
+            echo "::error::APK Signature Scheme v2 missing; Android 7+ upgrade path is not guaranteed."
+            exit 1
+          fi
+          # Package identity and versionCode must match pubspec.yaml exactly.
+          aapt="$(find "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/opt/android-sdk}}/build-tools" -maxdepth 2 -type f -name aapt2 | sort -V | tail -n 1)"
+          badging="$("$aapt" dump badging dist/PayamYar-release.apk | head -n 1)"
+          echo "$badging"
+          want_name="$(sed -n 's/^version: *\([0-9][0-9.]*\)+\([0-9]*\).*/\1/p' pubspec.yaml)"
+          want_code="$(sed -n 's/^version: *\([0-9][0-9.]*\)+\([0-9]*\).*/\2/p' pubspec.yaml)"
+          echo "$badging" | grep -q "name='ir.honarmardomi.payamyar'" || { echo "::error::Wrong applicationId"; exit 1; }
+          echo "$badging" | grep -q "versionCode='$want_code'" || { echo "::error::versionCode is not $want_code"; exit 1; }
+          echo "$badging" | grep -q "versionName='$want_name'" || { echo "::error::versionName is not $want_name"; exit 1; }
+          sha256sum dist/PayamYar-release.apk | awk '{print $1"  PayamYar-'"$want_name"'.apk"}' > dist/PayamYar-release.apk.sha256
+          cp dist/PayamYar-release.apk "dist/PayamYar-$want_name.apk"
+          {
+            echo "### PayamYar $want_name ($want_code)"
+            echo "- Signer SHA-256: \`$actual\`"
+            echo "- APK SHA-256: \`$(cut -d' ' -f1 dist/PayamYar-release.apk.sha256)\`"
+            echo "- Size: $(stat -c %s dist/PayamYar-release.apk) bytes"
+          } >> "$GITHUB_STEP_SUMMARY"
           echo "Android release APK signed by the pinned permanent certificate."
 
       - name: Remove temporary private signing material
@@ -143,7 +175,10 @@ jobs:
         if: github.event_name != 'pull_request'
         with:
           name: PayamYar-Android
-          path: dist/PayamYar-release.apk
+          path: |
+            dist/PayamYar-release.apk
+            dist/PayamYar-*.apk
+            dist/PayamYar-release.apk.sha256
           if-no-files-found: error
       # Publishing is exclusively managed in the WordPress dashboard:
       # https://honarmardomi.ir/wp-admin/admin.php?page=payamyar-releases
@@ -168,15 +203,18 @@ jobs:
           VERSION=$(sed -n 's/^version: *\([0-9][0-9.]*\).*/\1/p' pubspec.yaml)
           test -n "$VERSION"
           echo "number=$VERSION" >> "$GITHUB_OUTPUT"
-      - name: Create GitHub prerelease with installable APK
+      - name: Create official GitHub release with signed APK
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.number }}
-          name: پیامیار Android v${{ steps.version.outputs.number }}
+          name: پیامیار Android v${{ steps.version.outputs.number }} (رسمی)
           target_commitish: ${{ github.sha }}
-          prerelease: true
+          prerelease: false
+          make_latest: 'true'
           generate_release_notes: false
           body_path: RELEASE_NOTES_FA.txt
-          files: release-apk/PayamYar-release.apk
+          files: |
+            release-apk/PayamYar-${{ steps.version.outputs.number }}.apk
+            release-apk/PayamYar-release.apk.sha256
           fail_on_unmatched_files: true
 
