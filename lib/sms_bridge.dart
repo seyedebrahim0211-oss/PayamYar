@@ -100,6 +100,12 @@ class SmsBridge {
   }
   static void stopListening() => _channel.setMethodCallHandler(null);
 
+  /// Public SHA-256 of the installed app's signing certificate; not a user/device ID.
+  static Future<String> signingFingerprint() async {
+    if (!supported) return '';
+    return await _channel.invokeMethod<String>('signingFingerprint') ?? '';
+  }
+
   /// Whether Android granted PayamYar permission to open the system package installer.
   static Future<bool> canInstallUpdate() async {
     if (!supported) return false;
