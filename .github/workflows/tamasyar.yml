@@ -26,12 +26,14 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Install Android 35 SDK
-        run: sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
+      - name: Verify Android 35 SDK on GitHub runner
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME/platforms" || true
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
       - name: Build test APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
       - uses: actions/upload-artifact@v4
