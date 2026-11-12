@@ -33,12 +33,12 @@ class FinanceLogic {
 
   /// Use sender/provider evidence, never infer a financial account from message totals.
   static String bankOf(String sender, String body) {
-    final source = (sender + ' ' + body).replaceAll('ي', 'ی')
+    final source = ('$sender $body').replaceAll('ي', 'ی')
         .replaceAll('ك', 'ک').replaceAll('\u200c', ' ');
     for (final bank in bankNames) {
-      if (source.contains('بانک ' + bank) || source.contains('بانك ' + bank) ||
-          sender.trim() == bank || sender.startsWith(bank + ' ')) {
-        return 'بانک ' + bank;
+      if (source.contains('بانک $bank') || source.contains('بانك $bank') ||
+          sender.trim() == bank || sender.startsWith('$bank ')) {
+        return 'بانک $bank';
       }
     }
     return sender.trim().isEmpty ? 'بانک نامشخص' : sender.trim();
