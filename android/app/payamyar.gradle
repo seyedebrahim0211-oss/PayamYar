@@ -18,6 +18,7 @@ if (payamyarKeystore) {
         signingConfigs {
             payamyarRelease {
                 storeFile = file(payamyarKeystore)
+                storeType = "pkcs12"
                 storePassword = System.getenv("PAYAMYAR_KEYSTORE_PASSWORD")
                 keyAlias = System.getenv("PAYAMYAR_KEY_ALIAS")
                 keyPassword = System.getenv("PAYAMYAR_KEY_PASSWORD")
