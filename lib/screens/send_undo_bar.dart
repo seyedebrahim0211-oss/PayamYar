@@ -56,7 +56,7 @@ class _SendUndoBarState extends State<SendUndoBar> {
           opacity: animation,
           child: SizeTransition(
             sizeFactor: animation,
-            axisAlignment: -1,
+            alignment: Alignment.topCenter,
             child: SlideTransition(
               position: Tween<Offset>(begin: const Offset(0, .12), end: Offset.zero).animate(animation),
               child: child,
