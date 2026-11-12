@@ -18,6 +18,7 @@ import java.util.zip.ZipFile
  */
 object AppUpdater {
     private const val HOST = "honarmardomi.ir"
+    private const val MAX_APK_BYTES = 140L * 1024 * 1024
 
     fun canInstall(activity: Activity): Boolean =
         Build.VERSION.SDK_INT < 26 || activity.packageManager.canRequestPackageInstalls()
@@ -45,6 +46,12 @@ object AppUpdater {
             }
             check(connection.responseCode == 200) { "دریافت فایل انجام نشد (${connection.responseCode})." }
             val total = connection.contentLengthLong
+            check(total <= MAX_APK_BYTES) { "حجم فایل به‌روزرسانی بیش از حد مجاز است." }
+            val finalUrl = connection.url
+            check(finalUrl.protocol == "https" &&
+                (finalUrl.host == HOST || finalUrl.host == "www.$HOST")) {
+                "فایل به‌روزرسانی از نشانی غیرمجاز هدایت شده است."
+            }
             connection.inputStream.use { input ->
                 download.outputStream().use { output ->
                     val buffer = ByteArray(64 * 1024)
@@ -55,6 +62,7 @@ object AppUpdater {
                         if (n < 0) break
                         output.write(buffer, 0, n)
                         done += n
+                        check(done <= MAX_APK_BYTES) { "حجم فایل به‌روزرسانی بیش از حد مجاز است." }
                         if (total > 0) {
                             val p = (done * 100 / total).toInt()
                             if (p != last) { last = p; progress(p) }
@@ -73,7 +81,20 @@ object AppUpdater {
             } else {
                 val entry = zip.entries().asSequence().firstOrNull { !it.isDirectory && it.name.endsWith(".apk", true) }
                     ?: throw IllegalStateException("فایل نصبی داخل بسته پیدا نشد.")
-                zip.getInputStream(entry).use { input -> apk.outputStream().use { input.copyTo(it) } }
+                check(entry.size in 1..MAX_APK_BYTES) { "حجم فایل نصبی داخل بسته معتبر نیست." }
+                zip.getInputStream(entry).use { input ->
+                    apk.outputStream().use { output ->
+                        val buffer = ByteArray(64 * 1024)
+                        var extracted = 0L
+                        while (true) {
+                            val n = input.read(buffer)
+                            if (n < 0) break
+                            extracted += n
+                            check(extracted <= MAX_APK_BYTES) { "حجم فایل نصبی از حد مجاز بیشتر است." }
+                            output.write(buffer, 0, n)
+                        }
+                    }
+                }
             }
         }
         download.delete()
@@ -96,6 +117,9 @@ object AppUpdater {
             ?: error("فایل دانلودشده بسته نصب اندروید معتبری نیست.")
         check(incoming.packageName == activity.packageName) {
             "شناسه برنامه با پیامیار نصب‌شده متفاوت است. نصب متوقف شد."
+        }
+        check(incoming.longVersionCode >= current.longVersionCode) {
+            "این بسته از نسخه نصب‌شده قدیمی‌تر است؛ نصب نسخه قدیمی مجاز نیست."
         }
         val existingCerts = if (Build.VERSION.SDK_INT >= 28)
             current.signingInfo?.apkContentsSigners?.map { it.toByteArray() }.orEmpty()
