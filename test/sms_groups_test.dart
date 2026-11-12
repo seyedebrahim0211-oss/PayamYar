@@ -29,12 +29,10 @@ void main() {
   test('group names and recipient size are validated', () async {
     SharedPreferences.setMockInitialValues({});
     final groups = SmsGroupStore();
-    expect(() => groups.save('', ['09121234567', '09120000000']),
-        throwsArgumentError);
-    expect(() => groups.save('گروه بدون اعضا', ['09121234567']),
-        throwsArgumentError);
+    await expectLater(groups.save('', ['09121234567', '09120000000']), throwsArgumentError);
+    await expectLater(groups.save('گروه بدون اعضا', ['09121234567']), throwsArgumentError);
     final many = List.generate(501, (i) => '0912' + i.toString().padLeft(7, '0'));
-    expect(() => groups.save('گروه بزرگ', many), throwsArgumentError);
+    await expectLater(groups.save('گروه بزرگ', many), throwsArgumentError);
     groups.dispose();
   });
 
