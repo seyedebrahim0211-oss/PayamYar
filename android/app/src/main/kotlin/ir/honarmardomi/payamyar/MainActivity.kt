@@ -124,8 +124,11 @@ class MainActivity : FlutterActivity() {
                         result.success("needs_permission")
                     } else Thread {
                         try {
-                            val apk = AppUpdater.download(this, url, call.argument<String>("sha256").orEmpty()) {
-                                p -> runOnUiThread { channel.invokeMethod("updateProgress", p) }
+                            val size = call.argument<Number>("size")?.toLong() ?: 0L
+                            val apk = AppUpdater.download(this, url, call.argument<String>("sha256").orEmpty(), size) {
+                                p, done, total -> runOnUiThread {
+                                    channel.invokeMethod("updateProgress", mapOf("percent" to p, "done" to done, "total" to total))
+                                }
                             }
                             runOnUiThread {
                                 try {

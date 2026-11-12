@@ -12,13 +12,31 @@ class ReleaseInfo {
   final String notes;
   /// SHA-256 of the file served by honarmardomi.ir (APK or ZIP), never an APK extracted from the ZIP.
   final String sha256;
+  /// Size in bytes of the published file, 0 when unknown.
+  final int sizeBytes;
   const ReleaseInfo({
     required this.version,
     required this.available,
     required this.url,
     required this.notes,
     this.sha256 = '',
+    this.sizeBytes = 0,
   });
+
+  /// Human readable Persian size, e.g. «۲۴٫۳ مگابایت».
+  String get sizeLabel => formatBytes(sizeBytes);
+}
+
+/// Formats a byte count for Persian UI; empty for unknown sizes.
+String formatBytes(int bytes) {
+  if (bytes <= 0) return '';
+  const digits = '۰۱۲۳۴۵۶۷۸۹';
+  String fa(String s) => s.split('').map((c) {
+    final d = int.tryParse(c);
+    return d == null ? (c == '.' ? '٫' : c) : digits[d];
+  }).join();
+  if (bytes < 1024 * 1024) return '${fa((bytes / 1024).toStringAsFixed(0))} کیلوبایت';
+  return '${fa((bytes / (1024 * 1024)).toStringAsFixed(1))} مگابایت';
 }
 
 class UpdateService {
@@ -55,6 +73,7 @@ class UpdateService {
             ? manifest['windows_url'] as String? ?? ''
             : '';
     final digest = manifest['sha256'] as String? ?? '';
+    final size = (manifest['size_bytes'] as num?)?.toInt() ?? 0;
     final current = (await PackageInfo.fromPlatform()).version;
     final minimumSupported = manifest['minimum_supported_version'] as String? ?? '1.0.0';
     final compatible = _compareVersions(current, minimumSupported) >= 0;
@@ -71,6 +90,7 @@ class UpdateService {
       url: published && compatible && isNewer ? url : '',
       notes: manifest['notes'] as String? ?? '',
       sha256: published && compatible && isNewer ? digest.toLowerCase() : '',
+      sizeBytes: size > 0 && size <= 140 * 1024 * 1024 ? size : 0,
     );
   }
 
@@ -84,6 +104,8 @@ class UpdateService {
     }
     return true;
   }
+
+  static int compareVersions(String a, String b) => _compareVersions(a, b);
 
   static int _compareVersions(String a, String b) {
     List<int> parse(String value) => value.split('+').first.split('.')

@@ -155,6 +155,20 @@ object SmsCore {
         c.getSystemService(AlarmManager::class.java).cancel(alarmIntent(c, id))
         return true
     }
+    /** Removes bookkeeping of finished sends so the preferences file does not grow forever. */
+    @Synchronized fun prune(c: Context, keep: Int = 300) {
+        val p = prefs(c)
+        val all = p.all
+        val finished = all.keys.filter { it.startsWith("status:") }.map { it.removePrefix("status:") }
+            .filter { !all.containsKey("queue:$it") }
+        if (finished.size <= keep) return
+        val edit = p.edit()
+        finished.take(finished.size - keep).forEach { id ->
+            listOf("status:$id", "row:$id", "notified:$id", "acks:$id:true", "acks:$id:false",
+                "ok:$id:true", "ok:$id:false").forEach { edit.remove(it) }
+        }
+        edit.apply()
+    }
     /** Restore future scheduled sends after restart; never unexpectedly replay expired SMS. */
     @Synchronized fun recover(c: Context) {
         val now = System.currentTimeMillis()
@@ -382,6 +396,7 @@ class BootReceiver : BroadcastReceiver() {
         Thread {
             try {
                 SmsCore.recover(context)
+                SmsCore.prune(context)
                 SmsCore.drainAndReschedule(context, 15 * 60_000L)
             } catch (_: Exception) {
             } finally { pending.finish() }
@@ -413,18 +428,29 @@ class MmsReceiver : BroadcastReceiver() {
         if (intent.action != Telephony.Sms.Intents.WAP_PUSH_DELIVER_ACTION) return
         if (!SmsCore.isDefault(context)) return
         val data = intent.getByteArrayExtra("data") ?: return
-        val dir = java.io.File(context.filesDir, "pending_mms").apply { mkdirs() }
-        java.io.File(dir, "${System.currentTimeMillis()}.pdu").writeBytes(data)
-        SmsCore.notify(context, 2, "پیام چندرسانه‌ای دریافت شد", "این نسخه MMS را دانلود نمی‌کند؛ برای دریافت از پیامک‌رسان قبلی استفاده کنید.")
+        if (data.size > 64 * 1024) return // A WAP push notification is tiny; ignore oversized payloads.
+        val pending = goAsync()
+        Thread {
+            try {
+                val dir = java.io.File(context.filesDir, "pending_mms").apply { mkdirs() }
+                // Keep only the newest 50 notifications so private storage cannot grow without bound.
+                dir.listFiles()?.sortedByDescending { it.lastModified() }?.drop(49)?.forEach { it.delete() }
+                java.io.File(dir, "${System.currentTimeMillis()}.pdu").writeBytes(data)
+                SmsCore.notify(context, 2, "پیام چندرسانه‌ای دریافت شد", "این نسخه MMS را دانلود نمی‌کند؛ برای دریافت از پیامک‌رسان قبلی استفاده کنید.")
+            } catch (_: Exception) {
+            } finally { pending.finish() }
+        }.start()
     }
 }
 class RespondService : Service() {
     override fun onBind(intent: Intent?) = null
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // System phone app supplies the recipient and the explicitly chosen quick reply.
-        val to = intent?.data?.schemeSpecificPart.orEmpty()
+        // sms:/smsto: may carry several recipients separated by , or ; and a ?body= query.
+        val recipients = intent?.data?.schemeSpecificPart.orEmpty().substringBefore('?')
+            .split(',', ';').map { it.trim() }.filter { it.isNotEmpty() }.take(20)
         val body = intent?.getStringExtra(Intent.EXTRA_TEXT).orEmpty()
-        try { SmsCore.queue(this, to, body, -1) } catch (_: Exception) { }
+        recipients.forEach { to -> try { SmsCore.queue(this, to, body, -1) } catch (_: Exception) { } }
         stopSelf(startId)
         return START_NOT_STICKY
     }

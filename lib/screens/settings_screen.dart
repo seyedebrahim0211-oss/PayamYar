@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../app_settings.dart';
 import '../app_store.dart';
+import '../brand_mark.dart';
 import '../jalali.dart';
 import '../sms_bridge.dart';
 import '../templates.dart';
@@ -38,10 +39,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final info = store.update!;
     final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
       title: Text('نسخه جدید ${Jalali.digits(info.version)}'),
-      content: Text(info.notes.isEmpty ? 'نسخه جدید دریافت و نصب شود؟' : info.notes),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(info.notes.isEmpty ? 'نسخه جدید دریافت و نصب شود؟' : info.notes),
+        if (info.sizeLabel.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Text('حجم دریافت: ${info.sizeLabel}', style: const TextStyle(fontWeight: FontWeight.w700)),
+        ],
+        const SizedBox(height: 6),
+        const Text('فایل از honarmardomi.ir دریافت و امضای آن پیش از نصب بررسی می‌شود. داده‌های شما حفظ می‌شود.',
+          style: TextStyle(fontSize: 12)),
+      ]),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('بعداً')),
-        TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('به‌روزرسانی')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true),
+          style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+          child: const Text('دریافت و نصب به‌روزرسانی')),
       ]));
     if (ok == true) await store.installUpdate();
   }
@@ -203,19 +215,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               padding: const EdgeInsets.all(21),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
-                  Container(
-                    width: 52, height: 52,
-                    decoration: BoxDecoration(color: const Color(0xFFF8E9C7).withValues(alpha: .17),
-                      borderRadius: BorderRadius.circular(17),
-                      border: Border.all(color: const Color(0xFFEBD3A2).withValues(alpha: .6))),
-                    child: const Icon(Icons.sms_rounded, color: Color(0xFFEAC786), size: 28),
-                  ),
-                  const SizedBox(width: 13),
-                  const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('پیامیار', style: TextStyle(color: Colors.white, fontSize: 23, fontWeight: FontWeight.w900)),
-                    Text('پیامک‌رسان فارسی، از خانواده هنر مردمی',
-                      style: TextStyle(color: Color(0xFFD8E9E6), fontSize: 12)),
-                  ])),
+                  const Expanded(child: Align(alignment: AlignmentDirectional.centerStart,
+                    child: PayamYarLogotype(height: 52, tagline: true, color: Colors.white))),
                 ]),
                 const SizedBox(height: 18),
                 FutureBuilder<PackageInfo>(
