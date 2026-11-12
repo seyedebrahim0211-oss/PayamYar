@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 import '../app_settings.dart';
 import '../app_store.dart';
@@ -22,6 +23,7 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   int tab = 0;
+  DateTime? _lastUpdateCheck;
 
   @override
   void initState() {
@@ -43,6 +45,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       widget.store.checkPermissions();
       widget.store.refresh();
+      final now = DateTime.now();
+      if (_lastUpdateCheck == null ||
+          now.difference(_lastUpdateCheck!) > const Duration(minutes: 30)) {
+        _lastUpdateCheck = now;
+        unawaited(widget.store.checkForUpdate());
+      }
       _takeIntent();
     }
   }
