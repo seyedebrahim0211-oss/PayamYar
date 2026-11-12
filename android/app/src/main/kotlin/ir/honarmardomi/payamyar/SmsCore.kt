@@ -396,6 +396,7 @@ class BootReceiver : BroadcastReceiver() {
         Thread {
             try {
                 SmsCore.recover(context)
+                try { Birthdays.run(context) } catch (_: Exception) { }
                 SmsCore.prune(context)
                 SmsCore.drainAndReschedule(context, 15 * 60_000L)
             } catch (_: Exception) {

@@ -127,6 +127,11 @@ open class MainActivity : FlutterActivity() {
                         result.success(true)
                     } catch (_: Exception) { result.success(false) }
                 }
+                "birthdaysChanged" -> { worker.execute { try { Birthdays.schedule(this) } catch (_: Exception) { } }; result.success(null) }
+                "birthdaySendNow" -> worker.execute {
+                    val ok = try { Birthdays.sendNow(this, call.argument<String>("id").orEmpty()) } catch (e: Exception) { false }
+                    runOnUiThread { result.success(ok) }
+                }
                 "previewNotification" -> { Notifier.preview(this); result.success(null) }
                 "openBubbleSettings" -> {
                     try {

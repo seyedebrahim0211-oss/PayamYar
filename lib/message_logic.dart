@@ -11,17 +11,23 @@ class MessageRecord {
   const MessageRecord({required this.sender, required this.body, required this.date, this.outgoing = false, this.id, this.read = true, this.type = 1, this.delivery = -1});
 }
 class MessageLogic {
+  // Compiled once: category() runs for every message on each inbox rebuild.
+  static final _banking = RegExp(r'بانک|واریز|برداشت|موجودی|تراکنش|atm|card|bank');
+  static final _advertising = RegExp(r'تبلیغ|تخفیف|فروش ویژه|حراج|لغو\s*11');
+  static final _service = RegExp(r'رمز پویا|کد تایید|کد تأیید|بسته اینترنت|قبض|مرسوله');
+  static final _scam = RegExp(r'برنده شدید|ابلاغیه قضایی|حساب شما مسدود|پرداخت فوری|جایزه نقدی');
+  static final _link = RegExp(r'https?://|www\.|\.ir|\.com');
+
   static MessageCategory category(MessageRecord m) {
     final s = ('${m.sender} ${m.body}').toLowerCase();
-    if (RegExp(r'بانک|واریز|برداشت|موجودی|تراکنش|atm|card|bank').hasMatch(s)) return MessageCategory.banking;
-    if (RegExp(r'تبلیغ|تخفیف|فروش ویژه|حراج|لغو\s*11').hasMatch(s)) return MessageCategory.advertising;
-    if (RegExp(r'رمز پویا|کد تایید|کد تأیید|بسته اینترنت|قبض|مرسوله').hasMatch(s)) return MessageCategory.service;
+    if (_banking.hasMatch(s)) return MessageCategory.banking;
+    if (_advertising.hasMatch(s)) return MessageCategory.advertising;
+    if (_service.hasMatch(s)) return MessageCategory.service;
     return MessageCategory.personal;
   }
   static bool suspicious(String body) {
     final s = body.toLowerCase();
-    return RegExp(r'برنده شدید|ابلاغیه قضایی|حساب شما مسدود|پرداخت فوری|جایزه نقدی').hasMatch(s) &&
-      RegExp(r'https?://|www\.|\.ir|\.com').hasMatch(s);
+    return _scam.hasMatch(s) && _link.hasMatch(s);
   }
   static List<MessageRecord> search(List<MessageRecord> source, String term, {DateTime? from, DateTime? to}) =>
     source.where((m) => (term.isEmpty || ('${m.sender} ${m.body}').toLowerCase().contains(term.toLowerCase())) &&

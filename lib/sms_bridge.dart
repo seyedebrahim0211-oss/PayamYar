@@ -206,6 +206,17 @@ class SmsBridge {
     if (supported) await _channel.invokeMethod<void>('previewNotification');
   }
 
+  /// Re-arms the native birthday alarm after the list changed (see Birthdays.kt).
+  static Future<void> birthdaysChanged() async {
+    if (supported) await _channel.invokeMethod<void>('birthdaysChanged');
+  }
+
+  /// Sends one birthday greeting immediately; false when it could not be sent.
+  static Future<bool> birthdaySendNow(String id) async {
+    if (!supported) return false;
+    return await _channel.invokeMethod<bool>('birthdaySendNow', {'id': id}) ?? false;
+  }
+
   /// Android's per-app bubble setting (Android 10+).
   static Future<void> openBubbleSettings() async {
     if (supported) await _channel.invokeMethod<bool>('openBubbleSettings');

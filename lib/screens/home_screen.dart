@@ -279,15 +279,12 @@ class _ConversationsPageState extends State<ConversationsPage> {
                   text: 'برای دریافت مطمئن پیام‌ها و اعلان‌ها، دسترسی‌های ویژه را کامل کنید.',
                   action: 'تنظیم',
                   onTap: () => showSpecialAccessSheet(context, store))),
-              if (store.loadingAll)
-                SliverToBoxAdapter(child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                  child: Column(children: [
-                    const LinearProgressIndicator(borderRadius: BorderRadius.all(Radius.circular(4))),
-                    const SizedBox(height: 6),
-                    Text('در حال آوردن پیام‌های گوشی… ${Jalali.digits(store.loadedCount)} پیام',
-                      style: Theme.of(context).textTheme.bodySmall),
-                  ]))),
+              // The whole inbox loads silently in the background; only a first-run empty
+              // inbox shows a small spinner instead of the "no messages" state.
+              if (store.loadingAll && list.isEmpty && query.isEmpty)
+                const SliverToBoxAdapter(child: Padding(
+                  padding: EdgeInsets.all(40),
+                  child: Center(child: CircularProgressIndicator()))),
               if (!widget.archive)
                 SliverToBoxAdapter(child: SizedBox(height: 50, child: ListView(
                   scrollDirection: Axis.horizontal,
