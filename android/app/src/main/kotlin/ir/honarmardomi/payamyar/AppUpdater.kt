@@ -34,7 +34,7 @@ object AppUpdater {
     private const val MAX_APK_BYTES = 140L * 1024 * 1024
 
     /** Public SHA-256 of the permanent PayamYar release certificate (see .github/payamyar-release-cert.sha256). */
-    const val OFFICIAL_SIGNER = "C800225A42B292F1B9C2E1578E6B9F2B3921D6A50378B5C9D074D38B443DF48F"
+    const val OFFICIAL_SIGNER = "A82C3ACB328F3D6DE57D60297F8E2DCBD7384AAAE5172B5FBEEC38B3E31BBE0F"
 
     private val busy = AtomicBoolean(false)
 
