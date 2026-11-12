@@ -192,8 +192,14 @@ class AppStore extends ChangeNotifier {
     updateCheckFailed = false;
     try {
       final info = await UpdateService.check();
+      final previousVersion = update?.version;
       update = info.available && UpdateService.trusted(info.url) ? info : null;
-      if (manual) updateDismissed = false;
+      if (manual || (update != null && update!.version != previousVersion)) {
+        updateDismissed = false;
+      }
+      if (!manual && update != null && update!.version != previousVersion) {
+        onNotice?.call('نسخه جدید پیامیار ${update!.version} آماده است؛ از همین برنامه به‌روزرسانی کنید.');
+      }
       notifyListeners();
       return update != null;
     } catch (_) {
