@@ -116,6 +116,15 @@ class ReportsScreen extends StatelessWidget {
               Expanded(child: _stat(context, 'خوانده‌نشده',
                 store.unreadConversations, Icons.mark_email_unread_outlined)),
             ]),
+            const SizedBox(height: 11),
+            Row(children: [
+              Expanded(child: _stat(context, 'بانک‌ها', byBank.length, Icons.account_balance_outlined)),
+              const SizedBox(width: 10),
+              Expanded(child: _stat(context, 'حساب‌ها', report.balances.length, Icons.credit_card_outlined)),
+              const SizedBox(width: 10),
+              Expanded(child: _stat(context, 'تبلیغاتی',
+                counts[MessageCategory.advertising] ?? 0, Icons.campaign_outlined)),
+            ]),
             const SizedBox(height: 16),
             Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(
               crossAxisAlignment: CrossAxisAlignment.start, children: [
