@@ -93,7 +93,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onTap: SmsBridge.manageBlocked),
               ])),
             ],
-            _section('ظاهر'),
+            _section('شخصی‌سازی ظاهر و فونت'),
             Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(
               crossAxisAlignment: CrossAxisAlignment.start, children: [
                 const Text('رنگ برنامه'),
@@ -124,14 +124,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   segments: const [
                     ButtonSegment(value: 0, label: Text('وزیرمتن')),
                     ButtonSegment(value: 1, label: Text('قلم گوشی')),
+                    ButtonSegment(value: 2, label: Text('نسخ')),
                   ],
                   selected: {settings.fontChoice},
                   onSelectionChanged: (value) => settings.update(fontChoice: value.first)),
                 const SizedBox(height: 16),
                 Text('اندازه متن: ${Jalali.digits((settings.scale * 100).round())}٪'),
-                Slider(value: settings.scale, min: .85, max: 1.3, divisions: 9, onChanged: (v) => settings.update(scale: v)),
+                Slider(value: settings.scale, min: .9, max: 1.5, divisions: 12, onChanged: (v) => settings.update(scale: v)),
+                const Text('پیش‌نمایش: پیام فارسی با اندازه و قلم انتخاب‌شده', style: TextStyle(fontSize: 14)),
               ]))),
-            _section('اعلان و صدای پیام'),
+            _section('اعلان‌های اندروید و صدای پیام'),
             Card(child: Column(children: [
               SwitchListTile(
                 secondary: Icon(Icons.mark_chat_unread_outlined, color: scheme.primary),
