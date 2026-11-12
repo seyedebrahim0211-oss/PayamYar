@@ -22,7 +22,11 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.util.concurrent.Executors
 
-class MainActivity : FlutterActivity() {
+open class MainActivity : FlutterActivity() {
+    companion object {
+        /** Set while a PayamYar screen is in front; Notifier then shows the in-app glass banner instead. */
+        @Volatile @JvmStatic var foregroundChannel: MethodChannel? = null
+    }
     private var observing = false
     private var contactResult: MethodChannel.Result? = null
     private var permissionResult: MethodChannel.Result? = null
@@ -120,6 +124,16 @@ class MainActivity : FlutterActivity() {
                             .putExtra(Intent.EXTRA_SUBJECT, call.argument<String>("subject").orEmpty())
                             .putExtra(Intent.EXTRA_TEXT, call.argument<String>("text").orEmpty())
                         startActivity(Intent.createChooser(send, call.argument<String>("title") ?: "ارسال با"))
+                        result.success(true)
+                    } catch (_: Exception) { result.success(false) }
+                }
+                "previewNotification" -> { Notifier.preview(this); result.success(null) }
+                "openBubbleSettings" -> {
+                    try {
+                        Notifier.configureChannels(this)
+                        if (Build.VERSION.SDK_INT >= 29) startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_BUBBLE_SETTINGS)
+                            .putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
+                        else startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)))
                         result.success(true)
                     } catch (_: Exception) { result.success(false) }
                 }
@@ -346,7 +360,11 @@ class MainActivity : FlutterActivity() {
     }
     override fun onResume() {
         super.onResume()
-        if (::channel.isInitialized) observeMessages()
+        if (::channel.isInitialized) { observeMessages(); foregroundChannel = channel }
+    }
+    override fun onPause() {
+        if (::channel.isInitialized && foregroundChannel === channel) foregroundChannel = null
+        super.onPause()
     }
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
