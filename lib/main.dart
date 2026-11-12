@@ -4,6 +4,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'app_settings.dart';
 import 'app_store.dart';
 import 'sms_bridge.dart';
+import 'screens/glass_banner.dart';
 import 'screens/home_screen.dart';
 import 'screens/onboarding_screen.dart';
 
@@ -165,7 +166,7 @@ class _PayamYarState extends State<PayamYar> {
           textDirection: TextDirection.rtl,
           child: MediaQuery(
             data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(settings.scale)),
-            child: child!,
+            child: BannerHost(store: store, settings: settings, child: child!),
           ),
         ),
         home: RootGate(store: store, settings: settings),
