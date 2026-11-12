@@ -122,7 +122,9 @@ class MainActivity : FlutterActivity() {
                         result.success("needs_permission")
                     } else Thread {
                         try {
-                            val apk = AppUpdater.download(this, url) { p -> runOnUiThread { channel.invokeMethod("updateProgress", p) } }
+                            val apk = AppUpdater.download(this, url, call.argument<String>("sha256").orEmpty()) {
+                                p -> runOnUiThread { channel.invokeMethod("updateProgress", p) }
+                            }
                             runOnUiThread {
                                 try {
                                     AppUpdater.validateUpgrade(this, apk)
