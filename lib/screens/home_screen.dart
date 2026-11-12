@@ -32,6 +32,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     widget.store.onComposeIntent = _takeIntent;
+    widget.store.onOpenConversation = _openConversation;
     WidgetsBinding.instance.addPostFrameCallback((_) => _takeIntent());
   }
 
@@ -39,6 +40,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     widget.store.onComposeIntent = null;
+    widget.store.onOpenConversation = null;
     super.dispose();
   }
 
@@ -56,6 +58,13 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       }
       _takeIntent();
     }
+  }
+
+  /// Opens a chat from the in-app glass banner.
+  void _openConversation(String address) {
+    if (!mounted) return;
+    Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => ConversationScreen(store: widget.store, address: address)));
   }
 
   /// Opens the conversation of a tapped notification, or the composer for sms:/smsto: links.
