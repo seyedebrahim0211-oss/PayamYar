@@ -214,7 +214,7 @@ class AppStore extends ChangeNotifier {
     updateProgress = 0;
     notifyListeners();
     try {
-      final state = await SmsBridge.installUpdate(info.url);
+      final state = await SmsBridge.installUpdate(info.url, sha256: info.sha256);
       if (state == 'needs_permission') {
         onNotice?.call('اجازه «نصب برنامه از پیامیار» را روشن کنید و دوباره «به‌روزرسانی» را بزنید.');
       }
