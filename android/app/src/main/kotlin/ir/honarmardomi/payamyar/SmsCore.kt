@@ -263,6 +263,10 @@ object SmsCore {
             }
             if (values.size() > 0) c.contentResolver.update(Uri.parse(row), values, null, null)
         }
+        if ((next == "accepted_by_radio" || next == "delivered") && !prefs(c).getBoolean("notified:$id", false)) {
+            prefs(c).edit().putBoolean("notified:$id", true).apply()
+            Notifier.sent(c, id)
+        }
         if (next.startsWith("send_failed") && next != previous)
             notify(c, id.hashCode(), "ارسال پیامک ناموفق بود", "شبکه ارسال را رد کرد؛ سیم‌کارت و وضعیت پیام را بررسی کنید.")
         else if (next == "delivered" && previous.startsWith("send_failed"))
