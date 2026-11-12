@@ -2,6 +2,8 @@ package ir.honarmardomi.tamasyar
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
+import android.widget.Toast
 import android.app.role.RoleManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
@@ -27,10 +29,13 @@ import java.util.Date
 import java.util.Locale
 
 class MainActivity : Activity() {
-    private val ink = Color.rgb(20, 59, 65)
-    private val paper = Color.rgb(250, 248, 243)
-    private val gold = Color.rgb(184, 137, 60)
-    private val muted = Color.rgb(101, 117, 117)
+    private val prefs by lazy { TamasPreferences(this) }
+    private val ink get() = if (prefs.dark) Color.WHITE else TamasStyle.ink
+    private val paper get() = if (prefs.dark) Color.rgb(14, 27, 31) else TamasStyle.paper
+    private val surface get() = if (prefs.dark) Color.rgb(26, 46, 51) else Color.WHITE
+    private val gold get() = if (prefs.dark) TamasStyle.goldLight else TamasStyle.gold
+    private val muted get() = if (prefs.dark) Color.rgb(174, 200, 194) else TamasStyle.muted
+    private val requestedPermissions = mutableSetOf<String>()
     private var tab = 1
     private var digits = ""
     private var filter = ""
@@ -38,12 +43,23 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = ink
+        window.statusBarColor = TamasStyle.tealDeep
         window.navigationBarColor = paper
+        window.decorView.systemUiVisibility =
+            if (prefs.dark) 0 else View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
         intent?.data?.takeIf { it.scheme == "tel" }?.let {
             digits = it.schemeSpecificPart.orEmpty()
         }
+        if (intent?.getBooleanExtra("open_updates", false) == true) tab = 3
         showTab()
+        if (intent?.getBooleanExtra("open_updates", false) == true) checkForUpdates()
+        TamasUpdater.check(this, automatic = true) { _, _ -> }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        TamasUpdater.resumePendingInstall(this)
+        TamasUpdater.check(this, automatic = true) { _, _ -> }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -54,19 +70,24 @@ class MainActivity : Activity() {
             tab = 1
             showTab()
         }
+        if (intent.getBooleanExtra("open_updates", false)) {
+            tab = 3
+            showTab()
+            checkForUpdates()
+        }
     }
 
     private fun shape(color: Int, radius: Float = 18f): GradientDrawable =
-        GradientDrawable().apply { setColor(color); cornerRadius = dp(radius.toInt()).toFloat() }
+        TamasStyle.panel(this, color, radius.toInt(), if (prefs.dark) Color.rgb(49, 75, 77) else TamasStyle.line)
 
     private fun dp(value: Int): Int = (resources.displayMetrics.density * value).toInt()
     private fun text(value: String, size: Float = 16f, bold: Boolean = false, color: Int = ink): TextView =
         TextView(this).apply {
             this.text = value
-            textSize = size
+            textSize = size * prefs.scale()
             setTextColor(color)
+            TamasStyle.apply(this, this@MainActivity, bold)
             gravity = Gravity.CENTER_VERTICAL
-            if (bold) setTypeface(typeface, Typeface.BOLD)
             setPadding(dp(8), dp(8), dp(8), dp(8))
             textDirection = View.TEXT_DIRECTION_FIRST_STRONG
         }
@@ -74,7 +95,7 @@ class MainActivity : Activity() {
     private fun action(value: String, filled: Boolean = false, click: () -> Unit): TextView =
         text(value, 15f, true, if (filled) Color.WHITE else ink).apply {
             gravity = Gravity.CENTER
-            background = shape(if (filled) ink else Color.rgb(235, 241, 238))
+            background = shape(if (filled) TamasStyle.teal else if (prefs.dark) Color.rgb(35, 60, 66) else TamasStyle.mist)
             setPadding(dp(10), dp(13), dp(10), dp(13))
             setOnClickListener { click() }
         }
@@ -102,9 +123,20 @@ class MainActivity : Activity() {
 
     private fun showTab() {
         val root = vbox().apply { setBackgroundColor(paper) }
-        val header = vbox().apply { setPadding(dp(19), dp(16), dp(19), dp(4)) }
-        header.addView(text("تماس‌یار  •  خانواده پیامیار", 14f, true, gold))
-        header.addView(text("تماس‌ها و مخاطبین، در یک نگاه", 19f, true))
+        val header = hbox().apply {
+            setPadding(dp(19), dp(17), dp(19), dp(12))
+            setBackgroundColor(if (prefs.dark) Color.rgb(20, 44, 49) else Color.rgb(246, 248, 242))
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val logo = text("☎", 27f, true, Color.WHITE).apply {
+            gravity = Gravity.CENTER
+            background = TamasStyle.tile(this@MainActivity, 18)
+        }
+        header.addView(logo, LinearLayout.LayoutParams(dp(54), dp(54)))
+        val heading = vbox().apply { setPadding(dp(10), 0, dp(10), 0) }
+        heading.addView(text("تماس‌یار", 21f, true))
+        heading.addView(text("مدیریت تماس • خانواده پیامیار", 12f, color = muted))
+        header.addView(heading, LinearLayout.LayoutParams(0, -2, 1f))
         root.addView(header)
         val scroll = ScrollView(this).apply {
             isFillViewport = false
@@ -120,7 +152,7 @@ class MainActivity : Activity() {
             else -> showMore(content)
         }
         val nav = hbox().apply {
-            setBackgroundColor(Color.WHITE)
+            setBackgroundColor(surface)
             setPadding(dp(5), dp(10), dp(5), dp(10))
         }
         listOf("تماس‌ها", "شماره‌گیر", "مخاطبین", "بیشتر").forEachIndexed { index, label ->
@@ -136,6 +168,9 @@ class MainActivity : Activity() {
     private fun showDialPad(parent: LinearLayout) {
         parent.addView(section("شماره‌گیری", "برای تماس یا ارسال پیامک، شماره را وارد کنید."))
         val entry = EditText(this).apply {
+            typeface = TamasStyle.font(this@MainActivity)
+            setTextColor(ink)
+            setHintTextColor(muted)
             setSingleLine(true)
             inputType = InputType.TYPE_CLASS_PHONE
             textDirection = View.TEXT_DIRECTION_LTR
@@ -145,7 +180,7 @@ class MainActivity : Activity() {
             setText(digits)
             setSelection(text.length)
             hint = "۰۹۱۲ ۰۰۰ ۰۰۰۰"
-            background = shape(Color.WHITE)
+            background = shape(surface)
             setPadding(dp(15), dp(18), dp(15), dp(18))
         }
         parent.addView(entry)
@@ -191,6 +226,12 @@ class MainActivity : Activity() {
 
     private fun showHistory(parent: LinearLayout) {
         parent.addView(section("تماس‌های اخیر", "سوابق فقط روی همین گوشی خوانده می‌شوند."))
+        if (!isDefaultDialer()) {
+            parent.addView(text("برای دسترسی به سابقه تماس باید تماس‌یار را برنامه پیش‌فرض تلفن کنید.", 14f))
+            addGap(parent)
+            parent.addView(action("انتخاب شماره‌گیر پیش‌فرض", true) { requestDialerRole() })
+            return
+        }
         if (!allowed(Manifest.permission.READ_CALL_LOG, 210)) {
             parent.addView(text("برای مشاهده تاریخچه تماس، مجوز سوابق تماس را تأیید کنید.", 13f))
             return
@@ -238,11 +279,14 @@ class MainActivity : Activity() {
             return
         }
         val search = EditText(this).apply {
+            typeface = TamasStyle.font(this@MainActivity)
+            setTextColor(ink)
+            setHintTextColor(muted)
             hint = "جست‌وجوی نام یا شماره"
             setSingleLine(true)
             setText(filter)
             setPadding(dp(12), dp(12), dp(12), dp(12))
-            background = shape(Color.WHITE)
+            background = shape(surface)
         }
         parent.addView(search)
         addGap(parent)
@@ -280,7 +324,7 @@ class MainActivity : Activity() {
 
     private fun contactRow(parent: LinearLayout, title: String, subtitle: String, number: String) {
         val card = vbox().apply {
-            background = shape(Color.WHITE)
+            background = shape(surface)
             setPadding(dp(10), dp(10), dp(10), dp(10))
         }
         card.addView(text(title, 16f, true))
@@ -297,26 +341,112 @@ class MainActivity : Activity() {
         addGap(parent)
     }
 
+    private fun settingCard(parent: LinearLayout, title: String, description: String,
+        button: String, onClick: () -> Unit
+    ) {
+        val card = vbox().apply {
+            background = shape(surface)
+            setPadding(dp(15), dp(13), dp(15), dp(13))
+        }
+        card.addView(text(title, 16f, true))
+        card.addView(text(description, 12f, color = muted))
+        addGap(card, 7)
+        card.addView(action(button, false, onClick))
+        parent.addView(card)
+        addGap(parent, 11)
+    }
+
     private fun showMore(parent: LinearLayout) {
-        parent.addView(section("تنظیمات و ارتباط", "تماس‌یار مستقل است و با پیامیار هماهنگ کار می‌کند."))
-        parent.addView(action("انتخاب تماس‌یار به‌عنوان شماره‌گیر پیش‌فرض", true) {
-            requestDialerRole()
-        })
-        addGap(parent)
-        parent.addView(action("باز کردن پیامیار") { openPayamYar() })
-        addGap(parent)
-        parent.addView(action("صفحه رسمی تماس‌یار و به‌روزرسانی‌ها") {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://honarmardomi.ir/tamasyar/")))
-        })
-        addGap(parent)
-        parent.addView(text("نسخه آزمایشی ۰.۱.۰  •  مدیریت اطلاعات تماس فقط روی دستگاه انجام می‌شود.", 12f, color = muted))
-        addGap(parent)
-        parent.addView(text("ضبط مکالمه، تشخیص خودکار شماره‌های مزاحم و انتخاب اختصاصی سیم‌کارت هنوز فعال نیستند.", 12f, color = muted))
+        parent.addView(section("تنظیمات", "دسترسی آسان، شخصی‌سازی و به‌روزرسانی تماس‌یار"))
+        settingCard(parent, "برنامه تلفن پیش‌فرض",
+            if (isDefaultDialer()) "تماس‌یار شماره‌گیر پیش‌فرض گوشی است."
+            else "برای نمایش سوابق و مدیریت تماس‌ها، اجازه نقش تلفن را به تماس‌یار بدهید.",
+            if (isDefaultDialer()) "فعال است ✓" else "فعال کردن تماس‌یار") {
+            if (!isDefaultDialer()) requestDialerRole() else
+                Toast.makeText(this, "تماس‌یار فعال است.", Toast.LENGTH_SHORT).show()
+        }
+        settingCard(parent, "دسترسی‌ها و حریم خصوصی",
+            "مخاطبین، سابقه تماس و اعلان‌ها فقط با مجوز سیستم خوانده می‌شوند.",
+            "مدیریت مجوزها") {
+            val i = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:" + packageName))
+            startActivity(i)
+        }
+
+        parent.addView(section("به‌روزرسانی برنامه", "نسخه‌ها از سایت رسمی هنر مردمی بررسی می‌شوند."))
+        settingCard(parent, "بررسی خودکار نسخه جدید",
+            if (prefs.autoUpdates) "فعال؛ هر ۱۲ ساعت هنگام بازشدن برنامه نسخه جدید بررسی و اعلان می‌شود."
+            else "غیرفعال؛ فقط با درخواست شما بررسی انجام می‌شود.",
+            if (prefs.autoUpdates) "خاموش کردن بررسی خودکار" else "روشن کردن بررسی خودکار") {
+            prefs.autoUpdates = !prefs.autoUpdates
+            prefs.lastChecked = 0L
+            showTab()
+            if (prefs.autoUpdates) TamasUpdater.check(this, automatic = true) { _, _ -> }
+        }
+        settingCard(parent, "دانلود و نصب نسخه جدید",
+            "بررسی آنلاین نسخه، نمایش تغییرات و نصب فقط پس از تأیید شما. " +
+                "فایل نصب قبل از اجرا با SHA-256 کنترل می‌شود.",
+            "بررسی نسخه جدید") { checkForUpdates() }
+        settingCard(parent, "صفحه دانلود رسمی",
+            "اگر نسخه منتشرشده‌ای موجود باشد، در سایت هنر مردمی نمایش داده می‌شود.",
+            "صفحه تماس‌یار") {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TamasUpdater.PAGE_URL)))
+        }
+
+        parent.addView(section("ظاهر و خوانایی", "هماهنگ با رنگ فیروزه‌ای و طلایی پیامیار"))
+        settingCard(parent, "حالت نمایش",
+            if (prefs.dark) "حالت تیره فعال است." else "حالت روشن فعال است.",
+            if (prefs.dark) "تغییر به حالت روشن" else "تغییر به حالت تیره") {
+            prefs.dark = !prefs.dark
+            showTab()
+        }
+        val scales = listOf("کوچک", "استاندارد", "درشت")
+        settingCard(parent, "اندازه نوشته‌ها",
+            "اندازه فعلی: " + scales[prefs.textSize] + " • فونت فارسی وزیرمتن",
+            "تغییر اندازه") {
+            prefs.textSize = (prefs.textSize + 1) % 3
+            showTab()
+        }
+
+        parent.addView(section("ارتباط و درباره برنامه", "دو برنامه مستقل، دفترچه مخاطبین مشترک"))
+        settingCard(parent, "پیامیار",
+            "برای ارسال و دریافت پیامک، پیامیار را باز کنید. تماس‌یار مستقل باقی می‌ماند.",
+            "رفتن به پیامیار") { openPayamYar() }
+        val version = try {
+            packageManager.getPackageInfo(packageName, 0).versionName
+        } catch (_: Exception) { "?" }
+        settingCard(parent, "درباره تماس‌یار",
+            "نسخه " + version + " • شناسه: " + packageName +
+                "\nضبط تماس، تشخیص هوشمند مزاحم و انتخاب اختصاصی سیم‌کارت هنوز فعال نیستند.",
+            "راهنمای حریم خصوصی") {
+            AlertDialog.Builder(this).setTitle("حریم خصوصی تماس‌یار")
+                .setMessage("مخاطبین و سوابق تماس فقط روی گوشی خوانده می‌شوند. " +
+                    "داده تماس یا مخاطبین به پیامیار و سایت هنر مردمی ارسال نمی‌شود. " +
+                    "ارتباط شبکه صرفاً برای بررسی نسخه‌های منتشرشده است. " +
+                    "برای حذف مجوزها از تنظیمات اندروید استفاده کنید.")
+                .setPositiveButton("متوجه شدم", null).show()
+        }
+    }
+
+    private fun checkForUpdates() {
+        Toast.makeText(this, "در حال بررسی نسخه جدید…", Toast.LENGTH_SHORT).show()
+        TamasUpdater.check(this) { release, message ->
+            if (isFinishing || isDestroyed) return@check
+            if (release == null) {
+                AlertDialog.Builder(this).setTitle("وضعیت به‌روزرسانی")
+                    .setMessage(message ?: "نسخه جدیدی موجود نیست.")
+                    .setPositiveButton("باشه", null).show()
+            } else {
+                TamasUpdater.confirmInstall(this, release) { notice ->
+                    if (!isFinishing) Toast.makeText(this, notice, Toast.LENGTH_LONG).show()
+                }
+            }
+        }
     }
 
     private fun allowed(permission: String, requestCode: Int): Boolean {
         if (checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED) return true
-        requestPermissions(arrayOf(permission), requestCode)
+        if (requestedPermissions.add(permission)) requestPermissions(arrayOf(permission), requestCode)
         return false
     }
 
@@ -330,6 +460,16 @@ class MainActivity : Activity() {
     private fun isDefaultDialer(): Boolean {
         val tm = getSystemService(TELECOM_SERVICE) as TelecomManager
         return tm.defaultDialerPackage == packageName
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 301) {
+            showTab()
+            Toast.makeText(this,
+                if (isDefaultDialer()) "تماس‌یار به‌عنوان شماره‌گیر پیش‌فرض انتخاب شد."
+                else "برنامه تلفن پیش‌فرض تغییر نکرد.", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun requestDialerRole() {
@@ -348,7 +488,14 @@ class MainActivity : Activity() {
         if (number.isBlank()) return
         val target = Uri.fromParts("tel", number, null)
         if (!isDefaultDialer()) {
-            startActivity(Intent(Intent.ACTION_DIAL, target))
+            val currentDialer = (getSystemService(TELECOM_SERVICE) as TelecomManager).defaultDialerPackage
+            if (!currentDialer.isNullOrBlank() && currentDialer != packageName) {
+                try {
+                    startActivity(Intent(Intent.ACTION_DIAL, target).setPackage(currentDialer))
+                    return
+                } catch (_: Exception) { /* Fall back to role request below. */ }
+            }
+            requestDialerRole()
             return
         }
         if (!allowed(Manifest.permission.CALL_PHONE, 212)) {
