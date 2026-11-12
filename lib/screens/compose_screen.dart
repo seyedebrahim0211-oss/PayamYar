@@ -39,6 +39,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
   final List<PendingSend> undoGroup = [];
   String lastSentBody = '';
   bool sending = false;
+  bool stopQueueing = false;
   bool openingContacts = false;
   int queuedCount = 0;
   AppStore get store => widget.store;
@@ -196,27 +197,48 @@ class _ComposeScreenState extends State<ComposeScreen> {
         ));
       if (confirmed != true || !mounted) return;
     }
-    setState(() { sending = true; queuedCount = 0; undoGroup.clear(); });
+    setState(() {
+      sending = true;
+      stopQueueing = false;
+      queuedCount = 0;
+      lastSentBody = text;
+      undoGroup.clear();
+    });
     final failed = <String>[];
-    final queued = <PendingSend>[];
+    var processed = 0;
     for (final number in targets) {
+      if (stopQueueing) break;
       final pending = await store.send(number, text);
+      processed++;
+      if (stopQueueing && pending != null) {
+        await store.undo(pending);
+        break;
+      }
       if (pending == null && store.android) {
         failed.add(number);
       } else {
-        if (pending != null) queued.add(pending);
+        if (pending != null) undoGroup.add(pending);
         if (mounted) {
           queuedCount++;
-          if (queuedCount % 10 == 0 || queuedCount == targets.length) setState(() {});
+          if (queuedCount == 1 || queuedCount % 10 == 0 || processed == targets.length) {
+            setState(() {});
+          }
         }
       }
     }
     if (!mounted) return;
-    setState(() {
-      sending = false;
-      lastSentBody = text;
-      undoGroup.addAll(queued);
-    });
+    if (stopQueueing) {
+      setState(() {
+        sending = false;
+        recipients
+          ..clear()
+          ..addAll(targets);
+        body.text = text;
+      });
+      await _saveDraft();
+      return;
+    }
+    setState(() { sending = false; });
     if (targets.length == 1 && failed.isEmpty) {
       final address = targets.single;
       to.clear();
@@ -438,15 +460,18 @@ class _ComposeScreenState extends State<ComposeScreen> {
                 onSend: () => _send(),
                 onUndo: () async {
                   var cancelled = 0;
+                  stopQueueing = true;
                   for (final request in List<PendingSend>.of(undoGroup)) {
+                    if (!request.deadline.isAfter(DateTime.now())) continue;
+                    if (!store.pendingSends.contains(request)) continue;
                     if (await store.undo(request)) cancelled++;
                   }
                   if (!mounted) return;
                   setState(() {
                     undoGroup.removeWhere((p) => !store.pendingSends.contains(p));
-                    if (cancelled > 0) body.text = lastSentBody;
+                    if (cancelled > 0 || sending) body.text = lastSentBody;
                   });
-                  if (cancelled > 0) _saveDraft();
+                  if (cancelled > 0 || stopQueueing) _saveDraft();
                 },
               ),
               const SizedBox(width: 12),
