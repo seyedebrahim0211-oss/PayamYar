@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'message_logic.dart';
 
@@ -117,6 +118,12 @@ class SmsBridge {
     }).toList(growable: false);
   }
 
+  static Future<Uint8List?> contactPhoto(String address) async {
+    if (!supported || address.trim().isEmpty) return null;
+    try {
+      return await _channel.invokeMethod<Uint8List>('contactPhoto', {'address': normalizeNumber(address)});
+    } catch (_) { return null; }
+  }
   static Future<String?> pickContact() => _channel.invokeMethod<String>('pickContact');
   /// Opens Android's "default SMS app" dialog; true when PayamYar was chosen.
   static Future<bool> requestDefault() async => await _channel.invokeMethod<bool>('requestDefault') ?? false;
