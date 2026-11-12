@@ -80,6 +80,36 @@ object AppUpdater {
         return apk
     }
 
+    /**
+     * Android rejects upgrades signed with a different certificate. Detect the mismatch
+     * before opening Package Installer, so users do not uninstall an app with local drafts.
+     * This cannot repair a lost legacy signing key.
+     */
+    @Suppress("DEPRECATION")
+    fun validateUpgrade(activity: Activity, apk: File) {
+        val pm = activity.packageManager
+        val flags = if (Build.VERSION.SDK_INT >= 28)
+            android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES
+        else android.content.pm.PackageManager.GET_SIGNATURES
+        val current = pm.getPackageInfo(activity.packageName, flags)
+        val incoming = pm.getPackageArchiveInfo(apk.absolutePath, flags)
+            ?: error("فایل دانلودشده بسته نصب اندروید معتبری نیست.")
+        check(incoming.packageName == activity.packageName) {
+            "شناسه برنامه با پیامیار نصب‌شده متفاوت است. نصب متوقف شد."
+        }
+        val existingCerts = if (Build.VERSION.SDK_INT >= 28)
+            current.signingInfo?.apkContentsSigners?.map { it.toByteArray() }.orEmpty()
+        else current.signatures?.map { it.toByteArray() }.orEmpty()
+        val incomingCerts = if (Build.VERSION.SDK_INT >= 28)
+            incoming.signingInfo?.apkContentsSigners?.map { it.toByteArray() }.orEmpty()
+        else incoming.signatures?.map { it.toByteArray() }.orEmpty()
+        check(existingCerts.isNotEmpty() && incomingCerts.isNotEmpty()
+            && existingCerts.size == incomingCerts.size
+            && existingCerts.all { old -> incomingCerts.any { new -> old.contentEquals(new) } }) {
+            "امضای این نسخه با نسخه نصب‌شده یکسان نیست. برای حفظ پیام‌ها و تنظیمات، برنامه قبلی را حذف نکنید؛ باید نسخه‌ای با امضای معتبر قبلی منتشر شود."
+        }
+    }
+
     fun install(activity: Activity, apk: File) {
         val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.updates", apk)
         activity.startActivity(Intent(Intent.ACTION_VIEW)
