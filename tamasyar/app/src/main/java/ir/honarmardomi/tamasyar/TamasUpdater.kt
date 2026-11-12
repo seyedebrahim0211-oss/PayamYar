@@ -151,6 +151,17 @@ object TamasUpdater {
         }.start()
     }
 
+    /** Synchronous worker entry point; called only by WorkManager off the UI thread. */
+    internal fun backgroundCheck(context: Context): Boolean {
+        if (!TamasPreferences(context).autoUpdates) return true
+        return try {
+            val release = readRelease(context)
+            TamasPreferences(context).lastChecked = System.currentTimeMillis()
+            if (release != null) alert(context, release)
+            true
+        } catch (_: Exception) { false }
+    }
+
     private fun alert(context: Context, release: TamasRelease) {
         val prefs = TamasPreferences(context)
         if (prefs.lastNotifiedCode >= release.code) return
