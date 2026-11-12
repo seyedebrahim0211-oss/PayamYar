@@ -100,6 +100,12 @@ class SmsBridge {
   }
   static void stopListening() => _channel.setMethodCallHandler(null);
 
+  /// Whether Android granted PayamYar permission to open the system package installer.
+  static Future<bool> canInstallUpdate() async {
+    if (!supported) return false;
+    return await _channel.invokeMethod<bool>('canInstallUpdate') ?? false;
+  }
+
   /// Downloads the release from honarmardomi.ir and opens Android's installer.
   /// Returns 'installing' or 'needs_permission' (the "install unknown apps" screen was opened).
   static Future<String> installUpdate(String url, {String sha256 = ''}) async =>
