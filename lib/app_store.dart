@@ -244,7 +244,9 @@ class AppStore extends ChangeNotifier {
   /// The package installer still requires the user's explicit confirmation.
   Future<void> resumePendingUpdate() async {
     if (!android || !updatePermissionPending || update == null ||
-        updateProgress != null) return;
+        updateProgress != null) {
+      return;
+    }
     updatePermissionPending = false;
     try {
       if (await SmsBridge.canInstallUpdate()) {
