@@ -337,7 +337,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                       return _bubbleFor(e.message!, pinnedId);
                     }))),
             SendUndoBar(
-                key: ValueKey(pending.last.id),
+                key: const ValueKey('conversation-undo-bar'),
                 requests: pending,
                 onUndo: () async {
                   String? restored;
