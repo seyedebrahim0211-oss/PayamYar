@@ -118,6 +118,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   selected: {settings.mode},
                   onSelectionChanged: (v) => settings.update(mode: v.first))),
                 const SizedBox(height: 16),
+                const Text('قلم برنامه'),
+                const SizedBox(height: 8),
+                SegmentedButton<int>(
+                  segments: const [
+                    ButtonSegment(value: 0, label: Text('وزیرمتن')),
+                    ButtonSegment(value: 1, label: Text('قلم گوشی')),
+                  ],
+                  selected: {settings.fontChoice},
+                  onSelectionChanged: (value) => settings.update(fontChoice: value.first)),
+                const SizedBox(height: 16),
                 Text('اندازه متن: ${Jalali.digits((settings.scale * 100).round())}٪'),
                 Slider(value: settings.scale, min: .85, max: 1.3, divisions: 9, onChanged: (v) => settings.update(scale: v)),
               ]))),
