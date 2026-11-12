@@ -2,6 +2,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:payamyar/update_service.dart';
 
 void main() {
+  test('rejects incomplete and non-hexadecimal release SHA-256', () {
+    expect(UpdateService.validDigest(''), isFalse);
+    expect(UpdateService.validDigest('a' * 63), isFalse);
+    expect(UpdateService.validDigest('g' * 64), isFalse);
+    expect(UpdateService.validDigest('f' * 64), isTrue);
+    expect(UpdateService.validDigest('A' * 64), isTrue);
+  });
+
   group('Official website update URL validation', () {
     test('accepts an APK hosted by honarmardomi.ir over HTTPS', () {
       expect(UpdateService.trusted('https://honarmardomi.ir/wp-content/uploads/payamyar-releases/PayamYar-1.4.2.apk'), isTrue);

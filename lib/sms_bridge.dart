@@ -100,6 +100,18 @@ class SmsBridge {
   }
   static void stopListening() => _channel.setMethodCallHandler(null);
 
+  /// Public SHA-256 of the installed app's signing certificate; not a user/device ID.
+  static Future<String> signingFingerprint() async {
+    if (!supported) return '';
+    return await _channel.invokeMethod<String>('signingFingerprint') ?? '';
+  }
+
+  /// Whether Android granted PayamYar permission to open the system package installer.
+  static Future<bool> canInstallUpdate() async {
+    if (!supported) return false;
+    return await _channel.invokeMethod<bool>('canInstallUpdate') ?? false;
+  }
+
   /// Downloads the release from honarmardomi.ir and opens Android's installer.
   /// Returns 'installing' or 'needs_permission' (the "install unknown apps" screen was opened).
   static Future<String> installUpdate(String url, {String sha256 = ''}) async =>

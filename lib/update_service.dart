@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'sms_bridge.dart';
 
 class ReleaseInfo {
   final String version;
@@ -23,26 +24,25 @@ class ReleaseInfo {
 class UpdateService {
   // Server-side administrator release manager: no GitHub, credentials or tokens in the app.
   static final _endpoint = Uri.parse('https://honarmardomi.ir/wp-json/payamyar/v1/release');
-  // Existing installations still read this legacy page; the WordPress manager keeps it in sync.
-  static final _legacyEndpoint = Uri.parse(
-      'https://honarmardomi.ir/wp-json/wp/v2/pages/14733?_fields=content');
-
+  /// Release identity is verified against the APK's real signing certificate,
+  /// not a value in private storage. Preview builds cannot opt into official updates.
   static Future<Map<String, dynamic>> _readManifest() async {
-    final response = await http.get(_endpoint, headers: {'Cache-Control': 'no-cache'})
-        .timeout(const Duration(seconds: 12));
-    if (response.statusCode == 200) {
-      return jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final headers = <String, String>{'Cache-Control': 'no-cache'};
+    if (Platform.isAndroid) {
+      try {
+        final signer = await SmsBridge.signingFingerprint();
+        if (validDigest(signer)) headers['X-PayamYar-Signer'] = signer;
+      } catch (_) {
+        // Older builds without the bridge receive no update, rather than
+        // bypassing signer checks via an unauthenticated legacy manifest.
+      }
     }
-    // The fallback is on the SAME official site; it never redirects to third-party hosts.
-    final old = await http.get(_legacyEndpoint, headers: {'Cache-Control': 'no-cache'})
+    final response = await http.get(_endpoint, headers: headers)
         .timeout(const Duration(seconds: 12));
-    if (old.statusCode != 200) throw const HttpException('PayamYar release endpoint unavailable');
-    final data = jsonDecode(utf8.decode(old.bodyBytes)) as Map<String, dynamic>;
-    final page = data['content'] as Map<String, dynamic>;
-    final rendered = page['rendered'] as String;
-    final match = RegExp(r'<pre[^>]*>(\{.*?\})</pre>', dotAll: true).firstMatch(rendered);
-    if (match == null) throw const FormatException('Missing release information');
-    return jsonDecode(match.group(1)!) as Map<String, dynamic>;
+    if (response.statusCode != 200) {
+      throw const HttpException('Official PayamYar release endpoint unavailable');
+    }
+    return jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
   }
 
   static Future<ReleaseInfo> check() async {
@@ -56,21 +56,33 @@ class UpdateService {
             : '';
     final digest = manifest['sha256'] as String? ?? '';
     final current = (await PackageInfo.fromPlatform()).version;
+    final minimumSupported = manifest['minimum_supported_version'] as String? ?? '1.0.0';
+    final compatible = _compareVersions(current, minimumSupported) >= 0;
     final isNewer = _compareVersions(version, current) > 0;
     if (url.isNotEmpty && !trusted(url)) {
       throw const FormatException('Invalid update URL');
     }
-    if (published && url.isNotEmpty &&
-        (digest.isNotEmpty && !RegExp(r'^[a-fA-F0-9]{64}$').hasMatch(digest))) {
-      throw const FormatException('Invalid release checksum');
+    if (published && url.isNotEmpty && !validDigest(digest)) {
+      throw const FormatException('Missing or invalid official release checksum');
     }
     return ReleaseInfo(
       version: version,
-      available: published && isNewer && url.isNotEmpty,
-      url: published && isNewer ? url : '',
+      available: published && compatible && isNewer && url.isNotEmpty,
+      url: published && compatible && isNewer ? url : '',
       notes: manifest['notes'] as String? ?? '',
-      sha256: published && isNewer ? digest.toLowerCase() : '',
+      sha256: published && compatible && isNewer ? digest.toLowerCase() : '',
     );
+  }
+
+  /// A published release must include a 64-character hexadecimal SHA-256.
+  static bool validDigest(String value) {
+    if (value.length != 64) return false;
+    for (final code in value.codeUnits) {
+      final hex = (code >= 48 && code <= 57) ||
+          (code >= 65 && code <= 70) || (code >= 97 && code <= 102);
+      if (!hex) return false;
+    }
+    return true;
   }
 
   static int _compareVersions(String a, String b) {

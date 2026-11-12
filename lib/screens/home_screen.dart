@@ -46,6 +46,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       widget.store.checkPermissions();
       widget.store.refresh();
+      unawaited(widget.store.resumePendingUpdate());
       final now = DateTime.now();
       if (_lastUpdateCheck == null ||
           now.difference(_lastUpdateCheck!) > const Duration(minutes: 30)) {
@@ -383,13 +384,17 @@ class UpdateBanner extends StatelessWidget {
               LinearProgressIndicator(value: progress == 0 ? null : progress,
                 borderRadius: const BorderRadius.all(Radius.circular(4))),
               const SizedBox(height: 6),
-              Text('در حال دریافت… ${Jalali.digits((progress * 100).round())}٪',
+              Text('دریافت امن از هنر مردمی… ${Jalali.digits((progress * 100).round())}٪',
                 style: TextStyle(color: scheme.onTertiaryContainer, fontSize: 12)),
             ] else
               FilledButton(
                 style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(44)),
                 onPressed: store.installUpdate,
-                child: const Text('به‌روزرسانی')),
+                child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Icon(Icons.download_for_offline_rounded, size: 20),
+                  SizedBox(width: 8),
+                  Text('دریافت و نصب از داخل پیامیار'),
+                ])),
           ]),
         ),
       ),
