@@ -9,6 +9,7 @@ import androidx.core.content.FileProvider
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 import java.util.zip.ZipFile
 
 /**
@@ -31,7 +32,7 @@ object AppUpdater {
     }
 
     /** Blocking; call on a worker thread. Returns the ready-to-install APK file. */
-    fun download(activity: Activity, url: String, progress: (Int) -> Unit): File {
+    fun download(activity: Activity, url: String, expectedSha256: String, progress: (Int) -> Unit): File {
         val uri = Uri.parse(url)
         require(uri.scheme == "https" && (uri.host == HOST || uri.host == "www.$HOST")) { "نشانی به‌روزرسانی معتبر نیست." }
         val dir = File(activity.cacheDir, "updates").apply { mkdirs() }
@@ -72,6 +73,22 @@ object AppUpdater {
             }
         } finally {
             connection?.disconnect()
+        }
+        if (expectedSha256.isNotEmpty()) {
+            require(expectedSha256.matches(Regex("[a-fA-F0-9]{64}"))) { "اثر انگشت فایل انتشار نامعتبر است." }
+            val digest = MessageDigest.getInstance("SHA-256")
+            download.inputStream().buffered().use { stream ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    val length = stream.read(buffer)
+                    if (length < 0) break
+                    digest.update(buffer, 0, length)
+                }
+            }
+            val hex = digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
+            check(hex.equals(expectedSha256, ignoreCase = true)) {
+                "صحت فایل به‌روزرسانی تأیید نشد؛ دانلود را دوباره انجام دهید."
+            }
         }
         val apk = File(dir, "PayamYar-update.apk")
         ZipFile(download).use { zip ->
