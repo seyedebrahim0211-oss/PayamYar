@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'conversation_logic.dart';
 import 'finance_logic.dart';
 import 'message_logic.dart';
+import 'notify_banner.dart';
 import 'sms_bridge.dart';
 import 'sms_groups.dart';
 import 'update_service.dart';
@@ -95,6 +96,8 @@ class AppStore extends ChangeNotifier {
   bool updatePermissionPending = false;
   void Function(String message)? onNotice;
   VoidCallback? onComposeIntent;
+  /// Opens a chat from the in-app glass banner; set by the home screen.
+  void Function(String address)? onOpenConversation;
   Timer? _debounce;
   int _generation = 0;
   List<MessageRecord> _buffer = [];
@@ -166,6 +169,11 @@ class AppStore extends ChangeNotifier {
           updateProgress = ((args as num?)?.toDouble() ?? 0) / 100;
         }
         notifyListeners();
+      case 'incomingBanner':
+        final banner = IncomingBanner.fromMap(args);
+        if (banner != null) currentBanner.value = banner;
+        _debounce?.cancel();
+        _debounce = Timer(const Duration(milliseconds: 350), refresh);
       case 'composeIntent':
         onComposeIntent?.call();
       default:
