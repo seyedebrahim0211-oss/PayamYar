@@ -21,8 +21,29 @@ class _SendUndoBarState extends State<SendUndoBar> {
   @override
   void initState() {
     super.initState();
-    _ticker = Timer.periodic(const Duration(milliseconds: 250), (_) {
-      if (mounted) setState(() {});
+    _syncTimer();
+  }
+
+  @override
+  void didUpdateWidget(covariant SendUndoBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncTimer();
+  }
+
+  void _syncTimer() {
+    final active = widget.requests.any((r) => r.deadline.isAfter(DateTime.now()));
+    if (!active) {
+      _ticker?.cancel();
+      _ticker = null;
+      return;
+    }
+    _ticker ??= Timer.periodic(const Duration(milliseconds: 250), (_) {
+      if (!mounted) return;
+      setState(() {});
+      if (!widget.requests.any((r) => r.deadline.isAfter(DateTime.now()))) {
+        _ticker?.cancel();
+        _ticker = null;
+      }
     });
   }
 
