@@ -133,7 +133,7 @@ class _BannerLayerState extends State<_BannerLayer> with SingleTickerProviderSta
   }
 
   void _dragUpdate(DragUpdateDetails d, bool top) {
-    setState(() => _drag = top ? math.min(0, _drag + d.delta.dy) : math.max(0, _drag + d.delta.dy));
+    setState(() => _drag = top ? math.min(0.0, _drag + d.delta.dy) : math.max(0.0, _drag + d.delta.dy));
   }
 
   void _dragEnd(DragEndDetails d, bool top) {
