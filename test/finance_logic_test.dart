@@ -40,6 +40,23 @@ void main() {
     expect(result.last.lastFour, '4321');
     expect(result.last.amountTomans, 200000);
   });
+  test('bank balances are grouped by known bank, with account IDs separated', () {
+    final msgs = [
+      MessageRecord(sender: 'بانک ملی', body: 'حساب 12550011 موجودی: ۱,۲۰۰,۰۰۰ ریال',
+        date: DateTime(2026, 11, 8)),
+      MessageRecord(sender: 'بانک ملی', body: 'حساب 12550022 مانده حساب: ۲,۰۰۰,۰۰۰ تومان',
+        date: DateTime(2026, 11, 9)),
+      MessageRecord(sender: 'بانک ملت', body: 'کارت **** 3344 موجودی: ۵۰۰,۰۰۰ تومان',
+        date: DateTime(2026, 11, 10)),
+    ];
+    final balances = FinanceLogic.latestBalances(msgs);
+    expect(balances, hasLength(3));
+    expect(balances.where((b) => b.bank == 'بانک ملی').length, 2);
+    expect(balances.where((b) => b.bank == 'بانک ملت').single.lastFour, '3344');
+    expect(balances.where((b) => b.bank == 'بانک ملی').map((b) => b.amountTomans),
+        containsAll([120000, 2000000]));
+  });
+
   test('balance requires currency and is not derived from withdrawals', () {
     final rows = [
       MessageRecord(sender: 'بانک', body: 'موجودی: ۱۲۰۰۰۰',
