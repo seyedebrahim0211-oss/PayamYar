@@ -41,6 +41,8 @@ jobs:
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/main/ofl/vazirmatn/Vazirmatn%5Bwght%5D.ttf' --output app/src/main/assets/Vazirmatn.ttf
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/main/ofl/vazirmatn/OFL.txt' --output app/src/main/assets/OFL.txt
           test -s app/src/main/assets/Vazirmatn.ttf
+      - name: Android lint and JVM test checks
+        run: gradle :app:lintDebug :app:testDebugUnitTest --no-daemon --stacktrace
       - name: Build test APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
       - uses: actions/upload-artifact@v4
