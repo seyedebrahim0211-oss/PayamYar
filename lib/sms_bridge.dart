@@ -200,4 +200,14 @@ class SmsBridge {
   static Future<void> previewSentSound() async {
     if (supported) await _channel.invokeMethod<void>('previewSentSound');
   }
+
+  /// Posts a sample Android notification with the chosen look and quick replies.
+  static Future<void> previewNotification() async {
+    if (supported) await _channel.invokeMethod<void>('previewNotification');
+  }
+
+  /// Android's per-app bubble setting (Android 10+).
+  static Future<void> openBubbleSettings() async {
+    if (supported) await _channel.invokeMethod<bool>('openBubbleSettings');
+  }
 }
