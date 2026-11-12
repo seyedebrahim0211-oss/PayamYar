@@ -77,7 +77,7 @@ class ReportsScreen extends StatelessWidget {
                       Icon(Icons.account_balance_rounded, color: scheme.primary, size: 20),
                       const SizedBox(width: 8),
                       Expanded(child: Text(bank, style: const TextStyle(fontWeight: FontWeight.w800))),
-                      Text(Jalali.digits(byBank[bank]!.length) + ' حساب',
+                      Text('${Jalali.digits(byBank[bank]!.length)} حساب',
                         style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
                     ]),
                   ),
@@ -95,7 +95,7 @@ class ReportsScreen extends StatelessWidget {
                         const SizedBox(width: 10),
                         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text(balance.label, style: const TextStyle(fontWeight: FontWeight.w700)),
-                          Text('آخرین اعلام: ' + Jalali.short(balance.updatedAt),
+                          Text('آخرین اعلام: ${Jalali.short(balance.updatedAt)}',
                             style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
                         ])),
                         const SizedBox(width: 7),
