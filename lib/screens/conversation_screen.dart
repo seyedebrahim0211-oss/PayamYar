@@ -481,7 +481,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
             builder: (context, value, _) => value.text.isEmpty
                 ? const SizedBox.shrink()
                 : Padding(padding: const EdgeInsets.only(bottom: 3), child: SmsCounter(text: settings.withSignature(value.text)))),
-          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          // Send button on the right edge (LTR order for this row only; the composer stays RTL).
+          Row(textDirection: TextDirection.ltr, crossAxisAlignment: CrossAxisAlignment.end, children: [
             // Composer pill: tools inside, typing area in the middle.
             Expanded(child: AnimatedBuilder(
               animation: focus,

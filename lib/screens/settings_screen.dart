@@ -11,6 +11,7 @@ import '../templates.dart';
 import 'compose_screen.dart';
 import 'compose_tools.dart';
 import 'home_screen.dart';
+import 'birthdays_screen.dart';
 import 'notification_style_screen.dart';
 import 'support_pages.dart';
 
@@ -75,6 +76,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
           body: ListView(padding: const EdgeInsets.fromLTRB(16, 4, 16, 28), children: [
             _HeaderCard(packageInfo: packageInfo, store: store, checking: checking, onCheck: _checkUpdate),
             const SizedBox(height: 14),
+            Row(children: [
+              _QuickAction(
+                icon: settings.mode == ThemeMode.dark ? Icons.dark_mode_rounded
+                    : settings.mode == ThemeMode.light ? Icons.light_mode_rounded : Icons.brightness_auto_rounded,
+                label: settings.mode == ThemeMode.dark ? 'تیره' : settings.mode == ThemeMode.light ? 'روشن' : 'خودکار',
+                colors: const [Color(0xFF3F3A88), Color(0xFF6A5ACD)],
+                onTap: () => settings.update(mode: ThemeMode.values[(settings.mode.index + 1) % 3]),
+              ),
+              const SizedBox(width: 10),
+              _QuickAction(
+                icon: Icons.auto_awesome_rounded,
+                label: 'اعلان شیشه‌ای',
+                colors: const [Color(0xFF087F81), Color(0xFF3A7CA5)],
+                onTap: () => _open(NotificationStyleScreen(settings: settings)),
+              ),
+              const SizedBox(width: 10),
+              _QuickAction(
+                icon: Icons.cake_rounded,
+                label: 'تولدها',
+                colors: const [Color(0xFFB4537A), Color(0xFFE08A5B)],
+                onTap: () => _open(BirthdaysScreen(store: store)),
+              ),
+              const SizedBox(width: 10),
+              _QuickAction(
+                icon: Icons.palette_rounded,
+                label: 'ظاهر',
+                colors: const [Color(0xFFA17A37), Color(0xFFD4A64A)],
+                onTap: () => _open(AppearanceSettingsPage(settings: settings)),
+              ),
+            ]),
+            const SizedBox(height: 14),
             SettingsGroup(children: [
               SettingsTile(icon: Icons.send_rounded, color: const Color(0xFF087F81),
                 title: 'پیامک و ارسال', subtitle: '$delay • ${feedback[settings.sentFeedback]}',
@@ -91,6 +123,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ]),
             const SizedBox(height: 12),
             SettingsGroup(children: [
+              SettingsTile(icon: Icons.cake_outlined, color: const Color(0xFFB4537A),
+                title: 'تولد مخاطبین', subtitle: 'تبریک خودکار با پیامک و یادآور یک روز قبل',
+                onTap: () => _open(BirthdaysScreen(store: store))),
               SettingsTile(icon: Icons.bolt_rounded, color: const Color(0xFFA17A37),
                 title: 'پیام‌های آماده',
                 subtitle: '${Jalali.digits(builtInTemplates.values.fold<int>(0, (n, l) => n + l.length))} پیام آماده و ${Jalali.digits(store.templates.length)} پیام شما',
@@ -121,6 +156,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
       },
     );
   }
+}
+
+/// Colourful shortcut tile at the top of Settings.
+class _QuickAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final List<Color> colors;
+  final VoidCallback onTap;
+  const _QuickAction({required this.icon, required this.label, required this.colors, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+        child: Material(
+          borderRadius: BorderRadius.circular(20),
+          clipBehavior: Clip.antiAlias,
+          child: Ink(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(begin: Alignment.topRight, end: Alignment.bottomLeft, colors: colors),
+            ),
+            child: InkWell(
+              onTap: onTap,
+              child: SizedBox(
+                height: 86,
+                child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: .2),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white.withValues(alpha: .35)),
+                    ),
+                    child: Icon(icon, color: Colors.white, size: 21),
+                  ),
+                  const SizedBox(height: 7),
+                  Text(label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+                ]),
+              ),
+            ),
+          ),
+        ),
+      );
 }
 
 class _HeaderCard extends StatelessWidget {

@@ -67,4 +67,26 @@ void main() {
     expect(FinanceLogic.latestBalances(rows), isEmpty);
   });
 
+  test('a balance amount is never mistaken for an account number (newest wins)', () {
+    final rows = [
+      MessageRecord(sender: 'بانک ملت', body: 'برداشت ۵۰,۰۰۰ تومان مانده حساب: 1500000 ریال',
+        date: DateTime(2026, 11, 1)),
+      MessageRecord(sender: '+982100000', body: 'بانک ملت برداشت ۲۰,۰۰۰ تومان مانده حساب: 1300000 ریال',
+        date: DateTime(2026, 11, 3)),
+    ];
+    final balances = FinanceLogic.latestBalances(rows);
+    expect(balances, hasLength(1));
+    expect(balances.single.amountTomans, 130000);
+    expect(FinanceLogic.totalBalance(balances), 130000);
+  });
+
+  test('unknown-account balance older than a known account of the same bank is dropped', () {
+    final rows = [
+      MessageRecord(sender: 'بانک ملی', body: 'موجودی: ۹۰۰,۰۰۰ تومان', date: DateTime(2026, 10, 1)),
+      MessageRecord(sender: 'بانک ملی', body: 'حساب 12340099 موجودی: ۲,۰۰۰,۰۰۰ تومان', date: DateTime(2026, 11, 1)),
+    ];
+    final balances = FinanceLogic.latestBalances(rows);
+    expect(balances, hasLength(1));
+    expect(balances.single.lastFour, '0099');
+  });
 }

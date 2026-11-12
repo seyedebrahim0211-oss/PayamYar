@@ -9,8 +9,11 @@ class Conversation {
 }
 
 class ConversationLogic {
+  static final _spaces = RegExp(r'[\s()-]');
+  static final _iranMobile = RegExp(r'^(\+98|0098)9\d{9}$');
+
   static String normalize(String address) {
-    var value = address.trim().replaceAll(RegExp(r'[\s()-]'), '');
+    var value = address.trim().replaceAll(_spaces, '');
     const persian = '۰۱۲۳۴۵۶۷۸۹';
     const arabic = '٠١٢٣٤٥٦٧٨٩';
     value = value.split('').map((c) {
@@ -19,7 +22,7 @@ class ConversationLogic {
       final a = arabic.indexOf(c);
       return a >= 0 ? a.toString() : c;
     }).join();
-    if (RegExp(r'^(\+98|0098)9\d{9}$').hasMatch(value)) {
+    if (_iranMobile.hasMatch(value)) {
       return '0${value.substring(value.length - 10)}';
     }
     return value.toLowerCase();

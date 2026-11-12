@@ -7,6 +7,7 @@ import 'conversation_logic.dart';
 import 'finance_logic.dart';
 import 'message_logic.dart';
 import 'notify_banner.dart';
+import 'report_logic.dart';
 import 'sms_bridge.dart';
 import 'sms_groups.dart';
 import 'update_service.dart';
@@ -32,16 +33,17 @@ class ConvInfo {
   ConvInfo(this.category, this.suspicious);
 }
 
+/// Reports computed in a background isolate for one [AppStore.revision].
 class ReportData {
   final int revision;
-  final int deposits;
-  final int withdrawals;
-  final List<FinanceEntry> recent;
-  final List<AccountBalance> balances;
-  final Map<MessageCategory, int> counts;
+  final ReportResult data;
   final List<Conversation> top;
-  const ReportData(this.revision, this.deposits, this.withdrawals, this.recent,
-      this.balances, this.counts, this.top);
+  const ReportData(this.revision, this.data, this.top);
+  int get deposits => data.deposits;
+  int get withdrawals => data.withdrawals;
+  List<FinanceEntry> get recent => data.recent;
+  List<AccountBalance> get balances => data.balances;
+  Map<MessageCategory, int> get counts => data.counts;
 }
 
 /// Single source of truth for messages, permissions and local preferences.
@@ -103,6 +105,8 @@ class AppStore extends ChangeNotifier {
   List<MessageRecord> _buffer = [];
   bool _progressive = false;
   ReportData? _report;
+  bool _reportRunning = false;
+  Timer? _reportTimer;
 
   bool get isDefault => permissions.isDefault;
   bool get needsOnboarding => android && (!permissions.canRead || !onboarded);
@@ -133,7 +137,7 @@ class AppStore extends ChangeNotifier {
     if (android) {
       SmsBridge.listen(_onNativeEvent);
       await checkPermissions();
-      if (permissions.canRead) unawaited(loadAll());
+      if (permissions.canRead) unawaited(_quickThenAll());
       try {
         final queued = await SmsBridge.pending();
         for (final item in queued) {
@@ -198,7 +202,7 @@ class AppStore extends ChangeNotifier {
 
   Future<SmsPermissionState> requestPermissions() async {
     permissions = await SmsBridge.request();
-    if (permissions.canRead && messages.isEmpty) unawaited(loadAll());
+    if (permissions.canRead && messages.isEmpty) unawaited(_quickThenAll());
     notifyListeners();
     return permissions;
   }
@@ -301,6 +305,23 @@ class AppStore extends ChangeNotifier {
 
   // ───────────── loading ─────────────
 
+  /// Shows the newest messages within a moment, then reads the whole inbox silently in the background.
+  Future<void> _quickThenAll() async {
+    if (messages.isEmpty) {
+      try {
+        final first = await SmsBridge.read(limit: 400);
+        if (messages.isEmpty && first.isNotEmpty) {
+          messages = first;
+          _rebuild();
+          notifyListeners();
+        }
+      } catch (_) {
+        // The full load below reports errors.
+      }
+    }
+    await loadAll();
+  }
+
   /// Reads every SMS in one native pass. The first 150 messages appear at once; the rest follow in large pages.
   Future<void> loadAll() async {
     if (!android || loadingAll) return;
@@ -341,8 +362,8 @@ class AppStore extends ChangeNotifier {
       messages = _buffer;
       _ingest(page);
       revision++;
+      notifyListeners();
     }
-    notifyListeners();
   }
 
   /// Re-reads only the newest messages and merges them, so a change never reloads the whole inbox.
@@ -459,24 +480,36 @@ class AppStore extends ChangeNotifier {
     return [...top, ...rest];
   }
 
+  /// Latest reports; recomputed off the UI thread whenever messages change.
+  /// Returns the previous result (or an empty one) while a new one is being built.
   ReportData get report {
     final cached = _report;
-    if (cached != null && cached.revision == revision) return cached;
-    final since = DateTime.now().subtract(const Duration(days: 30));
-    final recent = <FinanceEntry>[];
-    final counts = <MessageCategory, int>{for (final c in MessageCategory.values) c: 0};
-    for (final m in messages) {
-      final category = MessageLogic.category(m);
-      counts[category] = counts[category]! + 1;
-      if (category == MessageCategory.banking && m.date.isAfter(since)) {
-        final entry = FinanceLogic.parse(m);
-        if (entry != null) recent.add(entry);
-      }
+    if (cached == null || cached.revision != revision) _scheduleReport();
+    return cached ?? ReportData(-1, ReportResult.empty, const []);
+  }
+
+  /// True until the first report for the current messages is ready.
+  bool get reportPending => _report == null || _report!.revision != revision;
+
+  void _scheduleReport() {
+    if (_reportRunning || (_reportTimer?.isActive ?? false)) return;
+    _reportTimer = Timer(Duration(milliseconds: loadingAll ? 1200 : 120), _runReport);
+  }
+
+  Future<void> _runReport() async {
+    _reportRunning = true;
+    final rev = revision;
+    final snapshot = List<MessageRecord>.of(messages, growable: false);
+    try {
+      final result = await compute(buildReport, snapshot);
+      final top = conversations.toList()..sort((a, b) => b.count.compareTo(a.count));
+      _report = ReportData(rev, result, top.take(5).toList());
+    } catch (_) {
+      // A failed report must never break the inbox; the next change retries.
+    } finally {
+      _reportRunning = false;
     }
-    final top = conversations.toList()..sort((a, b) => b.count.compareTo(a.count));
-    return _report = ReportData(revision, FinanceLogic.total(recent, FinanceKind.deposit),
-      FinanceLogic.total(recent, FinanceKind.withdrawal), recent,
-      FinanceLogic.latestBalances(messages), counts, top.take(5).toList());
+    notifyListeners();
   }
 
   // ───────────── backup ─────────────
@@ -736,6 +769,7 @@ class AppStore extends ChangeNotifier {
   @override
   void dispose() {
     _debounce?.cancel();
+    _reportTimer?.cancel();
     if (android) SmsBridge.stopListening();
     smsGroups.dispose();
     super.dispose();
