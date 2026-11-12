@@ -56,6 +56,8 @@ class UpdateService {
             : '';
     final digest = manifest['sha256'] as String? ?? '';
     final current = (await PackageInfo.fromPlatform()).version;
+    final minimumSupported = manifest['minimum_supported_version'] as String? ?? '1.0.0';
+    final compatible = _compareVersions(current, minimumSupported) >= 0;
     final isNewer = _compareVersions(version, current) > 0;
     if (url.isNotEmpty && !trusted(url)) {
       throw const FormatException('Invalid update URL');
@@ -65,10 +67,10 @@ class UpdateService {
     }
     return ReleaseInfo(
       version: version,
-      available: published && isNewer && url.isNotEmpty,
-      url: published && isNewer ? url : '',
+      available: published && compatible && isNewer && url.isNotEmpty,
+      url: published && compatible && isNewer ? url : '',
       notes: manifest['notes'] as String? ?? '',
-      sha256: published && isNewer ? digest.toLowerCase() : '',
+      sha256: published && compatible && isNewer ? digest.toLowerCase() : '',
     );
   }
 
