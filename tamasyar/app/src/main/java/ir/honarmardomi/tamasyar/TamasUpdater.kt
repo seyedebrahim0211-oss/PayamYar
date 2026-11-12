@@ -80,19 +80,24 @@ object TamasUpdater {
     }
 
     private fun localCode(context: Context): Long {
+        @Suppress("DEPRECATION")
         val info = context.packageManager.getPackageInfo(context.packageName, 0)
-        return if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else
-            @Suppress("DEPRECATION") info.versionCode.toLong()
+        @Suppress("DEPRECATION")
+        return if (Build.VERSION.SDK_INT >= 28) info.longVersionCode
+            else info.versionCode.toLong()
     }
 
     private fun readRelease(context: Context): TamasRelease? {
         val c = connect(API_URL)
-        val response = c.use {
-            it.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
-                reader.readText().also { text ->
-                    require(text.length < 150000) { "پاسخ انتشار بیش از حد بزرگ است." }
+        val response = try {
+            c.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+                // Read only a bounded response; avoid untrusted oversized metadata.
+                reader.readText().also { value ->
+                    require(value.length < 150000) { "پاسخ انتشار بیش از حد بزرگ است." }
                 }
             }
+        } finally {
+            c.disconnect()
         }
         val pages = JSONArray(response)
         if (pages.length() == 0) return null
@@ -220,11 +225,13 @@ object TamasUpdater {
                 require(actual.equals(release.sha256, true)) { "اثر انگشت فایل مطابقت ندارد." }
                 @Suppress("DEPRECATION")
                 val apk = activity.packageManager.getPackageArchiveInfo(staging.absolutePath, 0)
-                require(apk?.packageName == activity.packageName) {
+                    ?: error("فایل APK قابل شناسایی نیست.")
+                require(apk.packageName == activity.packageName) {
                     "شناسه برنامه با تماس‌یار تطابق ندارد."
                 }
-                val apkCode = if (Build.VERSION.SDK_INT >= 28) apk.longVersionCode else
-                    @Suppress("DEPRECATION") apk.versionCode.toLong()
+                @Suppress("DEPRECATION")
+                val apkCode = if (Build.VERSION.SDK_INT >= 28) apk.longVersionCode
+                    else apk.versionCode.toLong()
                 require(apkCode == release.code) { "کد نسخه فایل با اطلاعات سایت یکسان نیست." }
                 val file = File(directory, "TamasYar-" + release.code + ".apk")
                 require(staging.renameTo(file)) { "ثبت فایل دریافت‌شده انجام نشد." }
