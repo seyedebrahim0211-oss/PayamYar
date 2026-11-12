@@ -80,13 +80,13 @@ class FinanceLogic {
   static List<AccountBalance> latestBalances(Iterable<MessageRecord> messages) {
     final latest = <String, AccountBalance>{};
     final balance = RegExp(
-      r'(?:موجودی|موجودي|مانده(?:\\s+(?:حساب|کارت|سپرده))?|باقی\\s*مانده)'
-      r'(?:\\s+فعلی)?\\s*[:：\\-]?\\s*(?:مبلغ\\s*)?'
-      r'([\\d,٬،\\s]+)\\s*(ریال|تومان)',
+      r'(?:موجودی|موجودي|مانده(?:\s+(?:حساب|کارت|سپرده))?|باقی\s*مانده)'
+      r'(?:\s+فعلی)?\s*[:：\-]?\s*(?:مبلغ\s*)?'
+      r'([\d,٬،\s]+)\s*(ریال|تومان)',
       caseSensitive: false);
     final account = RegExp(
-      r'(?:شماره\\s*)?(?:حساب|کارت|سپرده|شبا)\\s*[:：#\\-]?\\s*'
-      r'([*xX×\\-\\s\\d]{4,40})',
+      r'(?:شماره\s*)?(?:حساب|کارت|سپرده|شبا)\s*[:：#\-]?\s*'
+      r'([*xX×\-\s\d]{4,40})',
       caseSensitive: false);
     for (final m in messages) {
       if (m.outgoing || MessageLogic.category(m) != MessageCategory.banking) continue;
