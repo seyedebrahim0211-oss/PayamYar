@@ -11,6 +11,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -19,6 +20,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.provider.ContactsContract
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -32,7 +34,10 @@ import androidx.core.graphics.drawable.IconCompat
  * inline reply, "mark as read" and one-tap copy for verification codes.
  */
 object Notifier {
-    private const val CHANNEL = "incoming_sms"
+    // V2 uses fresh channels; Android never updates sound on an existing channel.
+    const val INCOMING_CHANNEL = "incoming_sms_v2"
+    const val SENT_CHANNEL = "sent_sms_v2"
+    private const val CHANNEL = INCOMING_CHANNEL
     const val ACTION_REPLY = "ir.honarmardomi.payamyar.NOTIFY_REPLY"
     const val ACTION_READ = "ir.honarmardomi.payamyar.NOTIFY_READ"
     const val ACTION_COPY = "ir.honarmardomi.payamyar.NOTIFY_COPY"
@@ -73,6 +78,25 @@ object Notifier {
         return bitmap
     }
 
+    private fun profileBitmap(c: Context, address: String, label: String): Bitmap {
+        if (ContextCompat.checkSelfPermission(c, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) {
+            try {
+                val uri = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(address))
+                c.contentResolver.query(uri, arrayOf(ContactsContract.PhoneLookup.PHOTO_THUMBNAIL_URI),
+                    null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val photo = cursor.getString(0)
+                        if (!photo.isNullOrBlank()) {
+                            val bmp = c.contentResolver.openInputStream(Uri.parse(photo))?.use { BitmapFactory.decodeStream(it) }
+                            if (bmp != null) return Bitmap.createScaledBitmap(bmp, 160, 160, true)
+                        }
+                    }
+                }
+            } catch (_: Exception) { }
+        }
+        return avatar(label, address)
+    }
+
     private fun broadcast(c: Context, action: String, address: String, extra: String? = null, mutable: Boolean = false): PendingIntent {
         val intent = Intent(c, NotifyActionReceiver::class.java).setAction(action)
             .setData(Uri.parse("payamyar:notify/${Uri.encode(address)}/$action"))
@@ -82,24 +106,66 @@ object Notifier {
         return PendingIntent.getBroadcast(c, 0, intent, flags)
     }
 
-    fun incoming(c: Context, address: String, contact: String?, body: String, time: Long) {
+    private fun enabled(c: Context, key: String): Boolean =
+        c.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).getBoolean("flutter.$key", true)
+
+    fun configureChannels(c: Context) {
+        if (Build.VERSION.SDK_INT < 26) return
         val manager = c.getSystemService(NotificationManager::class.java)
-        if (Build.VERSION.SDK_INT >= 26) {
-            manager.createNotificationChannel(NotificationChannel(CHANNEL, "پیامک‌های دریافتی", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "اعلان پیامک‌های جدید با پاسخ سریع"
-                enableLights(true); lightColor = BRAND
-                enableVibration(true); vibrationPattern = longArrayOf(0, 180, 120, 180)
-                setShowBadge(true)
-                lockscreenVisibility = android.app.Notification.VISIBILITY_PRIVATE
-            })
-        }
+        val sound = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
+        val audio = android.media.AudioAttributes.Builder()
+            .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION)
+            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
+        manager.createNotificationChannel(NotificationChannel(INCOMING_CHANNEL, "پیام‌های دریافتی", NotificationManager.IMPORTANCE_HIGH).apply {
+            description = "صدای دریافت پیام، پیش‌نمایش و پاسخ سریع"
+            enableVibration(true)
+            vibrationPattern = longArrayOf(0, 150, 100, 160)
+            setSound(sound, audio)
+            lockscreenVisibility = android.app.Notification.VISIBILITY_PRIVATE
+        })
+        manager.createNotificationChannel(NotificationChannel(SENT_CHANNEL, "تأیید ارسال پیام", NotificationManager.IMPORTANCE_DEFAULT).apply {
+            description = "صدای تأیید پذیرش پیامک توسط شبکه؛ قابل تغییر از تنظیمات اعلان گوشی"
+            setSound(sound, audio)
+            enableVibration(false)
+            lockscreenVisibility = android.app.Notification.VISIBILITY_PRIVATE
+        })
+    }
+
+    fun sent(c: Context, id: String) {
+        if (!enabled(c, "notifySent")) return
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(c, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        val prefs = c.getSharedPreferences("sms_engine_v1", Context.MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        // A multi-recipient batch should not play hundreds of sounds.
+        if (now - prefs.getLong("last_success_notification", 0) < 2500L) return
+        prefs.edit().putLong("last_success_notification", now).apply()
+        configureChannels(c)
+        val open = PendingIntent.getActivity(c, 0, Intent(c, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val notification = NotificationCompat.Builder(c, SENT_CHANNEL)
+            .setSmallIcon(R.drawable.ic_stat_payamyar)
+            .setColor(BRAND).setContentTitle("پیامک به شبکه ارسال شد")
+            .setContentText("وضعیت ارسال توسط شبکه تأیید شد.")
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setContentIntent(open).setAutoCancel(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE).build()
+        NotificationManagerCompat.from(c).notify(900_001, notification)
+    }
+
+    fun incoming(c: Context, address: String, contact: String?, body: String, time: Long) {
+        if (!enabled(c, "notifyIncoming")) return
+        configureChannels(c)
+        val manager = c.getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(c, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val preview = c.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).getBoolean("flutter.notifyPreview", true)
         val name = contact?.takeIf { it.isNotBlank() } ?: address
         val id = idFor(address)
         val text = if (preview) body else "پیامک جدید"
+        val picture = profileBitmap(c, address, name)
         val sender = Person.Builder().setName(name).setKey(address)
-            .setIcon(IconCompat.createWithBitmap(avatar(if (contact.isNullOrBlank()) address else name, address))).build()
+            .setIcon(IconCompat.createWithBitmap(picture)).build()
 
         // Stack this message under earlier unread ones from the same sender.
         val existing = manager.activeNotifications.firstOrNull { it.id == id }?.notification
@@ -117,7 +183,7 @@ object Notifier {
             .setSmallIcon(R.drawable.ic_stat_payamyar)
             .setColor(BRAND)
             .setStyle(style)
-            .setLargeIcon(avatar(if (contact.isNullOrBlank()) address else name, address))
+            .setLargeIcon(picture)
             .setContentTitle(name).setContentText(text)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setPriority(NotificationCompat.PRIORITY_HIGH)

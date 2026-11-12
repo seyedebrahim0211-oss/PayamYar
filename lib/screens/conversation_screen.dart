@@ -5,6 +5,7 @@ import '../app_store.dart';
 import '../jalali.dart';
 import '../message_logic.dart';
 import '../sms_bridge.dart';
+import '../smart_assistant.dart';
 import 'compose_screen.dart';
 import 'compose_tools.dart';
 import 'send_undo_bar.dart';
@@ -233,6 +234,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
         final key = store.key(widget.address);
         final pending = store.pendingSends.where((p) => store.key(p.to) == key).toList();
         final items = _entries(messages, pending);
+        final quickReplies = messages.isNotEmpty && !messages.first.outgoing &&
+                MessageLogic.category(messages.first) == MessageCategory.personal
+            ? SmartAssistant.suggestReplies(messages.first.body)
+            : const <String>[];
         final pinned = store.isPinned(widget.address);
         final pinnedId = store.pinnedMessageId(widget.address);
         MessageRecord? pinnedMessage;
@@ -313,17 +318,26 @@ class _ConversationScreenState extends State<ConversationScreen> {
                       if (e.header != null) return _DayHeader(e.header!);
                       final p = e.pending;
                       if (p != null) {
-                        return _Bubble(text: p.body, outgoing: true,
-                          time: p.scheduled ? 'زمان‌دار • ${Jalali.time(p.deadline)}' : 'در صف ارسال',
-                          trailing: TextButton(onPressed: () async {
-                            if (await store.undo(p)) input.text = p.body;
-                          }, child: const Text('لغو')));
+                        return TweenAnimationBuilder<double>(
+                          key: ValueKey('queued-${p.id}'),
+                          duration: const Duration(milliseconds: 380),
+                          curve: Curves.easeOutCubic,
+                          tween: Tween(begin: 0, end: 1),
+                          builder: (_, value, child) => Opacity(
+                            opacity: value,
+                            child: Transform.translate(
+                              offset: Offset(0, 18 * (1 - value)), child: child)),
+                          child: _Bubble(text: p.body, outgoing: true,
+                            time: p.scheduled ? 'زمان‌دار • ${Jalali.time(p.deadline)}' : 'در صف ارسال',
+                            trailing: TextButton(onPressed: () async {
+                              if (await store.undo(p)) input.text = p.body;
+                            }, child: const Text('لغو'))),
+                        );
                       }
                       return _bubbleFor(e.message!, pinnedId);
                     }))),
-            if (pending.isNotEmpty)
-              SendUndoBar(
-                key: ValueKey(pending.last.id),
+            SendUndoBar(
+                key: const ValueKey('conversation-undo-bar'),
                 requests: pending,
                 onUndo: () async {
                   String? restored;
@@ -337,6 +351,22 @@ class _ConversationScreenState extends State<ConversationScreen> {
                   if (cancelled > 0 && restored != null && mounted) input.text = restored;
                 },
               ),
+            if (canReply && quickReplies.isNotEmpty)
+              SizedBox(height: 45, child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                children: [
+                  for (final suggestion in quickReplies)
+                    Padding(
+                      padding: const EdgeInsetsDirectional.only(end: 7),
+                      child: ActionChip(
+                        avatar: Icon(Icons.auto_awesome_outlined, color: scheme.primary, size: 17),
+                        label: Text(suggestion, style: const TextStyle(fontSize: 12)),
+                        onPressed: () { input.text = suggestion; },
+                      ),
+                    ),
+                ],
+              )),
             if (canReply) _inputBar(scheme) else Padding(
               padding: const EdgeInsets.all(14),
               child: Text('امکان پاسخ به این فرستنده وجود ندارد.', style: TextStyle(color: scheme.onSurfaceVariant))),
@@ -354,7 +384,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
       status = m.type == 5
           ? 'ارسال نشد'
           : m.type == 4 || m.type == 6
-              ? 'در حال ارسال'
+              ? (DateTime.now().difference(m.date).inSeconds >= 25
+                  ? 'در انتظار تأیید شبکه' : 'در حال ارسال')
               : m.type == 3
                   ? 'پیش‌نویس'
                   : m.delivery == 0
@@ -509,7 +540,7 @@ class _Bubble extends StatelessWidget {
       : outgoing && dark ? const Color(0xFFF1F8F6) : scheme.onSurface;
     const r = Radius.circular(20);
     return Align(
-      alignment: outgoing ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
+      alignment: outgoing ? AlignmentDirectional.centerStart : AlignmentDirectional.centerEnd,
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .8),
         child: GestureDetector(

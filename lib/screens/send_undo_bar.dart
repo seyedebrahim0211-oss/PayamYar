@@ -21,8 +21,29 @@ class _SendUndoBarState extends State<SendUndoBar> {
   @override
   void initState() {
     super.initState();
-    _ticker = Timer.periodic(const Duration(milliseconds: 250), (_) {
-      if (mounted) setState(() {});
+    _syncTimer();
+  }
+
+  @override
+  void didUpdateWidget(covariant SendUndoBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncTimer();
+  }
+
+  void _syncTimer() {
+    final active = widget.requests.any((r) => r.deadline.isAfter(DateTime.now()));
+    if (!active) {
+      _ticker?.cancel();
+      _ticker = null;
+      return;
+    }
+    _ticker ??= Timer.periodic(const Duration(milliseconds: 250), (_) {
+      if (!mounted) return;
+      setState(() {});
+      if (!widget.requests.any((r) => r.deadline.isAfter(DateTime.now()))) {
+        _ticker?.cancel();
+        _ticker = null;
+      }
     });
   }
 
@@ -36,66 +57,97 @@ class _SendUndoBarState extends State<SendUndoBar> {
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final active = widget.requests.where((r) => r.deadline.isAfter(now)).toList();
-    if (active.isEmpty || cancelling) return const SizedBox.shrink();
-
-    final latest = active.map((p) => p.deadline)
-        .reduce((a, b) => a.isAfter(b) ? a : b);
-    final left = latest.difference(now).inMilliseconds.clamp(0, 5000);
-    final count = active.length;
-    final scheduled = active.any((p) => p.scheduled);
-    final seconds = (left / 1000).ceil();
     final scheme = Theme.of(context).colorScheme;
+    final scheduled = active.any((p) => p.scheduled);
+    final latest = active.isEmpty ? now : active.map((p) => p.deadline)
+        .reduce((a, b) => a.isAfter(b) ? a : b);
+    final ms = latest.difference(now).inMilliseconds;
+    final seconds = (ms.clamp(0, 5000) / 1000).ceil();
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-      child: Material(
-        elevation: 2,
-        color: scheme.primaryContainer,
-        shadowColor: scheme.shadow.withValues(alpha: .12),
-        borderRadius: BorderRadius.circular(16),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Padding(
-              padding: const EdgeInsetsDirectional.fromSTEB(12, 5, 8, 4),
-              child: Row(children: [
-                Icon(Icons.schedule_send_rounded, size: 20,
-                  color: scheme.onPrimaryContainer),
-                const SizedBox(width: 8),
-                Expanded(child: Text(
-                  scheduled ? (count > 1 ? '$count پیامک زمان‌بندی‌شده' : 'ارسال زمان‌بندی‌شده')
-                     : (count > 1 ? '$count پیامک در صف ارسال' : 'پیامک در صف ارسال'),
-                  style: TextStyle(color: scheme.onPrimaryContainer,
-                    fontWeight: FontWeight.w700, fontSize: 13),
-                  maxLines: 1, overflow: TextOverflow.ellipsis,
-                )),
-                Text(scheduled ? Jalali.time(latest) : '${Jalali.digits(seconds)} ثانیه',
-                  style: TextStyle(color: scheme.onPrimaryContainer, fontSize: 12)),
-                const SizedBox(width: 8),
-                TextButton(
-                  onPressed: cancelling ? null : () async {
-                    setState(() => cancelling = true);
-                    try {
-                      await widget.onUndo();
-                    } finally {
-                      if (mounted) setState(() => cancelling = false);
-                    }
-                  },
-                  child: Text(count > 1 ? 'لغو همه' : scheduled ? 'لغو زمان‌بندی' : 'لغو ارسال',
-                    style: TextStyle(color: scheme.onPrimaryContainer,
-                      fontWeight: FontWeight.w800)),
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 310),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 400),
+        switchInCurve: Curves.easeOutBack,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (child, animation) => FadeTransition(
+          opacity: animation,
+          child: SizeTransition(
+            sizeFactor: animation,
+            alignment: Alignment.topCenter,
+            child: SlideTransition(
+              position: Tween<Offset>(begin: const Offset(0, .12), end: Offset.zero).animate(animation),
+              child: child,
+            ),
+          ),
+        ),
+        child: active.isEmpty ? const SizedBox(key: ValueKey('no-pending'))
+          : Padding(
+          key: ValueKey('pending-${active.first.id}'),
+          padding: const EdgeInsets.fromLTRB(12, 5, 12, 9),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: scheme.primaryContainer.withValues(alpha: .92),
+              border: Border.all(color: scheme.primary.withValues(alpha: .23)),
+              borderRadius: BorderRadius.circular(21),
+              boxShadow: [BoxShadow(color: scheme.primary.withValues(alpha: .11),
+                blurRadius: 22, offset: const Offset(0, 7))],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(21),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Padding(
+                  padding: const EdgeInsetsDirectional.fromSTEB(13, 9, 10, 6),
+                  child: Row(children: [
+                    Container(
+                      width: 37, height: 37,
+                      decoration: BoxDecoration(color: scheme.primary.withValues(alpha: .12),
+                        shape: BoxShape.circle),
+                      child: Icon(scheduled ? Icons.schedule_send_rounded : Icons.hourglass_bottom_rounded,
+                        color: scheme.primary, size: 21),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(scheduled ? 'پیام زمان‌بندی شده' : 'فرصت لغو ارسال',
+                        style: TextStyle(color: scheme.onPrimaryContainer,
+                          fontWeight: FontWeight.w800, fontSize: 13.5)),
+                      Text(scheduled ? 'زمان اجرا: ${Jalali.time(latest)}' :
+                        '${Jalali.digits(active.length)} پیام • ${Jalali.digits(seconds)} ثانیه باقی مانده',
+                        style: TextStyle(color: scheme.onPrimaryContainer.withValues(alpha: .8),
+                          fontSize: 11.5)),
+                    ])),
+                    const SizedBox(width: 5),
+                    FilledButton.tonalIcon(
+                      onPressed: cancelling ? null : () async {
+                        setState(() => cancelling = true);
+                        try { await widget.onUndo(); }
+                        finally { if (mounted) setState(() => cancelling = false); }
+                      },
+                      icon: Icon(scheduled ? Icons.event_busy_rounded : Icons.undo_rounded, size: 18),
+                      label: Text(active.length > 1 ? 'لغو همه' : 'لغو'),
+                    ),
+                  ]),
+                ),
+                if (!scheduled) TweenAnimationBuilder<double>(
+                  key: ValueKey('countdown-${active.first.id}'),
+                  tween: Tween(begin: 1, end: 0),
+                  duration: Duration(milliseconds: ms.clamp(0, 5000).toInt()),
+                  builder: (_, v, __) => LinearProgressIndicator(
+                    value: v,
+                    minHeight: 4,
+                    backgroundColor: scheme.primary.withValues(alpha: .08),
+                    color: scheme.primary,
+                  ),
                 ),
               ]),
             ),
-            if (!scheduled) LinearProgressIndicator(
-              value: left / 5000,
-              minHeight: 3,
-              backgroundColor: scheme.onPrimaryContainer.withValues(alpha: .12),
-              color: scheme.primary,
-            ),
-          ]),
+          ),
         ),
       ),
     );
   }
+
 }

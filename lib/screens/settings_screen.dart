@@ -118,9 +118,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   selected: {settings.mode},
                   onSelectionChanged: (v) => settings.update(mode: v.first))),
                 const SizedBox(height: 16),
+                const Text('قلم برنامه'),
+                const SizedBox(height: 8),
+                SegmentedButton<int>(
+                  segments: const [
+                    ButtonSegment(value: 0, label: Text('وزیرمتن')),
+                    ButtonSegment(value: 1, label: Text('قلم گوشی')),
+                  ],
+                  selected: {settings.fontChoice},
+                  onSelectionChanged: (value) => settings.update(fontChoice: value.first)),
+                const SizedBox(height: 16),
                 Text('اندازه متن: ${Jalali.digits((settings.scale * 100).round())}٪'),
                 Slider(value: settings.scale, min: .85, max: 1.3, divisions: 9, onChanged: (v) => settings.update(scale: v)),
               ]))),
+            _section('اعلان و صدای پیام'),
+            Card(child: Column(children: [
+              SwitchListTile(
+                secondary: Icon(Icons.mark_chat_unread_outlined, color: scheme.primary),
+                title: const Text('اعلان دریافت پیامک'),
+                subtitle: const Text('نمایش پیام جدید روی گوشی'),
+                value: settings.notifyIncoming,
+                onChanged: (value) => settings.update(notifyIncoming: value)),
+              SwitchListTile(
+                secondary: Icon(Icons.outgoing_mail, color: scheme.primary),
+                title: const Text('اعلان و صدای تأیید ارسال'),
+                subtitle: const Text('فقط وقتی شبکه پذیرش یا تحویل را تأیید کند'),
+                value: settings.notifySent,
+                onChanged: (value) => settings.update(notifySent: value)),
+              ListTile(
+                leading: Icon(Icons.music_note_outlined, color: scheme.primary),
+                title: const Text('صدای شخصی دریافت پیام'),
+                subtitle: const Text('انتخاب صدای پیش‌فرض یا دلخواه از تنظیمات اندروید'),
+                trailing: const Icon(Icons.chevron_left_rounded),
+                onTap: () => SmsBridge.openNotificationChannel('incoming')),
+              ListTile(
+                leading: Icon(Icons.notifications_active_outlined, color: scheme.primary),
+                title: const Text('صدای تأیید ارسال'),
+                subtitle: const Text('انتخاب صدا و ویبره در گوشی'),
+                trailing: const Icon(Icons.chevron_left_rounded),
+                onTap: () => SmsBridge.openNotificationChannel('sent')),
+            ])),
             _section('حریم خصوصی'),
             Card(child: Column(children: [
               SwitchListTile(

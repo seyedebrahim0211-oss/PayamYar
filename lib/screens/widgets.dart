@@ -1,5 +1,7 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../message_logic.dart';
+import '../sms_bridge.dart';
 
 const _avatarColors = [
   Color(0xFF087F81), Color(0xFF305F91), Color(0xFF75539A), Color(0xFF9F5369),
@@ -13,6 +15,8 @@ class SenderAvatar extends StatelessWidget {
   final MessageCategory category;
   final double radius;
   const SenderAvatar({super.key, required this.name, required this.address, required this.category, this.radius = 25});
+
+  static final Map<String, Future<Uint8List?>> _photoCache = {};
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +34,30 @@ class SenderAvatar extends StatelessWidget {
       };
       child = Icon(icon, color: Colors.white, size: radius * .95);
     }
-    return CircleAvatar(radius: radius, backgroundColor: color, child: child);
+    final fallback = CircleAvatar(radius: radius, backgroundColor: color, child: child);
+    final phone = SmsBridge.normalizeNumber(address).replaceAll(RegExp(r'[^0-9]'), '');
+    if (!SmsBridge.supported || category != MessageCategory.personal || phone.length < 7) {
+      return fallback;
+    }
+    if (_photoCache.length > 400) _photoCache.remove(_photoCache.keys.first);
+    final picture = _photoCache.putIfAbsent(address, () => SmsBridge.contactPhoto(address));
+    return FutureBuilder<Uint8List?>(
+      future: picture,
+      builder: (context, snapshot) {
+        final bytes = snapshot.data;
+        if (bytes == null || bytes.isEmpty) return fallback;
+        return CircleAvatar(
+          radius: radius,
+          backgroundColor: color,
+          child: ClipOval(
+            child: Image.memory(bytes,
+              width: radius * 2, height: radius * 2, fit: BoxFit.cover,
+              gaplessPlayback: true,
+              errorBuilder: (context, error, stackTrace) => fallback),
+          ),
+        );
+      },
+    );
   }
 }
 

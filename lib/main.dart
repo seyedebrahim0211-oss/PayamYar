@@ -66,6 +66,7 @@ class _PayamYarState extends State<PayamYar> {
 
   ThemeData _theme(Brightness b) {
     final dark = b == Brightness.dark;
+    final selectedFont = settings.fontChoice == 0 ? 'Vazirmatn' : null;
     // Teal identity with a warm gold accent on paper-like backgrounds.
     final scheme = ColorScheme.fromSeed(seedColor: palettes[settings.palette], brightness: b).copyWith(
       tertiary: dark ? const Color(0xFFE7C57C) : const Color(0xFF8A6417),
@@ -75,7 +76,7 @@ class _PayamYarState extends State<PayamYar> {
     final surface = dark ? const Color(0xFF172A30) : Colors.white;
     final base = dark ? Typography.material2021().white : Typography.material2021().black;
     TextStyle? fa(TextStyle? s, {double? size, FontWeight? weight, double height = 1.6}) => s?.copyWith(
-      fontFamily: 'Vazirmatn', fontSize: size, fontWeight: weight, height: height, letterSpacing: 0);
+      fontFamily: selectedFont, fontSize: size, fontWeight: weight, height: height, letterSpacing: 0);
     final text = base.copyWith(
       headlineSmall: fa(base.headlineSmall, size: 24, weight: FontWeight.w800, height: 1.5),
       titleLarge: fa(base.titleLarge, size: 20, weight: FontWeight.w800, height: 1.5),
@@ -91,14 +92,14 @@ class _PayamYarState extends State<PayamYar> {
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
-      fontFamily: 'Vazirmatn',
+      fontFamily: selectedFont,
       textTheme: text,
       scaffoldBackgroundColor: paper,
       appBarTheme: AppBarTheme(
         backgroundColor: paper,
         surfaceTintColor: Colors.transparent,
         scrolledUnderElevation: 0,
-        titleTextStyle: TextStyle(fontFamily: 'Vazirmatn', fontSize: 20, fontWeight: FontWeight.w800, color: scheme.onSurface),
+        titleTextStyle: TextStyle(fontFamily: selectedFont, fontSize: 20, fontWeight: FontWeight.w800, color: scheme.onSurface),
       ),
       cardTheme: CardThemeData(
         elevation: 0,
@@ -115,7 +116,7 @@ class _PayamYarState extends State<PayamYar> {
       floatingActionButtonTheme: FloatingActionButtonThemeData(
         backgroundColor: scheme.primary,
         foregroundColor: scheme.onPrimary,
-        extendedTextStyle: const TextStyle(fontFamily: 'Vazirmatn', fontWeight: FontWeight.w700, fontSize: 15),
+        extendedTextStyle: TextStyle(fontFamily: selectedFont, fontWeight: FontWeight.w700, fontSize: 15),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       ),
       chipTheme: ChipThemeData(

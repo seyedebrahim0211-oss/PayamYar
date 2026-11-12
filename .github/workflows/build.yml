@@ -18,6 +18,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: '3.47.9'
       - name: Install Persian font (OFL licensed)
         shell: bash
         run: |
@@ -37,6 +38,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: '3.47.9'
       - name: Install Persian font (OFL licensed)
         shell: bash
         run: |
@@ -122,6 +124,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: '3.47.9'
       - run: flutter config --enable-windows-desktop
       - name: Install Persian font (OFL licensed)
         shell: bash

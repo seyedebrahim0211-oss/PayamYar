@@ -117,6 +117,12 @@ class SmsBridge {
     }).toList(growable: false);
   }
 
+  static Future<Uint8List?> contactPhoto(String address) async {
+    if (!supported || address.trim().isEmpty) return null;
+    try {
+      return await _channel.invokeMethod<Uint8List>('contactPhoto', {'address': normalizeNumber(address)});
+    } catch (_) { return null; }
+  }
   static Future<String?> pickContact() => _channel.invokeMethod<String>('pickContact');
   /// Opens Android's "default SMS app" dialog; true when PayamYar was chosen.
   static Future<bool> requestDefault() async => await _channel.invokeMethod<bool>('requestDefault') ?? false;
@@ -133,6 +139,9 @@ class SmsBridge {
   static Future<void> requestBatteryExemption() => _channel.invokeMethod<bool>('requestBatteryExemption');
   static Future<void> requestExactAlarm() => _channel.invokeMethod<bool>('requestExactAlarm');
   static Future<void> openNotificationSettings() => _channel.invokeMethod<bool>('openNotificationSettings');
+  static Future<void> openNotificationChannel(String channel) async {
+    if (supported) await _channel.invokeMethod<bool>('openNotificationChannel', {'channel': channel});
+  }
   static Future<void> clearNotifications(String address) async {
     if (supported) await _channel.invokeMethod<void>('clearNotifications', {'address': address});
   }

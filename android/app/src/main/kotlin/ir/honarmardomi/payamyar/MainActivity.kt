@@ -98,6 +98,21 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     } catch (e: Exception) { result.success(false) }
                 }
+                "openNotificationChannel" -> {
+                    try {
+                        Notifier.configureChannels(this)
+                        if (Build.VERSION.SDK_INT >= 26) {
+                            startActivity(Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                                .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                                .putExtra(Settings.EXTRA_CHANNEL_ID,
+                                    if (call.argument<String>("channel") == "sent") Notifier.SENT_CHANNEL else Notifier.INCOMING_CHANNEL))
+                        } else {
+                            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                Uri.fromParts("package", packageName, null)))
+                        }
+                        result.success(true)
+                    } catch (_: Exception) { result.success(false) }
+                }
                 "clearNotifications" -> { Notifier.cancel(this, call.argument<String>("address").orEmpty()); result.success(null) }
                 "installUpdate" -> {
                     val url = call.argument<String>("url").orEmpty()
@@ -109,7 +124,11 @@ class MainActivity : FlutterActivity() {
                         try {
                             val apk = AppUpdater.download(this, url) { p -> runOnUiThread { channel.invokeMethod("updateProgress", p) } }
                             runOnUiThread {
-                                try { AppUpdater.install(this, apk); result.success("installing") }
+                                try {
+                                    AppUpdater.validateUpgrade(this, apk)
+                                    AppUpdater.install(this, apk)
+                                    result.success("installing")
+                                }
                                 catch (e: Exception) { result.error("UPDATE", e.message ?: "نصب انجام نشد.", null) }
                             }
                         } catch (e: Exception) {
@@ -147,6 +166,7 @@ class MainActivity : FlutterActivity() {
                             "subscriptions" -> SmsCore.subscriptions(this)
                             "pendingSms" -> SmsCore.pending(this)
                             "contactNames" -> contactNames(call.argument<List<String>>("addresses").orEmpty())
+                            "contactPhoto" -> contactPhoto(call.argument<String>("address").orEmpty())
                             "listContacts" -> listContacts()
                             "blockNumber" -> blockNumber(call.argument<String>("address").orEmpty())
                             "queueSms" -> SmsCore.queue(this, call.argument<String>("to").orEmpty(),
@@ -241,6 +261,23 @@ class MainActivity : FlutterActivity() {
             if (name != null) names[address] = name
         }
         return names
+    }
+
+    /** Read only the local contact thumbnail, never upload a photo or expose the full address book. */
+    private fun contactPhoto(address: String): ByteArray? {
+        if (!has(Manifest.permission.READ_CONTACTS) || address.isBlank()) return null
+        if (phoneKey(address).length < 7) return null
+        return try {
+            val uri = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(address))
+            contentResolver.query(uri,
+                arrayOf(ContactsContract.PhoneLookup.PHOTO_THUMBNAIL_URI), null, null, null)?.use { cur ->
+                if (!cur.moveToFirst()) return null
+                val path = cur.getString(0)?.takeIf { it.isNotBlank() } ?: return null
+                contentResolver.openInputStream(Uri.parse(path))?.use { stream ->
+                    stream.readBytes().takeIf { it.size <= 512 * 1024 }
+                }
+            }
+        } catch (_: Exception) { null }
     }
 
     /** The in-app contact selector reads the phone book once, not one contact at a time.

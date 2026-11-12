@@ -30,9 +30,11 @@ class ReportData {
   final int deposits;
   final int withdrawals;
   final List<FinanceEntry> recent;
+  final List<AccountBalance> balances;
   final Map<MessageCategory, int> counts;
   final List<Conversation> top;
-  const ReportData(this.revision, this.deposits, this.withdrawals, this.recent, this.counts, this.top);
+  const ReportData(this.revision, this.deposits, this.withdrawals, this.recent,
+      this.balances, this.counts, this.top);
 }
 
 /// Single source of truth for messages, permissions and local preferences.
@@ -405,7 +407,8 @@ class AppStore extends ChangeNotifier {
     }
     final top = conversations.toList()..sort((a, b) => b.count.compareTo(a.count));
     return _report = ReportData(revision, FinanceLogic.total(recent, FinanceKind.deposit),
-      FinanceLogic.total(recent, FinanceKind.withdrawal), recent, counts, top.take(5).toList());
+      FinanceLogic.total(recent, FinanceKind.withdrawal), recent,
+      FinanceLogic.latestBalances(messages), counts, top.take(5).toList());
   }
 
   // ───────────── local organisation ─────────────
@@ -601,7 +604,9 @@ class AppStore extends ChangeNotifier {
     } else if (state == 'delivery_failed') {
       onNotice?.call('گزارش تحویل پیامک ناموفق است؛ ممکن است پیام در شبکه پذیرفته شده باشد.');
     } else if (state == 'send_unconfirmed') {
-      onNotice?.call('شبکه وضعیت ارسال را تأیید نکرد؛ پیش از ارسال مجدد، پوشه پیام‌های ارسالی را بررسی کنید.');
+      // Vendor ROMs can return RESULT_CANCELED even when the SMS leaves the device.
+      // This is not an error: do not show a failure snackbar or encourage a duplicate send.
+      // The conversation retains a neutral status until a real network receipt arrives.
     }
     notifyListeners();
     // Coalesce per-recipient confirmations; a 500-recipient batch must not
