@@ -59,12 +59,26 @@ jobs:
           tail -n 3 "$f"
       - run: flutter pub get
 
-      - name: Compile Android preview for pull request (never publish)
+      - name: Verify release build with disposable test-only signing key (never publish)
         if: github.event_name == 'pull_request'
         shell: bash
         run: |
           set -euo pipefail
-          flutter build apk --debug
+          umask 077
+          export PAYAMYAR_KEYSTORE_PATH="$RUNNER_TEMP/ci-validation-only.p12"
+          export PAYAMYAR_KEYSTORE_PASSWORD="CIOnlyValidation2026"
+          export PAYAMYAR_KEY_ALIAS="ci-validation-only"
+          export PAYAMYAR_KEY_PASSWORD="CIOnlyValidation2026"
+          keytool -genkeypair -noprompt -storetype PKCS12 -keyalg RSA -keysize 2048 \
+            -validity 1 -alias "$PAYAMYAR_KEY_ALIAS" \
+            -keystore "$PAYAMYAR_KEYSTORE_PATH" \
+            -storepass "$PAYAMYAR_KEYSTORE_PASSWORD" -keypass "$PAYAMYAR_KEY_PASSWORD" \
+            -dname "CN=CI Build Test Only, O=PayamYar"
+          flutter build apk --release
+          # Disposable APK is not exported or published. Production always requires
+          # pinned GitHub Secrets and the original permanent private key.
+          rm -f "$PAYAMYAR_KEYSTORE_PATH"
+          rm -rf build/app/outputs/flutter-apk
 
       - name: Verify permanent release key and pinned public certificate
         if: github.event_name != 'pull_request'
