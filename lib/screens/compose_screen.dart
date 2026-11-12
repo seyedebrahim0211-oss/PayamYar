@@ -5,7 +5,7 @@ import '../sms_bridge.dart';
 import 'compose_tools.dart';
 import 'contact_picker.dart';
 import 'conversation_screen.dart';
-import 'send_undo_bar.dart';
+import 'send_control.dart';
 
 /// SMS composition with an internal phone book and explicit multi-send confirmation.
 class ComposeScreen extends StatefulWidget {
@@ -421,21 +421,6 @@ class _ComposeScreenState extends State<ComposeScreen> {
             ),
           ],
         ])),
-        SendUndoBar(
-            requests: undoGroup,
-            onUndo: () async {
-              var count = 0;
-              for (final pending in List<PendingSend>.of(undoGroup)) {
-                if (await store.undo(pending)) count++;
-              }
-              if (!mounted) return;
-              setState(() {
-                undoGroup.clear();
-                if (count > 0) body.text = lastSentBody;
-              });
-              if (count > 0) _saveDraft();
-            },
-          ),
         SafeArea(top: false, child: Container(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
           decoration: BoxDecoration(
@@ -443,16 +428,34 @@ class _ComposeScreenState extends State<ComposeScreen> {
             border: Border(top: BorderSide(color: scheme.outlineVariant.withValues(alpha: .5))),
           ),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            FilledButton.icon(
-              onPressed: sending ? null : _send,
-              icon: sending ? const SizedBox(width: 18, height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.send_rounded, textDirection: TextDirection.ltr),
-              label: Text(sending ? '$queuedCount از $count در صف ارسال'
-                : count > 1 ? 'ارسال به $count گیرنده' : 'ارسال پیامک'),
-            ),
+            Row(children: [
+              SendControl(
+                key: const ValueKey('compose-send-control'),
+                requests: undoGroup,
+                sending: sending,
+                enabled: !sending,
+                onSend: () => _send(),
+                onUndo: () async {
+                  var cancelled = 0;
+                  for (final request in List<PendingSend>.of(undoGroup)) {
+                    if (await store.undo(request)) cancelled++;
+                  }
+                  if (!mounted) return;
+                  setState(() {
+                    undoGroup.removeWhere((p) => !store.pendingSends.contains(p));
+                    if (cancelled > 0) body.text = lastSentBody;
+                  });
+                  if (cancelled > 0) _saveDraft();
+                },
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: Text(sending
+                  ? '$queuedCount از $count در صف'
+                  : count > 1 ? 'ارسال جداگانه به $count مخاطب' : 'ارسال پیامک',
+                style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w800))),
+            ]),
             const SizedBox(height: 6),
-            Text('تا ۵ ثانیه پس از ثبت هر پیام، می‌توانید ارسال آن را لغو کنید.',
+            Text('حلقه دور فلش، مهلت لغو پیام را نشان می‌دهد. پاسخ مخاطبان در گفتگوی شخصی آن‌هاست.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
           ]),
