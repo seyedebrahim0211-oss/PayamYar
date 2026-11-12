@@ -1,5 +1,7 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../message_logic.dart';
+import '../sms_bridge.dart';
 
 const _avatarColors = [
   Color(0xFF087F81), Color(0xFF305F91), Color(0xFF75539A), Color(0xFF9F5369),
@@ -13,6 +15,9 @@ class SenderAvatar extends StatelessWidget {
   final MessageCategory category;
   final double radius;
   const SenderAvatar({super.key, required this.name, required this.address, required this.category, this.radius = 25});
+
+  // Keep a bounded in-memory thumbnail cache; images are local and never uploaded.
+  static final Map<String, Future<Uint8List?>> _photoCache = {};
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +35,61 @@ class SenderAvatar extends StatelessWidget {
       };
       child = Icon(icon, color: Colors.white, size: radius * .95);
     }
-    return CircleAvatar(radius: radius, backgroundColor: color, child: child);
+    final fallback = CircleAvatar(radius: radius, backgroundColor: color, child: child);
+    if (!SmsBridge.supported || category != MessageCategory.personal ||
+        !RegExp(r'^\\+?[0-9۰-۹٠-٩\\s()\\-]{7,}
+  }
+}
+
+String categoryName(MessageCategory? c) => switch (c) {
+  null => 'همه',
+  MessageCategory.personal => 'شخصی',
+  MessageCategory.banking => 'بانکی',
+  MessageCategory.service => 'خدماتی',
+  MessageCategory.advertising => 'تبلیغاتی',
+};
+
+class EmptyState extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  const EmptyState({super.key, required this.icon, required this.title, this.subtitle});
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 60),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        CircleAvatar(radius: 40, backgroundColor: scheme.primaryContainer,
+          child: Icon(icon, size: 38, color: scheme.onPrimaryContainer)),
+        const SizedBox(height: 18),
+        Text(title, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+        if (subtitle != null) ...[
+          const SizedBox(height: 8),
+          Text(subtitle!, textAlign: TextAlign.center, style: TextStyle(color: scheme.onSurfaceVariant)),
+        ],
+      ]),
+    );
+  }
+}
+).hasMatch(address)) return fallback;
+    if (_photoCache.length > 400) _photoCache.remove(_photoCache.keys.first);
+    final picture = _photoCache.putIfAbsent(address, () => SmsBridge.contactPhoto(address));
+    return FutureBuilder<Uint8List?>(
+      future: picture,
+      builder: (_, snap) {
+        final bytes = snap.data;
+        if (bytes == null || bytes.isEmpty) return fallback;
+        return CircleAvatar(
+          radius: radius,
+          backgroundColor: color,
+          child: ClipOval(child: Image.memory(bytes,
+            width: radius * 2, height: radius * 2,
+            fit: BoxFit.cover, gaplessPlayback: true,
+            errorBuilder: (_, __, ___) => fallback)),
+        );
+      },
+    );
   }
 }
 
