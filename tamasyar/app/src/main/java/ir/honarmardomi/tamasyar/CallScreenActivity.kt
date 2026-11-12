@@ -19,8 +19,8 @@ import android.widget.TextView
 
 /** Incoming and ongoing call UI. Works only when user grants default dialer role. */
 class CallScreenActivity : Activity() {
-    private val dark = Color.rgb(16, 53, 59)
-    private val gold = Color.rgb(217, 181, 107)
+    private val dark = TamasStyle.tealDeep
+    private val gold = TamasStyle.goldLight
     private val handler = Handler(Looper.getMainLooper())
     private val observer: () -> Unit = { if (!isFinishing) draw() }
 
@@ -48,7 +48,7 @@ class CallScreenActivity : Activity() {
             setTextColor(color)
             gravity = Gravity.CENTER
             setPadding(dp(8), dp(12), dp(8), dp(12))
-            setTypeface(typeface, Typeface.BOLD)
+            typeface = Typeface.create(TamasStyle.font(this@CallScreenActivity), Typeface.BOLD)
         }
     private fun button(value: String, bg: Int, click: () -> Unit): TextView =
         label(value, 16f).apply {
