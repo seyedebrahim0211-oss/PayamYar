@@ -60,9 +60,50 @@ class UpdateService {
     if (url.isNotEmpty && !trusted(url)) {
       throw const FormatException('Invalid update URL');
     }
+    // A public update must carry a valid full-file SHA-256; otherwise no
+    // installation is offered, even if the WordPress release flag is enabled.
     if (published && url.isNotEmpty &&
-        (digest.isNotEmpty && !RegExp(r'^[a-fA-F0-9]{64}$').hasMatch(digest))) {
-      throw const FormatException('Invalid release checksum');
+        !RegExp(r'^[a-fA-F0-9]{64}
+    return ReleaseInfo(
+      version: version,
+      available: published && isNewer && url.isNotEmpty,
+      url: published && isNewer ? url : '',
+      notes: manifest['notes'] as String? ?? '',
+      sha256: published && isNewer ? digest.toLowerCase() : '',
+    );
+  }
+
+  static int _compareVersions(String a, String b) {
+    List<int> parse(String value) => value.split('+').first.split('.')
+        .map((part) => int.tryParse(part) ?? 0).toList();
+    final x = parse(a), y = parse(b);
+    for (var i = 0; i < 3; i++) {
+      final left = i < x.length ? x[i] : 0;
+      final right = i < y.length ? y[i] : 0;
+      if (left != right) return left.compareTo(right);
+    }
+    return 0;
+  }
+
+  /// Official HTTPS APK/ZIP hosted on honarmardomi.ir only.
+  static bool trusted(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null || uri.scheme != 'https' ||
+        (uri.host != 'honarmardomi.ir' && uri.host != 'www.honarmardomi.ir') ||
+        uri.userInfo.isNotEmpty || uri.hasFragment || (uri.hasPort && uri.port != 443)) {
+      return false;
+    }
+    return uri.path.toLowerCase().endsWith('.apk') || uri.path.toLowerCase().endsWith('.zip');
+  }
+
+  static Future<bool> openDownload(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null || uri.scheme != 'https') return false;
+    return launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+}
+).hasMatch(digest)) {
+      throw const FormatException('Missing or invalid official release checksum');
     }
     return ReleaseInfo(
       version: version,
