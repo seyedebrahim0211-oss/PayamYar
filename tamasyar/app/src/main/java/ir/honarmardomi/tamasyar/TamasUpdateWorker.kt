@@ -4,7 +4,7 @@ import android.content.Context
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
-import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.PeriodicWorkRequest
 import androidx.work.Worker
 import androidx.work.WorkerParameters
 import androidx.work.WorkManager
@@ -26,7 +26,9 @@ class TamasUpdateWorker(context: Context, params: WorkerParameters) : Worker(con
                 wm.cancelUniqueWork(WORK)
                 return
             }
-            val request = PeriodicWorkRequestBuilder<TamasUpdateWorker>(12, TimeUnit.HOURS)
+            val request = PeriodicWorkRequest.Builder(
+                TamasUpdateWorker::class.java, 12, TimeUnit.HOURS
+            )
                 .setConstraints(Constraints.Builder()
                     .setRequiredNetworkType(NetworkType.CONNECTED).build())
                 .build()
