@@ -321,8 +321,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
                       }
                       return _bubbleFor(e.message!, pinnedId);
                     }))),
-            if (pending.isNotEmpty)
-              SendUndoBar(
+            SendUndoBar(
                 key: ValueKey(pending.last.id),
                 requests: pending,
                 onUndo: () async {
