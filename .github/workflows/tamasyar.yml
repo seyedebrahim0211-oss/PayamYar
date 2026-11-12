@@ -61,17 +61,42 @@ jobs:
           TAMASYAR_KEYSTORE_PASSWORD: ${{ secrets.TAMASYAR_KEYSTORE_PASSWORD }}
           TAMASYAR_KEY_ALIAS: ${{ secrets.TAMASYAR_KEY_ALIAS }}
           TAMASYAR_KEY_PASSWORD: ${{ secrets.TAMASYAR_KEY_PASSWORD }}
+          CERT_SHA256: ${{ secrets.TAMASYAR_RELEASE_CERT_SHA256 }}
         run: |
           set -euo pipefail
-          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$TAMASYAR_KEYSTORE_PASSWORD" ] || [ -z "$TAMASYAR_KEY_ALIAS" ] || [ -z "$TAMASYAR_KEY_PASSWORD" ]; then
-            echo "::notice::Permanent signing key not configured, releasing no APK."
-            exit 0
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$TAMASYAR_KEYSTORE_PASSWORD" ] || [ -z "$TAMASYAR_KEY_ALIAS" ] || [ -z "$TAMASYAR_KEY_PASSWORD" ] || [ -z "$CERT_SHA256" ]; then
+            echo "::error::TamasYar permanent signing key or pinned certificate is not configured. Nothing will be published."
+            exit 1
           fi
           umask 077
           export TAMASYAR_KEYSTORE_PATH="$RUNNER_TEMP/tamasyar.p12"
+          trap 'rm -f "$TAMASYAR_KEYSTORE_PATH"' EXIT
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$TAMASYAR_KEYSTORE_PATH"
+          actual="$(keytool -exportcert -storetype PKCS12 -keystore "$TAMASYAR_KEYSTORE_PATH" -alias "$TAMASYAR_KEY_ALIAS" -storepass "$TAMASYAR_KEYSTORE_PASSWORD" | sha256sum | awk '{print toupper($1)}')"
+          expected="$(printf '%s' "$CERT_SHA256" | tr -d ': \r\n' | tr 'a-f' 'A-F')"
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::TamasYar signing certificate changed. Abort to protect in-place updates."
+            exit 1
+          fi
           gradle :app:assembleRelease --no-daemon --stacktrace
-          rm -f "$TAMASYAR_KEYSTORE_PATH"
+          apk="app/build/outputs/apk/release/app-release.apk"
+          signer="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          aapt="$(find "$ANDROID_HOME/build-tools" -name aapt2 -type f | sort -V | tail -n 1)"
+          "$signer" verify --verbose --print-certs "$apk" > "$RUNNER_TEMP/signing.txt"
+          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" "$RUNNER_TEMP/signing.txt"
+          actual_apk="$(awk -F': ' '/[Ss]igner.*certificate SHA-256 digest/{print toupper($NF); exit}' "$RUNNER_TEMP/signing.txt" | tr -d ': \r\n')"
+          if [ "$actual_apk" != "$expected" ]; then
+            echo "::error::Built APK certificate differs from the pinned signing identity."
+            exit 1
+          fi
+          badging="$("$aapt" dump badging "$apk" | head -n 1)"
+          echo "$badging"
+          echo "$badging" | grep -q "name='ir.honarmardomi.tamasyar'"
+          echo "$badging" | grep -q "versionCode='2'"
+          echo "$badging" | grep -q "versionName='0.2.0'"
+          echo "APK SHA-256: $(sha256sum "$apk" | cut -d ' ' -f 1)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Certificate SHA-256: $expected" >> "$GITHUB_STEP_SUMMARY"
+          echo "Public publishing remains disabled until real-device acceptance tests pass." >> "$GITHUB_STEP_SUMMARY"
       - name: Export separately signed release candidate
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
