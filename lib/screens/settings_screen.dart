@@ -11,6 +11,7 @@ import '../templates.dart';
 import 'compose_screen.dart';
 import 'compose_tools.dart';
 import 'home_screen.dart';
+import 'notification_style_screen.dart';
 import 'support_pages.dart';
 
 /// Settings hub: a short, friendly list of sections; each opens its own page.
@@ -445,6 +446,12 @@ class NotificationSettingsPage extends StatelessWidget {
           ListTile(leading: Icon(Icons.music_note_outlined, color: scheme.primary),
             title: const Text('صدا و لرزش پیام دریافتی'), subtitle: const Text('انتخاب آهنگ دلخواه در تنظیمات اندروید'),
             trailing: const Icon(Icons.chevron_left_rounded), onTap: () => SmsBridge.openNotificationChannel('incoming')),
+          ListTile(leading: Icon(Icons.auto_awesome_outlined, color: scheme.primary),
+            title: const Text('ظاهر اعلان، حباب و پاسخ سریع'),
+            subtitle: const Text('شیشه‌ای، رنگ، حباب گفتگو و پاسخ‌های آماده'),
+            trailing: const Icon(Icons.chevron_left_rounded),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+              builder: (_) => NotificationStyleScreen(settings: settings)))),
         ]),
         SettingsGroup(title: 'ساعت سکوت', children: [
           SwitchListTile(
