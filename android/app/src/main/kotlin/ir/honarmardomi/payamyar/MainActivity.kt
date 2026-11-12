@@ -114,6 +114,7 @@ class MainActivity : FlutterActivity() {
                     } catch (_: Exception) { result.success(false) }
                 }
                 "clearNotifications" -> { Notifier.cancel(this, call.argument<String>("address").orEmpty()); result.success(null) }
+                "signingFingerprint" -> result.success(AppUpdater.installedSignerSha256(this))
                 "canInstallUpdate" -> result.success(AppUpdater.canInstall(this))
                 "installUpdate" -> {
                     val url = call.argument<String>("url").orEmpty()
