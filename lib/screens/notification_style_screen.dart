@@ -262,9 +262,9 @@ class _PreviewStage extends StatelessWidget {
           ),
         ),
         child: Stack(clipBehavior: Clip.none, children: [
-          Positioned(top: -10, left: 20, child: _Blob(color: const Color(0xFFDDA54A), size: 70)),
+          const Positioned(top: -10, left: 20, child: _Blob(color: Color(0xFFDDA54A), size: 70)),
           Positioned(bottom: -14, right: 30, child: _Blob(color: tint, size: 90)),
-          Positioned(top: 30, right: -10, child: _Blob(color: const Color(0xFF9F5369), size: 46)),
+          const Positioned(top: 30, right: -10, child: _Blob(color: Color(0xFF9F5369), size: 46)),
           GlassBannerCard(banner: IncomingBanner.preview(), settings: settings, interactive: false),
         ]),
       ),
