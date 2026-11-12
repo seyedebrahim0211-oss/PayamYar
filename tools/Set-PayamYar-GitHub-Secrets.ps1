@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
   Registers the four PayamYar Android release-signing secrets in GitHub Actions — safely.
 
@@ -9,7 +9,7 @@
       - GitHub CLI is installed and logged in with admin rights on the repository;
       - the keystore opens with the given password;
       - the certificate SHA-256 equals the pinned public value
-        C800225A42B292F1B9C2E1578E6B9F2B3921D6A50378B5C9D074D38B443DF48F
+        A82C3ACB328F3D6DE57D60297F8E2DCBD7384AAAE5172B5FBEEC38B3E31BBE0F
         (so a wrong or new key can never be uploaded by mistake).
   * Secrets are sent to `gh secret set` through standard input (no trailing newline,
     never on the command line, never written to a temp file, never printed).
@@ -23,7 +23,7 @@ param(
     [string]$KeystorePath = (Join-Path $PSScriptRoot 'payamyar-release.p12'),
     [string]$SecretsJson  = (Join-Path $PSScriptRoot 'PayamYar-RELEASE-SECRETS-PRIVATE.json'),
     [string]$Repo         = 'seyedebrahim0211-oss/PayamYar',
-    [string]$ExpectedSha256 = 'C800225A42B292F1B9C2E1578E6B9F2B3921D6A50378B5C9D074D38B443DF48F',
+    [string]$ExpectedSha256 = 'A82C3ACB328F3D6DE57D60297F8E2DCBD7384AAAE5172B5FBEEC38B3E31BBE0F',
     [switch]$VerifyOnly,
     [switch]$RunWorkflow
 )
