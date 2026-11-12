@@ -234,26 +234,38 @@ object SmsCore {
             if (reportStatus < 0 || reportStatus in 32..63) return
             deliveryFailure = reportStatus >= 64
         }
-        val count = intent.getIntExtra("parts", 1)
-        val key = "acks:$id:$delivered"
-        val set = prefs(c).getStringSet(key, emptySet())!!.toMutableSet()
-        set.add(intent.getIntExtra("part", 0).toString())
+        val count = intent.getIntExtra("parts", 1).coerceIn(1, 255)
+        val part = intent.getIntExtra("part", 0)
+        if (part !in 0 until count) return // Discard malformed or stale broadcasts.
+        val partKey = part.toString()
+        val preferences = prefs(c)
+        val ackKey = "acks:$id:$delivered"
+        val okKey = "ok:$id:$delivered"
+        val acks = preferences.getStringSet(ackKey, emptySet())!!.toMutableSet()
+        val accepted = preferences.getStringSet(okKey, emptySet())!!.toMutableSet()
+        acks.add(partKey)
+        if (if (delivered) !deliveryFailure else code == Activity.RESULT_OK) {
+            accepted.add(partKey)
+        }
         val previous = status(c, id)
-        // A delivery report is stronger evidence than a vendor-specific SENT callback.
-        // Some devices report RESULT_CANCELED (0) even when the SMS was transmitted.
-        // Treat that result as unconfirmed, never as proof of a failed transmission.
+        // Each segment has an independent sent callback and an optional delivery report.
+        // A single delivered segment is NOT proof that the whole multipart SMS arrived.
+        // RESULT_CANCELED (0) is an ambiguous vendor callback, not a confirmed failure.
         val next = when {
-            delivered && !deliveryFailure -> "delivered"
             previous == "delivered" -> previous
             delivered && deliveryFailure -> "delivery_failed"
+            delivered && accepted.size == count -> "delivered"
             delivered -> previous
-            code == Activity.RESULT_CANCELED -> if (previous == "pending" || previous == "queued") "send_unconfirmed" else previous
-            code != Activity.RESULT_OK -> if (previous == "accepted_by_radio") previous else "send_failed:$code"
-            previous.startsWith("send_failed") -> previous
-            set.size < count -> previous
-            else -> "accepted_by_radio"
+            code != Activity.RESULT_OK && code != Activity.RESULT_CANCELED -> "send_failed:$code"
+            previous.startsWith("send_failed") || previous == "delivery_failed" -> previous
+            acks.size < count -> if (code == Activity.RESULT_CANCELED && previous == "pending") {
+                "send_unconfirmed"
+            } else previous
+            accepted.size == count -> "accepted_by_radio"
+            else -> "send_unconfirmed"
         }
-        prefs(c).edit().putStringSet(key, set).putString("status:$id", next).commit()
+        preferences.edit().putStringSet(ackKey, acks).putStringSet(okKey, accepted)
+            .putString("status:$id", next).commit()
         val row = prefs(c).getString("row:$id", null)
         if (row != null && isDefault(c)) {
             val values = ContentValues()
