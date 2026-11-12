@@ -58,12 +58,16 @@ jobs:
           fi
           tail -n 3 "$f"
       - run: flutter pub get
-      - name: Reuse the same fallback signing key across runs
-        uses: actions/cache@v4
-        with:
-          path: ~/.android/debug.keystore
-          key: payamyar-fallback-signing-key-v1
-      - name: Build release APK (own key from secrets, otherwise the cached fallback key)
+
+      - name: Compile Android preview for pull request (never publish)
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter build apk --debug
+
+      - name: Verify permanent release key and pinned public certificate
+        if: github.event_name != 'pull_request'
         shell: bash
         env:
           KEYSTORE_BASE64: ${{ secrets.PAYAMYAR_KEYSTORE_BASE64 }}
@@ -71,22 +75,62 @@ jobs:
           PAYAMYAR_KEY_ALIAS: ${{ secrets.PAYAMYAR_KEY_ALIAS }}
           PAYAMYAR_KEY_PASSWORD: ${{ secrets.PAYAMYAR_KEY_PASSWORD }}
         run: |
-          mkdir -p dist
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            export PAYAMYAR_KEYSTORE_PATH="$RUNNER_TEMP/payamyar-release.jks"
-            echo "$KEYSTORE_BASE64" | base64 --decode > "$PAYAMYAR_KEYSTORE_PATH"
-            flutter build apk --release
-            cp build/app/outputs/flutter-apk/app-release.apk dist/PayamYar-release.apk
-            rm -f "$PAYAMYAR_KEYSTORE_PATH"
-          else
-            echo "::warning::Signing secrets are not set; signing the release APK with the cached fallback key. See docs/RELEASE_SIGNING_FA.md."
-            flutter build apk --release
-            cp build/app/outputs/flutter-apk/app-release.apk dist/PayamYar.apk
+          set -euo pipefail
+          umask 077
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$PAYAMYAR_KEYSTORE_PASSWORD" ] ||
+             [ -z "$PAYAMYAR_KEY_ALIAS" ] || [ -z "$PAYAMYAR_KEY_PASSWORD" ]; then
+            echo "::error::Permanent Android signing secrets missing. See docs/RELEASE_SIGNING_FA.md. No fallback key will be used."
+            exit 1
           fi
+          export PAYAMYAR_KEYSTORE_PATH="$RUNNER_TEMP/payamyar-release.p12"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$PAYAMYAR_KEYSTORE_PATH"
+          chmod 600 "$PAYAMYAR_KEYSTORE_PATH"
+          actual="$(keytool -exportcert -storetype PKCS12 -keystore "$PAYAMYAR_KEYSTORE_PATH" -alias "$PAYAMYAR_KEY_ALIAS" -storepass "$PAYAMYAR_KEYSTORE_PASSWORD" | sha256sum | awk '{print toupper($1)}')"
+          expected="$(tr -d '\r\n' < .github/payamyar-release-cert.sha256)"
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::Signing certificate changed. Release halted to prevent Android upgrade failure."
+            exit 1
+          fi
+          echo "PAYAMYAR_KEYSTORE_PATH=$PAYAMYAR_KEYSTORE_PATH" >> "$GITHUB_ENV"
+          echo "Pinned release signer certificate verified."
+
+      - name: Build APK with permanent release signing key
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          PAYAMYAR_KEYSTORE_PASSWORD: ${{ secrets.PAYAMYAR_KEYSTORE_PASSWORD }}
+          PAYAMYAR_KEY_ALIAS: ${{ secrets.PAYAMYAR_KEY_ALIAS }}
+          PAYAMYAR_KEY_PASSWORD: ${{ secrets.PAYAMYAR_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          flutter build apk --release
+          cp build/app/outputs/flutter-apk/app-release.apk dist/PayamYar-release.apk
+          signer="$(find "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/opt/android-sdk}}/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)"
+          if [ -z "$signer" ] || [ ! -x "$signer" ]; then
+            echo "::error::Android apksigner unavailable; cannot verify APK identity."
+            exit 1
+          fi
+          "$signer" verify --verbose --print-certs dist/PayamYar-release.apk > "$RUNNER_TEMP/apk-verify.txt"
+          actual="$(awk -F': ' '/Signer #1 certificate SHA-256 digest/{print toupper($2)}' "$RUNNER_TEMP/apk-verify.txt" | tr -d ': \r\n')"
+          expected="$(tr -d '\r\n' < .github/payamyar-release-cert.sha256)"
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::Built APK is signed with the wrong certificate; abort release."
+            exit 1
+          fi
+          echo "Android release APK signed by the pinned permanent certificate."
+
+      - name: Remove temporary private signing material
+        if: always() && github.event_name != 'pull_request'
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/payamyar-release.p12" "$RUNNER_TEMP/apk-verify.txt"
+
       - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
         with:
           name: PayamYar-Android
-          path: dist/*.apk
+          path: dist/PayamYar-release.apk
+          if-no-files-found: error
       # Publishing is exclusively managed in the WordPress dashboard:
       # https://honarmardomi.ir/wp-admin/admin.php?page=payamyar-releases
       # Do not overwrite the public release manifest from a CI build.
@@ -103,18 +147,6 @@ jobs:
         with:
           name: PayamYar-Android
           path: release-apk
-      - name: Confirm dedicated signing key and release APK
-        id: ready
-        shell: bash
-        env:
-          KEYSTORE_BASE64: ${{ secrets.PAYAMYAR_KEYSTORE_BASE64 }}
-        run: |
-          if [ -n "$KEYSTORE_BASE64" ] && [ -s release-apk/PayamYar-release.apk ]; then
-            echo "signed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::A stable signing key is required; skipping Releases publication."
-            echo "signed=false" >> "$GITHUB_OUTPUT"
-          fi
       - name: Read version
         id: version
         shell: bash
@@ -123,7 +155,6 @@ jobs:
           test -n "$VERSION"
           echo "number=$VERSION" >> "$GITHUB_OUTPUT"
       - name: Create GitHub prerelease with installable APK
-        if: steps.ready.outputs.signed == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.number }}
@@ -135,19 +166,3 @@ jobs:
           files: release-apk/PayamYar-release.apk
           fail_on_unmatched_files: true
 
-      - name: Create GitHub preview for private repository
-        if: steps.ready.outputs.signed == 'false'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ steps.version.outputs.number }}-preview
-          name: پیامیار ${{ steps.version.outputs.number }} - نسخه آزمایشی اندروید
-          target_commitish: ${{ github.sha }}
-          prerelease: true
-          generate_release_notes: false
-          body: |
-            نسخه آزمایشی برای بررسی روی گوشی. این فایل با کلید جایگزین محیط ساخت امضا شده است.
-            ممکن است روی نسخه قبلی نصب نشود و برای به‌روزرسانی بدون حذف برنامه مناسب نیست.
-            این فایل را با نسخه رسمی امضاشده اشتباه نگیرید. تا زمان تأیید نسخه واقعی،
-            این انتشار برای استفاده روزمره به‌عنوان پیامک‌رسان اصلی توصیه نمی‌شود.
-          files: release-apk/PayamYar.apk
-          fail_on_unmatched_files: true
