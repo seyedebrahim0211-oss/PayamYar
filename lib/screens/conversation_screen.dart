@@ -8,7 +8,7 @@ import '../sms_bridge.dart';
 import '../smart_assistant.dart';
 import 'compose_screen.dart';
 import 'compose_tools.dart';
-import 'send_undo_bar.dart';
+import 'send_control.dart';
 import 'home_screen.dart';
 import 'widgets.dart';
 
@@ -328,29 +328,11 @@ class _ConversationScreenState extends State<ConversationScreen> {
                             child: Transform.translate(
                               offset: Offset(0, 18 * (1 - value)), child: child)),
                           child: _Bubble(text: p.body, outgoing: true,
-                            time: p.scheduled ? 'زمان‌دار • ${Jalali.time(p.deadline)}' : 'در صف ارسال',
-                            trailing: TextButton(onPressed: () async {
-                              if (await store.undo(p)) input.text = p.body;
-                            }, child: const Text('لغو'))),
+                            time: p.scheduled ? 'زمان‌دار • ${Jalali.time(p.deadline)}' : 'در صف ارسال'),
                         );
                       }
                       return _bubbleFor(e.message!, pinnedId);
                     }))),
-            SendUndoBar(
-                key: const ValueKey('conversation-undo-bar'),
-                requests: pending,
-                onUndo: () async {
-                  String? restored;
-                  var cancelled = 0;
-                  for (final request in pending) {
-                    if (await store.undo(request)) {
-                      restored ??= request.body;
-                      cancelled++;
-                    }
-                  }
-                  if (cancelled > 0 && restored != null && mounted) input.text = restored;
-                },
-              ),
             if (canReply && quickReplies.isNotEmpty)
               SizedBox(height: 45, child: ListView(
                 scrollDirection: Axis.horizontal,
@@ -428,21 +410,20 @@ class _ConversationScreenState extends State<ConversationScreen> {
           Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Tooltip(
               message: 'ارسال (لمس طولانی: ارسال زمان‌دار)',
-              child: Material(
-                color: scheme.primary,
-                borderRadius: BorderRadius.circular(16),
-                clipBehavior: Clip.antiAlias,
-                child: InkWell(
-                  onTap: sending ? null : () => _send(),
-                  onLongPress: sending ? null : _scheduleSend,
-                  child: SizedBox(
-                    width: 49, height: 49,
-                    child: Center(child: sending
-                      ? SizedBox(width: 21, height: 21,
-                          child: CircularProgressIndicator(color: scheme.onPrimary, strokeWidth: 2))
-                      : Icon(Icons.arrow_upward_rounded, size: 25, color: scheme.onPrimary)),
-                  ),
-                ),
+              child: SendControl(
+                requests: store.pendingSends.where((p) => store.key(p.to) == store.key(widget.address)).toList(),
+                sending: sending,
+                onSend: () => _send(),
+                onSchedule: _scheduleSend,
+                onUndo: () async {
+                  final pending = store.pendingSends.where(
+                    (p) => store.key(p.to) == store.key(widget.address)).toList();
+                  String? restore;
+                  for (final p in pending) {
+                    if (await store.undo(p)) restore ??= p.body;
+                  }
+                  if (restore != null && mounted) input.text = restore;
+                },
               ),
             ),
             PopupMenuButton<String>(
@@ -565,7 +546,28 @@ class _Bubble extends StatelessWidget {
                   SizedBox(width: 4),
                   Text('احتمال کلاهبرداری؛ روی لینک نزنید', style: TextStyle(fontSize: 12, color: Colors.orange)),
                 ])),
-              Text(text, style: TextStyle(color: fg, fontSize: 15.5, height: 1.7)),
+              Text(text.trim().isEmpty ? 'پیام بدون متن' : text.trim(),
+                maxLines: 8, overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: fg, fontSize: 15.5, height: 1.7)),
+              if (text.length > 260 || text.split('\\n').length > 8)
+                TextButton(
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('متن کامل پیام'),
+                      content: SizedBox(
+                        width: MediaQuery.sizeOf(ctx).width * .85,
+                        child: SingleChildScrollView(child: SelectableText(text.trim(),
+                          style: const TextStyle(height: 1.8))),
+                      ),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx),
+                          child: const Text('بستن')),
+                      ],
+                    ),
+                  ),
+                  child: const Text('نمایش متن کامل'),
+                ),
               if (trailing != null) Padding(padding: const EdgeInsets.only(top: 6), child: trailing),
               const SizedBox(height: 4),
               Row(mainAxisSize: MainAxisSize.min, children: [
