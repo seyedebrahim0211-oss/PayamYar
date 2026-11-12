@@ -139,8 +139,9 @@ jobs:
           "$signer" verify --verbose --print-certs dist/PayamYar-release.apk > "$RUNNER_TEMP/apk-verify.txt"
           actual="$(awk -F': ' '/Signer #1 certificate SHA-256 digest/{print toupper($2)}' "$RUNNER_TEMP/apk-verify.txt" | tr -d ': \r\n')"
           expected="$(tr -d '\r\n' < .github/payamyar-release-cert.sha256)"
+          grep -E "Signer|scheme|certificate" "$RUNNER_TEMP/apk-verify.txt" || true
           if [ "$actual" != "$expected" ]; then
-            echo "::error::Built APK is signed with the wrong certificate; abort release."
+            echo "::error::Built APK is signed with the wrong certificate ($actual, expected $expected); abort release."
             exit 1
           fi
           if ! grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" "$RUNNER_TEMP/apk-verify.txt"; then
