@@ -24,7 +24,7 @@
 
 ## امضای پایدار و CI
 GitHub Actions: `TamasYar Android` — خروجی Debug فقط برای آزمون است، برای نصب نهایی نباید استفاده شود.
-برای انتشار، چهار Secret مستقل لازم است: `TAMASYAR_KEYSTORE_BASE64`، `TAMASYAR_KEYSTORE_PASSWORD`، `TAMASYAR_KEY_ALIAS` و `TAMASYAR_KEY_PASSWORD`.
+برای انتشار، چهار Secret امضا به‌علاوه یک اثر انگشت ثابت لازم است: `TAMASYAR_KEYSTORE_BASE64`، `TAMASYAR_KEYSTORE_PASSWORD`، `TAMASYAR_KEY_ALIAS`، `TAMASYAR_KEY_PASSWORD` و `TAMASYAR_RELEASE_CERT_SHA256`. مورد آخر SHA-256 گواهی عمومی امضای انتشار است که با `keytool -exportcert` و `sha256sum` محاسبه می‌شود. این مقدار برای جلوگیری از تغییر ناخواسته کلید در بروزرسانی‌های بعدی الزامی است.
 کلید تماس‌یار باید ثابت بماند. نسخه‌های جدید باید با همان امضا و versionCode بزرگ‌تر ساخته شوند تا بدون حذف نسخه قبلی نصب شوند.
 متن مجوز و فونت وزیرمتن از منابع رسمی OFL در GitHub Actions وارد پروژه می‌شود.
 
