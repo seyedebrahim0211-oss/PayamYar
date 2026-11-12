@@ -122,6 +122,9 @@ class MainActivity : Activity() {
         }
 
     private fun showTab() {
+        window.navigationBarColor = paper
+        window.decorView.systemUiVisibility =
+            if (prefs.dark) 0 else View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
         val root = vbox().apply { setBackgroundColor(paper) }
         val header = hbox().apply {
             setPadding(dp(19), dp(17), dp(19), dp(12))
@@ -371,6 +374,22 @@ class MainActivity : Activity() {
             val i = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                 Uri.parse("package:" + packageName))
             startActivity(i)
+        }
+        if (Build.VERSION.SDK_INT >= 33) {
+            settingCard(parent, "اجازه اعلان‌ها",
+                if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+                    PackageManager.PERMISSION_GRANTED) "اعلان‌های تماس و به‌روزرسانی مجاز هستند."
+                else "برای دریافت هشدار نسخه جدید، نمایش اعلان‌ها را فعال کنید.",
+                "مدیریت اعلان‌ها") {
+                if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                    PackageManager.PERMISSION_GRANTED &&
+                    requestedPermissions.add(Manifest.permission.POST_NOTIFICATIONS)) {
+                    requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 213)
+                } else {
+                    startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.parse("package:" + packageName)))
+                }
+            }
         }
 
         parent.addView(section("به‌روزرسانی برنامه", "نسخه‌ها از سایت رسمی هنر مردمی بررسی می‌شوند."))
