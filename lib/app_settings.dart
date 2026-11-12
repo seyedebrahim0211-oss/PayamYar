@@ -9,7 +9,7 @@ class AppSettings extends ChangeNotifier {
   int palette = 0;
   ThemeMode mode = ThemeMode.system;
   double scale = 1;
-  int fontChoice = 0; // 0 = Vazirmatn, 1 = system font
+  int fontChoice = 0; // 0 = Vazirmatn, 1 = Android default, 2 = Android serif / Naskh fallback
   bool hidePreview = false;
   bool notifyPreview = true;
   bool notifyIncoming = true;
@@ -19,8 +19,8 @@ class AppSettings extends ChangeNotifier {
     final p = await SharedPreferences.getInstance();
     palette = (p.getInt('palette') ?? 0).clamp(0, palettes.length - 1).toInt();
     mode = ThemeMode.values[(p.getInt('theme') ?? 0).clamp(0, 2).toInt()];
-    scale = (p.getDouble('scale') ?? 1).clamp(.85, 1.3).toDouble();
-    fontChoice = (p.getInt('fontChoice') ?? 0).clamp(0, 1).toInt();
+    scale = (p.getDouble('scale') ?? 1).clamp(.9, 1.5).toDouble();
+    fontChoice = (p.getInt('fontChoice') ?? 0).clamp(0, 2).toInt();
     hidePreview = p.getBool('privatePreview') ?? false;
     notifyPreview = p.getBool('notifyPreview') ?? true;
     notifyIncoming = p.getBool('notifyIncoming') ?? true;
