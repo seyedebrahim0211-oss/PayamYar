@@ -313,11 +313,21 @@ class _ConversationScreenState extends State<ConversationScreen> {
                       if (e.header != null) return _DayHeader(e.header!);
                       final p = e.pending;
                       if (p != null) {
-                        return _Bubble(text: p.body, outgoing: true,
-                          time: p.scheduled ? 'زمان‌دار • ${Jalali.time(p.deadline)}' : 'در صف ارسال',
-                          trailing: TextButton(onPressed: () async {
-                            if (await store.undo(p)) input.text = p.body;
-                          }, child: const Text('لغو')));
+                        return TweenAnimationBuilder<double>(
+                          key: ValueKey('queued-${p.id}'),
+                          duration: const Duration(milliseconds: 380),
+                          curve: Curves.easeOutCubic,
+                          tween: Tween(begin: 0, end: 1),
+                          builder: (_, value, child) => Opacity(
+                            opacity: value,
+                            child: Transform.translate(
+                              offset: Offset(0, 18 * (1 - value)), child: child)),
+                          child: _Bubble(text: p.body, outgoing: true,
+                            time: p.scheduled ? 'زمان‌دار • ${Jalali.time(p.deadline)}' : 'در صف ارسال',
+                            trailing: TextButton(onPressed: () async {
+                              if (await store.undo(p)) input.text = p.body;
+                            }, child: const Text('لغو'))),
+                        );
                       }
                       return _bubbleFor(e.message!, pinnedId);
                     }))),
@@ -353,7 +363,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
       status = m.type == 5
           ? 'ارسال نشد'
           : m.type == 4 || m.type == 6
-              ? 'در حال ارسال'
+              ? (DateTime.now().difference(m.date).inSeconds >= 25
+                  ? 'در انتظار تأیید شبکه' : 'در حال ارسال')
               : m.type == 3
                   ? 'پیش‌نویس'
                   : m.delivery == 0
@@ -508,7 +519,7 @@ class _Bubble extends StatelessWidget {
       : outgoing && dark ? const Color(0xFFF1F8F6) : scheme.onSurface;
     const r = Radius.circular(20);
     return Align(
-      alignment: outgoing ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
+      alignment: outgoing ? AlignmentDirectional.centerStart : AlignmentDirectional.centerEnd,
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .8),
         child: GestureDetector(
