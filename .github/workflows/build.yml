@@ -219,3 +219,61 @@ jobs:
             release-apk/PayamYar-release.apk.sha256
           fail_on_unmatched_files: true
 
+  site_publish:
+    name: Publish to honarmardomi.ir (site download + in-app update)
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: github_release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: PayamYar-Android
+          path: release-apk
+      - name: Upload signed APK to honarmardomi.ir and send in-app update
+        shell: bash
+        env:
+          WP_SECRET: ${{ secrets.PAYAMYAR_WP_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "$WP_SECRET" ]; then
+            echo "::warning::PAYAMYAR_WP_SECRET is not set; honarmardomi.ir publishing skipped (see the PayamYar release panel)."
+            exit 0
+          fi
+          VERSION="$(sed -n 's/^version: *\([0-9][0-9.]*\).*/\1/p' pubspec.yaml)"
+          APK="release-apk/PayamYar-$VERSION.apk"
+          SIGNER="$(tr -d '\r\n' < .github/payamyar-release-cert.sha256)"
+          API="https://honarmardomi.ir/wp-json/payamyar/v1"
+          TOTAL="$(stat -c %s "$APK")"
+          SHA="$(sha256sum "$APK" | cut -d' ' -f1)"
+          SESSION="$(openssl rand -hex 16)"
+          WORK="$(mktemp -d)"
+          split -b 1048576 -d -a 4 "$APK" "$WORK/part_"
+          sign() { printf '%s\n%s\n%s' "$1" "$2" "$3" | openssl dgst -sha256 -hmac "$WP_SECRET" -r | cut -d' ' -f1; }
+          i=0
+          for part in "$WORK"/part_*; do
+            for attempt in 1 2 3 4 5; do
+              TS="$(date +%s)"
+              BH="$(sha256sum "$part" | cut -d' ' -f1)"
+              SIG="$(sign "$TS" "$SESSION"$'\n'"$i" "$BH")"
+              if curl -sS --fail-with-body -X POST "$API/ci/chunk?session=$SESSION&index=$i&total=$TOTAL" \
+                  -H "X-PayamYar-Time: $TS" -H "X-PayamYar-Signature: $SIG" \
+                  -H "Content-Type: application/octet-stream" --data-binary @"$part" -o "$WORK/reply.json"; then
+                break
+              fi
+              cat "$WORK/reply.json" 2>/dev/null || true
+              if [ "$attempt" = 5 ]; then echo "::error::Uploading part $i to honarmardomi.ir failed."; exit 1; fi
+              sleep $((attempt * 5))
+            done
+            i=$((i + 1))
+          done
+          NOTES="$(awk '/^---/{exit} {print}' RELEASE_NOTES_FA.txt | python3 -c 'import sys; print(sys.stdin.read()[:1800])')"
+          BODY="$(jq -cn --arg s "$SESSION" --arg v "$VERSION" --argjson t "$TOTAL" --arg h "$SHA" --arg g "$SIGNER" --arg n "$NOTES" \
+            '{session:$s, version:$v, total:$t, sha256:$h, signer:$g, notes:$n}')"
+          TS="$(date +%s)"
+          SIG="$(sign "$TS" "finish" "$(printf '%s' "$BODY" | sha256sum | cut -d' ' -f1)")"
+          curl -sS --fail-with-body -X POST "$API/ci/finish" \
+            -H "X-PayamYar-Time: $TS" -H "X-PayamYar-Signature: $SIG" \
+            -H "Content-Type: application/json" --data-binary "$BODY"
+          echo
+          echo "### honarmardomi.ir: PayamYar $VERSION published (site download + in-app update)" >> "$GITHUB_STEP_SUMMARY"
