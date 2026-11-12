@@ -5,6 +5,7 @@ import '../app_store.dart';
 import '../jalali.dart';
 import '../message_logic.dart';
 import '../sms_bridge.dart';
+import '../smart_assistant.dart';
 import 'compose_screen.dart';
 import 'compose_tools.dart';
 import 'send_undo_bar.dart';
@@ -233,6 +234,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
         final key = store.key(widget.address);
         final pending = store.pendingSends.where((p) => store.key(p.to) == key).toList();
         final items = _entries(messages, pending);
+        final quickReplies = messages.isNotEmpty && !messages.first.outgoing &&
+                MessageLogic.category(messages.first) == MessageCategory.personal
+            ? SmartAssistant.suggestReplies(messages.first.body)
+            : const <String>[];
         final pinned = store.isPinned(widget.address);
         final pinnedId = store.pinnedMessageId(widget.address);
         MessageRecord? pinnedMessage;
@@ -346,6 +351,22 @@ class _ConversationScreenState extends State<ConversationScreen> {
                   if (cancelled > 0 && restored != null && mounted) input.text = restored;
                 },
               ),
+            if (canReply && quickReplies.isNotEmpty)
+              SizedBox(height: 45, child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                children: [
+                  for (final suggestion in quickReplies)
+                    Padding(
+                      padding: const EdgeInsetsDirectional.only(end: 7),
+                      child: ActionChip(
+                        avatar: Icon(Icons.auto_awesome_outlined, color: scheme.primary, size: 17),
+                        label: Text(suggestion, style: const TextStyle(fontSize: 12)),
+                        onPressed: () { input.text = suggestion; },
+                      ),
+                    ),
+                ],
+              )),
             if (canReply) _inputBar(scheme) else Padding(
               padding: const EdgeInsets.all(14),
               child: Text('امکان پاسخ به این فرستنده وجود ندارد.', style: TextStyle(color: scheme.onSurfaceVariant))),
