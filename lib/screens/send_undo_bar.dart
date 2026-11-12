@@ -113,7 +113,7 @@ class _SendUndoBarState extends State<SendUndoBar> {
                 if (!scheduled) TweenAnimationBuilder<double>(
                   key: ValueKey('countdown-${active.first.id}'),
                   tween: Tween(begin: 1, end: 0),
-                  duration: Duration(milliseconds: ms.clamp(0, 5000)),
+                  duration: Duration(milliseconds: ms.clamp(0, 5000).toInt()),
                   builder: (_, v, __) => LinearProgressIndicator(
                     value: v,
                     minHeight: 4,
