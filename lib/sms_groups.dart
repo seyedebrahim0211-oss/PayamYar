@@ -38,7 +38,9 @@ class SmsGroupStore extends ChangeNotifier {
       try {
         final parsed = SmsGroup.fromJson(jsonDecode(row) as Map<String, dynamic>);
         if (parsed.name.trim().isNotEmpty && parsed.recipients.isNotEmpty &&
-            parsed.recipients.length <= maxMembers) _groups.add(parsed);
+            parsed.recipients.length <= maxMembers) {
+          _groups.add(parsed);
+        }
       } catch (_) { /* Skip malformed local groups without affecting SMS. */ }
     }
     notifyListeners();
