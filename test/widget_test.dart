@@ -33,4 +33,13 @@ void main() {
     expect(find.text('کپی کد ۴۸۲۱۳'), findsOneWidget);
     expect(find.byType(BackButton), findsOneWidget);
   });
+  testWidgets('Contacts tab lists phone-book entries and tools', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.pumpWidget(const PayamYar());
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.contacts_outlined));
+    await tester.pumpAndSettle();
+    expect(find.text('مخاطب جدید'), findsOneWidget);
+    expect(find.text('علی رضایی'), findsOneWidget);
+  });
 }
