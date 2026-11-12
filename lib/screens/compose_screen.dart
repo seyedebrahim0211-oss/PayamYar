@@ -181,6 +181,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
       return;
     }
     if (groupMode && !await _saveGroup(targets)) return;
+    if (!mounted) return;
     if (targets.length > 1) {
       final confirmed = await showDialog<bool>(context: context, builder: (ctx) =>
         AlertDialog(
