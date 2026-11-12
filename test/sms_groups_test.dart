@@ -31,7 +31,7 @@ void main() {
     final groups = SmsGroupStore();
     await expectLater(groups.save('', ['09121234567', '09120000000']), throwsArgumentError);
     await expectLater(groups.save('گروه بدون اعضا', ['09121234567']), throwsArgumentError);
-    final many = List.generate(501, (i) => '0912' + i.toString().padLeft(7, '0'));
+    final many = List.generate(501, (i) => '0912${i.toString().padLeft(7, '0')}');
     await expectLater(groups.save('گروه بزرگ', many), throwsArgumentError);
     groups.dispose();
   });
