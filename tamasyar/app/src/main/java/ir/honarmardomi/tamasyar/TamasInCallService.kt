@@ -51,9 +51,11 @@ object LiveCalls {
         publish()
         service?.let { CallAlert.update(it, current()) }
     }
-    private fun publish() = handler.post {
-        observers.forEach { observer ->
-            try { observer() } catch (_: Exception) { /* activity might be closing */ }
+    private fun publish() {
+        handler.post {
+            observers.forEach { observer ->
+                try { observer() } catch (_: Exception) { /* activity might be closing */ }
+            }
         }
     }
 }
