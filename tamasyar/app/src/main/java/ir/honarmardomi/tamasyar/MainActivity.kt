@@ -1,0 +1,383 @@
+package ir.honarmardomi.tamasyar
+
+import android.Manifest
+import android.app.Activity
+import android.app.role.RoleManager
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.provider.CallLog
+import android.provider.ContactsContract
+import android.telecom.TelecomManager
+import android.view.Gravity
+import android.view.View
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
+import android.text.InputType
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+class MainActivity : Activity() {
+    private val ink = Color.rgb(20, 59, 65)
+    private val paper = Color.rgb(250, 248, 243)
+    private val gold = Color.rgb(184, 137, 60)
+    private val muted = Color.rgb(101, 117, 117)
+    private var tab = 1
+    private var digits = ""
+    private var filter = ""
+    private var pendingNumber: String? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        window.statusBarColor = ink
+        window.navigationBarColor = paper
+        intent?.data?.takeIf { it.scheme == "tel" }?.let {
+            digits = it.schemeSpecificPart.orEmpty()
+        }
+        showTab()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.data?.takeIf { it.scheme == "tel" }?.let {
+            digits = it.schemeSpecificPart.orEmpty()
+            tab = 1
+            showTab()
+        }
+    }
+
+    private fun shape(color: Int, radius: Float = 18f): GradientDrawable =
+        GradientDrawable().apply { setColor(color); cornerRadius = dp(radius.toInt()).toFloat() }
+
+    private fun dp(value: Int): Int = (resources.displayMetrics.density * value).toInt()
+    private fun text(value: String, size: Float = 16f, bold: Boolean = false, color: Int = ink): TextView =
+        TextView(this).apply {
+            this.text = value
+            textSize = size
+            setTextColor(color)
+            gravity = Gravity.CENTER_VERTICAL
+            if (bold) setTypeface(typeface, Typeface.BOLD)
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            textDirection = View.TEXT_DIRECTION_FIRST_STRONG
+        }
+
+    private fun action(value: String, filled: Boolean = false, click: () -> Unit): TextView =
+        text(value, 15f, true, if (filled) Color.WHITE else ink).apply {
+            gravity = Gravity.CENTER
+            background = shape(if (filled) ink else Color.rgb(235, 241, 238))
+            setPadding(dp(10), dp(13), dp(10), dp(13))
+            setOnClickListener { click() }
+        }
+
+    private fun vbox(): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        layoutDirection = View.LAYOUT_DIRECTION_RTL
+    }
+
+    private fun hbox(): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        layoutDirection = View.LAYOUT_DIRECTION_RTL
+    }
+
+    private fun addGap(container: LinearLayout, amount: Int = 8) {
+        container.addView(View(this), LinearLayout.LayoutParams(1, dp(amount)))
+    }
+
+    private fun section(title: String, subtitle: String? = null): LinearLayout =
+        vbox().apply {
+            addView(text(title, 23f, true))
+            if (subtitle != null) addView(text(subtitle, 12f, color = muted))
+            addGap(this, 13)
+        }
+
+    private fun showTab() {
+        val root = vbox().apply { setBackgroundColor(paper) }
+        val header = vbox().apply { setPadding(dp(19), dp(16), dp(19), dp(4)) }
+        header.addView(text("تماس‌یار  •  خانواده پیامیار", 14f, true, gold))
+        header.addView(text("تماس‌ها و مخاطبین، در یک نگاه", 19f, true))
+        root.addView(header)
+        val scroll = ScrollView(this).apply {
+            isFillViewport = false
+            clipToPadding = false
+        }
+        val content = vbox().apply { setPadding(dp(16), dp(10), dp(16), dp(18)) }
+        scroll.addView(content)
+        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        when (tab) {
+            0 -> showHistory(content)
+            1 -> showDialPad(content)
+            2 -> showContacts(content)
+            else -> showMore(content)
+        }
+        val nav = hbox().apply {
+            setBackgroundColor(Color.WHITE)
+            setPadding(dp(5), dp(10), dp(5), dp(10))
+        }
+        listOf("تماس‌ها", "شماره‌گیر", "مخاطبین", "بیشتر").forEachIndexed { index, label ->
+            nav.addView(action(label, index == tab) {
+                tab = index
+                showTab()
+            }, LinearLayout.LayoutParams(0, dp(53), 1f).apply { setMargins(dp(3), 0, dp(3), 0) })
+        }
+        root.addView(nav)
+        setContentView(root)
+    }
+
+    private fun showDialPad(parent: LinearLayout) {
+        parent.addView(section("شماره‌گیری", "برای تماس یا ارسال پیامک، شماره را وارد کنید."))
+        val entry = EditText(this).apply {
+            setSingleLine(true)
+            inputType = InputType.TYPE_CLASS_PHONE
+            textDirection = View.TEXT_DIRECTION_LTR
+            layoutDirection = View.LAYOUT_DIRECTION_LTR
+            textSize = 28f
+            gravity = Gravity.CENTER
+            setText(digits)
+            setSelection(text.length)
+            hint = "۰۹۱۲ ۰۰۰ ۰۰۰۰"
+            background = shape(Color.WHITE)
+            setPadding(dp(15), dp(18), dp(15), dp(18))
+        }
+        parent.addView(entry)
+        addGap(parent, 15)
+        val dial = listOf(
+            listOf("۱", "۲", "۳"), listOf("۴", "۵", "۶"),
+            listOf("۷", "۸", "۹"), listOf("*", "۰", "#")
+        )
+        val englishDigits = mapOf('۰' to '0', '۱' to '1', '۲' to '2', '۳' to '3',
+            '۴' to '4', '۵' to '5', '۶' to '6', '۷' to '7', '۸' to '8', '۹' to '9')
+        dial.forEach { line ->
+            val row = hbox()
+            line.forEach { label ->
+                row.addView(action(label) {
+                    val c = label.first()
+                    entry.append((englishDigits[c] ?: c).toString())
+                    digits = entry.text.toString()
+                }, LinearLayout.LayoutParams(0, dp(64), 1f).apply {
+                    setMargins(dp(4), dp(3), dp(4), dp(3))
+                })
+            }
+            parent.addView(row)
+        }
+        addGap(parent, 12)
+        val buttons = hbox()
+        buttons.addView(action("حذف یک رقم") {
+            val value = entry.text.toString()
+            if (value.isNotEmpty()) entry.setText(value.dropLast(1))
+            entry.setSelection(entry.length())
+            digits = entry.text.toString()
+        }, LinearLayout.LayoutParams(0, dp(52), 1f).apply { setMargins(dp(4), 0, dp(4), 0) })
+        buttons.addView(action("تماس  ☎", true) {
+            digits = entry.text.toString().trim()
+            callNumber(digits)
+        }, LinearLayout.LayoutParams(0, dp(52), 2f).apply { setMargins(dp(4), 0, dp(4), 0) })
+        parent.addView(buttons)
+        addGap(parent)
+        parent.addView(action("ارسال پیامک در پیامیار") {
+            digits = entry.text.toString().trim()
+            openSms(digits)
+        })
+    }
+
+    private fun showHistory(parent: LinearLayout) {
+        parent.addView(section("تماس‌های اخیر", "سوابق فقط روی همین گوشی خوانده می‌شوند."))
+        if (!allowed(Manifest.permission.READ_CALL_LOG, 210)) {
+            parent.addView(text("برای مشاهده تاریخچه تماس، مجوز سوابق تماس را تأیید کنید.", 13f))
+            return
+        }
+        val cursor = try {
+            contentResolver.query(CallLog.Calls.CONTENT_URI,
+                arrayOf(CallLog.Calls.NUMBER, CallLog.Calls.TYPE, CallLog.Calls.DATE,
+                    CallLog.Calls.DURATION),
+                null, null, CallLog.Calls.DATE + " DESC")
+        } catch (_: SecurityException) { null }
+        if (cursor == null) {
+            parent.addView(text("تاریخچه تماس در دسترس نیست.", 14f))
+            return
+        }
+        cursor.use { c ->
+            val numberCol = c.getColumnIndexOrThrow(CallLog.Calls.NUMBER)
+            val typeCol = c.getColumnIndexOrThrow(CallLog.Calls.TYPE)
+            val dateCol = c.getColumnIndexOrThrow(CallLog.Calls.DATE)
+            val durationCol = c.getColumnIndexOrThrow(CallLog.Calls.DURATION)
+            var count = 0
+            val formatter = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale("fa", "IR"))
+            while (c.moveToNext() && count < 100) {
+                val number = c.getString(numberCol).orEmpty()
+                val type = when (c.getInt(typeCol)) {
+                    CallLog.Calls.INCOMING_TYPE -> "ورودی"
+                    CallLog.Calls.OUTGOING_TYPE -> "خروجی"
+                    CallLog.Calls.MISSED_TYPE -> "بی‌پاسخ"
+                    CallLog.Calls.REJECTED_TYPE -> "ردشده"
+                    else -> "تماس"
+                }
+                val whenCalled = formatter.format(Date(c.getLong(dateCol)))
+                val duration = c.getLong(durationCol)
+                contactRow(parent, if (number.isBlank()) "شماره خصوصی" else number,
+                    type + " • " + whenCalled + " • " + duration + " ثانیه", number)
+                count++
+            }
+            if (count == 0) parent.addView(text("هنوز تماسی ثبت نشده است.", 14f))
+        }
+    }
+
+    private fun showContacts(parent: LinearLayout) {
+        parent.addView(section("مخاطبین", "مخاطبین مشترک تلفن و پیامیار، بدون انتقال به سرور."))
+        if (!allowed(Manifest.permission.READ_CONTACTS, 211)) {
+            parent.addView(text("برای نمایش مخاطبین مجوز دسترسی را تأیید کنید.", 13f))
+            return
+        }
+        val search = EditText(this).apply {
+            hint = "جست‌وجوی نام یا شماره"
+            setSingleLine(true)
+            setText(filter)
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            background = shape(Color.WHITE)
+        }
+        parent.addView(search)
+        addGap(parent)
+        parent.addView(action("جست‌وجو") {
+            filter = search.text.toString().trim()
+            showTab()
+        })
+        addGap(parent, 10)
+        val selection = if (filter.isBlank()) null else
+            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " LIKE ? OR " +
+            ContactsContract.CommonDataKinds.Phone.NUMBER + " LIKE ?"
+        val args = if (filter.isBlank()) null else arrayOf("%" + filter + "%", "%" + filter + "%")
+        val cursor = try {
+            contentResolver.query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                    ContactsContract.CommonDataKinds.Phone.NUMBER),
+                selection, args, ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC")
+        } catch (_: SecurityException) { null }
+        if (cursor == null) {
+            parent.addView(text("مخاطبین در دسترس نیستند.", 13f))
+            return
+        }
+        cursor.use { c ->
+            val nameCol = c.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+            val numberCol = c.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER)
+            var count = 0
+            while (c.moveToNext() && count < 150) {
+                contactRow(parent, c.getString(nameCol).orEmpty(), "شماره: " +
+                    c.getString(numberCol).orEmpty(), c.getString(numberCol).orEmpty())
+                count++
+            }
+            if (count == 0) parent.addView(text("مخاطبی پیدا نشد.", 13f))
+        }
+    }
+
+    private fun contactRow(parent: LinearLayout, title: String, subtitle: String, number: String) {
+        val card = vbox().apply {
+            background = shape(Color.WHITE)
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+        }
+        card.addView(text(title, 16f, true))
+        card.addView(text(subtitle, 12f, color = muted))
+        if (number.isNotBlank()) {
+            val buttons = hbox()
+            buttons.addView(action("تماس") { callNumber(number) },
+                LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(3), 0, dp(3), 0) })
+            buttons.addView(action("پیامیار") { openSms(number) },
+                LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(3), 0, dp(3), 0) })
+            card.addView(buttons)
+        }
+        parent.addView(card)
+        addGap(parent)
+    }
+
+    private fun showMore(parent: LinearLayout) {
+        parent.addView(section("تنظیمات و ارتباط", "تماس‌یار مستقل است و با پیامیار هماهنگ کار می‌کند."))
+        parent.addView(action("انتخاب تماس‌یار به‌عنوان شماره‌گیر پیش‌فرض", true) {
+            requestDialerRole()
+        })
+        addGap(parent)
+        parent.addView(action("باز کردن پیامیار") { openPayamYar() })
+        addGap(parent)
+        parent.addView(action("صفحه رسمی تماس‌یار و به‌روزرسانی‌ها") {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://honarmardomi.ir/tamasyar/")))
+        })
+        addGap(parent)
+        parent.addView(text("نسخه آزمایشی ۰.۱.۰  •  مدیریت اطلاعات تماس فقط روی دستگاه انجام می‌شود.", 12f, color = muted))
+        addGap(parent)
+        parent.addView(text("ضبط مکالمه، تشخیص خودکار شماره‌های مزاحم و انتخاب اختصاصی سیم‌کارت هنوز فعال نیستند.", 12f, color = muted))
+    }
+
+    private fun allowed(permission: String, requestCode: Int): Boolean {
+        if (checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED) return true
+        requestPermissions(arrayOf(permission), requestCode)
+        return false
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, results: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, results)
+        if (requestCode == 210 || requestCode == 211) showTab()
+        if (requestCode == 212 && results.firstOrNull() == PackageManager.PERMISSION_GRANTED)
+            pendingNumber?.let { pendingNumber = null; callNumber(it) }
+    }
+
+    private fun isDefaultDialer(): Boolean {
+        val tm = getSystemService(TELECOM_SERVICE) as TelecomManager
+        return tm.defaultDialerPackage == packageName
+    }
+
+    private fun requestDialerRole() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val roles = getSystemService(ROLE_SERVICE) as RoleManager
+            if (roles.isRoleAvailable(RoleManager.ROLE_DIALER))
+                startActivityForResult(roles.createRequestRoleIntent(RoleManager.ROLE_DIALER), 301)
+        } else {
+            val telecom = getSystemService(TELECOM_SERVICE) as TelecomManager
+            startActivityForResult(Intent(TelecomManager.ACTION_CHANGE_DEFAULT_DIALER)
+                .putExtra(TelecomManager.EXTRA_CHANGE_DEFAULT_DIALER_PACKAGE_NAME, packageName), 301)
+        }
+    }
+
+    private fun callNumber(number: String) {
+        if (number.isBlank()) return
+        val target = Uri.fromParts("tel", number, null)
+        if (!isDefaultDialer()) {
+            startActivity(Intent(Intent.ACTION_DIAL, target))
+            return
+        }
+        if (!allowed(Manifest.permission.CALL_PHONE, 212)) {
+            pendingNumber = number
+            return
+        }
+        try {
+            (getSystemService(TELECOM_SERVICE) as TelecomManager).placeCall(target, Bundle())
+        } catch (_: Exception) {
+            startActivity(Intent(Intent.ACTION_DIAL, target))
+        }
+    }
+
+    private fun openSms(number: String) {
+        if (number.isBlank()) return
+        val uri = Uri.fromParts("smsto", number, null)
+        val intent = Intent(Intent.ACTION_SENDTO, uri)
+        try {
+            startActivity(Intent(intent).setPackage("ir.honarmardomi.payamyar"))
+        } catch (_: ActivityNotFoundException) {
+            try { startActivity(intent) } catch (_: ActivityNotFoundException) {
+                android.widget.Toast.makeText(this, "برنامه پیامک پیدا نشد.", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun openPayamYar() {
+        val launch = packageManager.getLaunchIntentForPackage("ir.honarmardomi.payamyar")
+        if (launch != null) startActivity(launch)
+        else startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://honarmardomi.ir/payamyar/")))
+    }
+}
