@@ -14,7 +14,7 @@ class GroupsScreen extends StatelessWidget {
     final confirmed = await showDialog<bool>(context: context, builder: (ctx) =>
       AlertDialog(
         title: const Text('حذف گروه پیامکی'),
-        content: Text('گروه «' + group.name + '» حذف شود؟ پیام‌های خصوصی اعضا حذف نمی‌شوند.'),
+        content: Text('گروه «${group.name}» حذف شود؟ پیام‌های خصوصی اعضا حذف نمی‌شوند.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
           FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('حذف گروه')),
@@ -38,7 +38,7 @@ class GroupsScreen extends StatelessWidget {
         height: MediaQuery.sizeOf(ctx).height * .7,
         child: Column(children: [
           Padding(padding: const EdgeInsets.all(14), child: Text(
-            group.name + ' · ' + Jalali.digits(group.recipients.length) + ' مخاطب',
+            '${group.name} · ${Jalali.digits(group.recipients.length)} مخاطب',
             style: Theme.of(ctx).textTheme.titleMedium)),
           const Padding(padding: EdgeInsets.symmetric(horizontal: 18),
             child: Text('پاسخ هر نفر فقط در گفتگوی خصوصی همان مخاطب نمایش داده می‌شود.',
@@ -122,7 +122,7 @@ class GroupsScreen extends StatelessWidget {
                   leading: CircleAvatar(backgroundColor: scheme.primaryContainer,
                     child: Icon(Icons.groups_rounded, color: scheme.primary)),
                   title: Text(group.name, style: const TextStyle(fontWeight: FontWeight.w800)),
-                  subtitle: Text(Jalali.digits(group.recipients.length) + ' عضو · ارسال خصوصی برای هر شماره'),
+                  subtitle: Text('${Jalali.digits(group.recipients.length)} عضو · ارسال خصوصی برای هر شماره'),
                   trailing: PopupMenuButton<String>(
                     tooltip: 'مدیریت گروه',
                     onSelected: (choice) {
