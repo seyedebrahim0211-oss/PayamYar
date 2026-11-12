@@ -523,10 +523,18 @@ class MainActivity : Activity() {
             pendingNumber = number
             return
         }
+        if (checkSelfPermission(Manifest.permission.CALL_PHONE) !=
+            PackageManager.PERMISSION_GRANTED) {
+            Toast.makeText(this, "مجوز تماس هنوز فعال نیست.", Toast.LENGTH_LONG).show()
+            return
+        }
         try {
             (getSystemService(TELECOM_SERVICE) as TelecomManager).placeCall(target, Bundle())
+        } catch (_: SecurityException) {
+            Toast.makeText(this, "مجوز برقراری تماس وجود ندارد.", Toast.LENGTH_LONG).show()
         } catch (_: Exception) {
-            startActivity(Intent(Intent.ACTION_DIAL, target))
+            Toast.makeText(this, "برقراری تماس ممکن نشد. تلفن و سیم‌کارت را بررسی کنید.",
+                Toast.LENGTH_LONG).show()
         }
     }
 
