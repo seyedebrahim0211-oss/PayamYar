@@ -133,6 +133,10 @@ object Notifier {
 
     fun sent(c: Context, id: String) {
         if (!enabled(c, "notifySent")) return
+        when (SentSound.mode(c)) {
+            0 -> { SentSound.play(c); return }   // sound only, like a messenger "whoosh"
+            2 -> return                          // silent
+        }
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(c, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val prefs = c.getSharedPreferences("sms_engine_v1", Context.MODE_PRIVATE)
@@ -194,6 +198,7 @@ object Notifier {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setWhen(time).setShowWhen(true)
             .setContentIntent(open).setAutoCancel(true)
+            .setSilent(SentSound.quietNow(c))
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setPublicVersion(NotificationCompat.Builder(c, CHANNEL).setSmallIcon(R.drawable.ic_stat_payamyar)
                 .setColor(BRAND).setContentTitle("پیامیار").setContentText("پیامک جدید").build())

@@ -65,9 +65,16 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final value = await SmsBridge.composeIntent();
     if (value == null || !mounted) return;
     final open = value['open']?.toString();
-    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => open != null
-        ? ConversationScreen(store: widget.store, address: open)
-        : ComposeScreen(store: widget.store, initialTo: value['to']?.toString() ?? '', initialBody: value['body']?.toString() ?? '')));
+    final to = Uri.decodeComponent(value['to']?.toString() ?? '').trim();
+    final body = value['body']?.toString() ?? '';
+    // "Message" from the phone's Contacts app (smsto:NUMBER) goes straight into that
+    // person's chat, keeping its history; several recipients still open the composer.
+    final single = to.isNotEmpty && !to.contains(RegExp('[,;]')) &&
+        RegExp(r'^\+?\d{3,15}$').hasMatch(SmsBridge.normalizeNumber(to).replaceAll(RegExp(r'[\s()-]'), ''));
+    final address = open ?? (single ? (widget.store.conversationFor(to)?.address ?? to) : null);
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => address != null
+        ? ConversationScreen(store: widget.store, address: address, initialText: open != null ? '' : body)
+        : ComposeScreen(store: widget.store, initialTo: to, initialBody: body)));
   }
 
   @override

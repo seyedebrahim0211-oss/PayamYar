@@ -189,4 +189,15 @@ class SmsBridge {
       await _channel.invokeMethod<void>('deleteMessages', {'ids': ids.sublist(start, (start + 500).clamp(0, ids.length))});
     }
   }
+
+  /// Opens Android's share sheet (Telegram, Eitaa, email…) with plain text.
+  static Future<bool> shareText(String text, {String subject = '', String title = 'ارسال با'}) async {
+    if (!supported) return false;
+    return await _channel.invokeMethod<bool>('shareText', {'text': text, 'subject': subject, 'title': title}) ?? false;
+  }
+
+  /// Plays the short sent chime so the user can hear it in settings.
+  static Future<void> previewSentSound() async {
+    if (supported) await _channel.invokeMethod<void>('previewSentSound');
+  }
 }

@@ -19,6 +19,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.settings_outlined));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('ظاهر و قالب گفتگو'));
+    await tester.pumpAndSettle();
     expect(find.text('شخصی‌سازی ظاهر و فونت'), findsOneWidget);
     expect(find.text('حالت نمایش'), findsOneWidget);
   });

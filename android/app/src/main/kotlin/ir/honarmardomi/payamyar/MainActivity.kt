@@ -114,6 +114,16 @@ class MainActivity : FlutterActivity() {
                     } catch (_: Exception) { result.success(false) }
                 }
                 "clearNotifications" -> { Notifier.cancel(this, call.argument<String>("address").orEmpty()); result.success(null) }
+                "shareText" -> {
+                    try {
+                        val send = Intent(Intent.ACTION_SEND).setType("text/plain")
+                            .putExtra(Intent.EXTRA_SUBJECT, call.argument<String>("subject").orEmpty())
+                            .putExtra(Intent.EXTRA_TEXT, call.argument<String>("text").orEmpty())
+                        startActivity(Intent.createChooser(send, call.argument<String>("title") ?: "ارسال با"))
+                        result.success(true)
+                    } catch (_: Exception) { result.success(false) }
+                }
+                "previewSentSound" -> { SentSound.play(this); result.success(null) }
                 "signingFingerprint" -> result.success(AppUpdater.installedSignerSha256(this))
                 "canInstallUpdate" -> result.success(AppUpdater.canInstall(this))
                 "installUpdate" -> {

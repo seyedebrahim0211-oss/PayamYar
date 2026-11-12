@@ -53,6 +53,7 @@ class _PayamYarState extends State<PayamYar> {
             ),
           ),
         ));
+    store.settings = settings;
     settings.load();
     store.init();
   }
