@@ -53,6 +53,7 @@ class MainActivity : Activity() {
         if (intent?.getBooleanExtra("open_updates", false) == true) tab = 3
         showTab()
         if (intent?.getBooleanExtra("open_updates", false) == true) checkForUpdates()
+        TamasUpdateWorker.configure(this)
         TamasUpdater.check(this, automatic = true) { _, _ -> }
     }
 
@@ -394,11 +395,12 @@ class MainActivity : Activity() {
 
         parent.addView(section("به‌روزرسانی برنامه", "نسخه‌ها از سایت رسمی هنر مردمی بررسی می‌شوند."))
         settingCard(parent, "بررسی خودکار نسخه جدید",
-            if (prefs.autoUpdates) "فعال؛ هر ۱۲ ساعت هنگام بازشدن برنامه نسخه جدید بررسی و اعلان می‌شود."
+            if (prefs.autoUpdates) "فعال؛ هنگام اجرای برنامه و در پس‌زمینه با رعایت محدودیت باتری اندروید نسخه جدید بررسی می‌شود."
             else "غیرفعال؛ فقط با درخواست شما بررسی انجام می‌شود.",
             if (prefs.autoUpdates) "خاموش کردن بررسی خودکار" else "روشن کردن بررسی خودکار") {
             prefs.autoUpdates = !prefs.autoUpdates
             prefs.lastChecked = 0L
+            TamasUpdateWorker.configure(this)
             showTab()
             if (prefs.autoUpdates) TamasUpdater.check(this, automatic = true) { _, _ -> }
         }
