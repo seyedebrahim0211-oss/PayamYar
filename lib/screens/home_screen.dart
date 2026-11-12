@@ -10,6 +10,7 @@ import '../sms_bridge.dart';
 import 'compose_screen.dart';
 import 'conversation_screen.dart';
 import 'reports_screen.dart';
+import 'groups_screen.dart';
 import 'settings_screen.dart';
 import 'widgets.dart';
 
@@ -76,8 +77,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         Offstage(
           offstage: tab != 0,
           child: TickerMode(enabled: tab == 0, child: ConversationsPage(store: widget.store, settings: widget.settings))),
-        if (tab == 1) ReportsScreen(store: widget.store, settings: widget.settings),
-        if (tab == 2) SettingsScreen(store: widget.store, settings: widget.settings),
+        if (tab == 1) GroupsScreen(store: widget.store),
+        if (tab == 2) ReportsScreen(store: widget.store, settings: widget.settings),
+        if (tab == 3) SettingsScreen(store: widget.store, settings: widget.settings),
       ]),
       floatingActionButton: tab == 0
           ? FloatingActionButton.extended(
@@ -94,6 +96,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             icon: Badge(isLabelVisible: unread > 0, label: Text(Jalali.digits(unread)), child: const Icon(Icons.chat_bubble_outline_rounded)),
             selectedIcon: const Icon(Icons.chat_bubble_rounded),
             label: 'گفتگوها'),
+          const NavigationDestination(icon: Icon(Icons.groups_outlined), selectedIcon: Icon(Icons.groups_rounded), label: 'گروه‌ها'),
           const NavigationDestination(icon: Icon(Icons.insights_outlined), selectedIcon: Icon(Icons.insights_rounded), label: 'گزارش‌ها'),
           const NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings_rounded), label: 'تنظیمات'),
         ],
