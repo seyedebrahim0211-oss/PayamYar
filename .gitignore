@@ -12,3 +12,8 @@ android/key.properties
 .env
 .env.*
 .DS_Store
+
+# Permanent Android release signing private material
+*.p12
+*.pfx
+*RELEASE-SECRETS-PRIVATE*.json
