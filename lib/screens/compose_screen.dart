@@ -348,8 +348,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
             ),
           ],
         ])),
-        if (undoGroup.isNotEmpty)
-          SendUndoBar(
+        SendUndoBar(
             requests: undoGroup,
             onUndo: () async {
               var count = 0;
