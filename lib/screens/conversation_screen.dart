@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../app_settings.dart';
 import '../app_store.dart';
+import '../chat_theme.dart';
 import '../jalali.dart';
 import '../message_logic.dart';
 import '../sms_bridge.dart';
@@ -15,7 +17,9 @@ import 'widgets.dart';
 class ConversationScreen extends StatefulWidget {
   final AppStore store;
   final String address;
-  const ConversationScreen({super.key, required this.store, required this.address});
+  /// Draft placed in the composer, e.g. from an sms: link or the phone's Contacts app.
+  final String initialText;
+  const ConversationScreen({super.key, required this.store, required this.address, this.initialText = ''});
   @override
   State<ConversationScreen> createState() => _ConversationScreenState();
 }
@@ -29,9 +33,12 @@ class _Entry {
 }
 
 class _ConversationScreenState extends State<ConversationScreen> {
-  final input = TextEditingController();
+  late final input = TextEditingController(text: widget.initialText);
+  final focus = FocusNode();
   bool sending = false;
   AppStore get store => widget.store;
+  static final _fallbackSettings = AppSettings();
+  AppSettings get settings => store.settings ?? _fallbackSettings;
 
   /// Alphanumeric senders (banks, services) cannot receive replies.
   bool get canReply => RegExp(r'\d{3,}').hasMatch(SmsBridge.normalizeNumber(widget.address));
@@ -59,6 +66,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   void dispose() {
     store.removeListener(_onStoreChanged);
     input.dispose();
+    focus.dispose();
     super.dispose();
   }
 
@@ -69,7 +77,10 @@ class _ConversationScreenState extends State<ConversationScreen> {
     final pending = await store.send(widget.address, text, scheduledAt: scheduledAt);
     if (!mounted) return;
     setState(() => sending = false);
-    if (pending != null || !store.android) input.clear();
+    if (pending != null || !store.android) {
+      input.clear();
+      HapticFeedback.selectionClick();
+    }
     if (pending != null && scheduledAt != null) {
       store.onNotice?.call('ارسال برای ${Jalali.time(scheduledAt)} زمان‌بندی شد.');
     }
@@ -116,7 +127,8 @@ class _ConversationScreenState extends State<ConversationScreen> {
   }
 
   Future<void> _emojiPicker() async {
-    const emojis = ['😊', '🙏', '❤️', '🌹', '👍', '😂', '🎉', '✨', '💐', '👌', '🤝', '💚'];
+    const emojis = ['😊', '🙏', '❤️', '🌹', '👍', '😂', '🎉', '✨', '💐', '👌', '🤝', '💚',
+      '😍', '🤲', '🌸', '☕', '🎂', '🕊️', '🌙', '⭐', '💯', '🙌', '😅', '🤔'];
     await showModalBottomSheet<void>(
       context: context, showDragHandle: true,
       builder: (sheet) => SafeArea(child: Padding(
@@ -211,8 +223,24 @@ class _ConversationScreenState extends State<ConversationScreen> {
     }
   }
 
+  /// A queued copy is shown only until Android's real outbox row takes its place,
+  /// so a sent message never appears twice ("در صف ارسال" + "در حال ارسال").
+  bool _stillLocal(PendingSend p, List<MessageRecord> messages, DateTime now) {
+    if (p.deadline.isAfter(now)) return true;
+    if (now.difference(p.deadline) > const Duration(seconds: 4)) return false;
+    final from = p.deadline.subtract(const Duration(seconds: 20));
+    for (final m in messages.take(30)) {
+      if (m.outgoing && m.body.trim() == p.body.trim() && m.date.isAfter(from)) return false;
+    }
+    return true;
+  }
+
   List<_Entry> _entries(List<MessageRecord> messages, List<PendingSend> pending) {
-    final items = <_Entry>[for (final p in pending.reversed) _Entry(pending: p)];
+    final now = DateTime.now();
+    final items = <_Entry>[
+      for (final p in pending.reversed)
+        if (_stillLocal(p, messages, now)) _Entry(pending: p),
+    ];
     for (var i = 0; i < messages.length; i++) {
       final m = messages[i];
       items.add(_Entry(message: m));
@@ -226,15 +254,16 @@ class _ConversationScreenState extends State<ConversationScreen> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return ListenableBuilder(
-      listenable: store,
+      listenable: Listenable.merge([store, settings]),
       builder: (context, _) {
+        final look = ChatLook.of(settings.chatStyle, scheme);
         final c = store.conversationFor(widget.address);
         final messages = c?.messages ?? const <MessageRecord>[];
         final name = store.displayName(widget.address);
         final key = store.key(widget.address);
         final pending = store.pendingSends.where((p) => store.key(p.to) == key).toList();
         final items = _entries(messages, pending);
-        final quickReplies = messages.isNotEmpty && !messages.first.outgoing &&
+        final quickReplies = settings.smartReplies && messages.isNotEmpty && !messages.first.outgoing &&
                 MessageLogic.category(messages.first) == MessageCategory.personal
             ? SmartAssistant.suggestReplies(messages.first.body)
             : const <String>[];
@@ -253,7 +282,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
           appBar: AppBar(
             titleSpacing: 0,
             title: Row(children: [
-              SenderAvatar(name: name, address: widget.address, radius: 19,
+              SenderAvatar(name: name, address: widget.address, radius: 20,
                 category: store.infoFor(widget.address)?.category ?? MessageCategory.personal),
               const SizedBox(width: 10),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -273,8 +302,9 @@ class _ConversationScreenState extends State<ConversationScreen> {
                   color: pinned ? const Color(0xFFB8862E) : null),
                 onPressed: () => store.togglePin(widget.address)),
               PopupMenuButton<String>(
-                onSelected: _menu,
+                onSelected: (v) => v == 'style' ? _stylePicker() : _menu(v),
                 itemBuilder: (_) => [
+                  const PopupMenuItem(value: 'style', child: Text('قالب گفتگو')),
                   const PopupMenuItem(value: 'copy', child: Text('کپی شماره')),
                   PopupMenuItem(value: 'archive', child: Text(store.isArchived(widget.address) ? 'خارج کردن از بایگانی' : 'بایگانی')),
                   if (SmsBridge.supported) const PopupMenuItem(value: 'block', child: Text('مسدود کردن')),
@@ -282,108 +312,143 @@ class _ConversationScreenState extends State<ConversationScreen> {
                 ]),
             ],
           ),
-          body: Column(children: [
-            if (pinnedMessage != null)
-              Material(
-                color: scheme.primaryContainer.withValues(alpha: .55),
-                child: ListTile(
-                  dense: true,
-                  leading: const Icon(Icons.push_pin_rounded, size: 18, color: Color(0xFFB8862E)),
-                  title: Text(pinnedMessage.body.replaceAll('\n', ' '), maxLines: 2, overflow: TextOverflow.ellipsis),
-                  trailing: IconButton(tooltip: 'برداشتن سنجاق پیام', icon: const Icon(Icons.close_rounded, size: 18),
-                    onPressed: () => store.togglePinMessage(widget.address, pinnedId!)),
-                  onTap: () {
-                    Clipboard.setData(ClipboardData(text: pinnedMessage!.body));
-                    store.onNotice?.call('متن پیام سنجاق‌شده کپی شد.');
-                  },
-                ),
-              ),
-            Expanded(child: items.isEmpty
-                ? const EmptyState(icon: Icons.chat_outlined, title: 'هنوز پیامی نیست', subtitle: 'اولین پیام را بنویسید.')
-                : Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topRight, end: Alignment.bottomLeft,
-                        colors: [scheme.primary.withValues(alpha: .055),
-                          scheme.surfaceContainerLowest,
-                          const Color(0xFFD6B779).withValues(alpha: .055)],
-                      ),
+          body: DecoratedBox(
+            decoration: look.background,
+            child: CustomPaint(
+              painter: look.pattern,
+              child: Column(children: [
+                if (pinnedMessage != null)
+                  Material(
+                    color: scheme.primaryContainer.withValues(alpha: .7),
+                    child: ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.push_pin_rounded, size: 18, color: Color(0xFFB8862E)),
+                      title: Text(pinnedMessage.body.replaceAll('\n', ' '), maxLines: 2, overflow: TextOverflow.ellipsis),
+                      trailing: IconButton(tooltip: 'برداشتن سنجاق پیام', icon: const Icon(Icons.close_rounded, size: 18),
+                        onPressed: () => store.togglePinMessage(widget.address, pinnedId!)),
+                      onTap: () {
+                        Clipboard.setData(ClipboardData(text: pinnedMessage!.body));
+                        store.onNotice?.call('متن پیام سنجاق‌شده کپی شد.');
+                      },
                     ),
-                    child: ListView.builder(
-                    reverse: true,
-                    padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
-                    itemCount: items.length,
-                    itemBuilder: (context, i) {
-                      final e = items[i];
-                      if (e.header != null) return _DayHeader(e.header!);
-                      final p = e.pending;
-                      if (p != null) {
-                        return TweenAnimationBuilder<double>(
-                          key: ValueKey('queued-${p.id}'),
-                          duration: const Duration(milliseconds: 380),
-                          curve: Curves.easeOutCubic,
-                          tween: Tween(begin: 0, end: 1),
-                          builder: (_, value, child) => Opacity(
-                            opacity: value,
-                            child: Transform.translate(
-                              offset: Offset(0, 18 * (1 - value)), child: child)),
-                          child: _Bubble(text: p.body, outgoing: true,
-                            time: p.scheduled ? 'زمان‌دار • ${Jalali.time(p.deadline)}' : 'در صف ارسال'),
-                        );
-                      }
-                      return _bubbleFor(e.message!, pinnedId);
-                    }))),
-            if (canReply && quickReplies.isNotEmpty)
-              SizedBox(height: 45, child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                children: [
-                  for (final suggestion in quickReplies)
-                    Padding(
-                      padding: const EdgeInsetsDirectional.only(end: 7),
-                      child: ActionChip(
-                        avatar: Icon(Icons.auto_awesome_outlined, color: scheme.primary, size: 17),
-                        label: Text(suggestion, style: const TextStyle(fontSize: 12)),
-                        onPressed: () { input.text = suggestion; },
-                      ),
-                    ),
-                ],
-              )),
-            if (canReply) _inputBar(scheme) else Padding(
-              padding: const EdgeInsets.all(14),
-              child: Text('امکان پاسخ به این فرستنده وجود ندارد.', style: TextStyle(color: scheme.onSurfaceVariant))),
-          ]),
+                  ),
+                Expanded(child: items.isEmpty
+                    ? const EmptyState(icon: Icons.chat_outlined, title: 'هنوز پیامی نیست', subtitle: 'اولین پیام را بنویسید.')
+                    : ListView.builder(
+                        reverse: true,
+                        padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
+                        itemCount: items.length,
+                        itemBuilder: (context, i) {
+                          final e = items[i];
+                          if (e.header != null) return _DayHeader(e.header!, look: look);
+                          final p = e.pending;
+                          if (p != null) {
+                            return TweenAnimationBuilder<double>(
+                              key: ValueKey('queued-${p.id}'),
+                              duration: const Duration(milliseconds: 380),
+                              curve: Curves.easeOutCubic,
+                              tween: Tween(begin: 0, end: 1),
+                              builder: (_, value, child) => Opacity(
+                                opacity: value,
+                                child: Transform.translate(offset: Offset(0, 18 * (1 - value)), child: child)),
+                              child: _Bubble(text: p.body, outgoing: true, look: look, textSize: settings.bubbleText,
+                                status: p.scheduled ? 'زمان‌دار • ${Jalali.time(p.deadline)}' : 'در صف ارسال',
+                                statusIcon: p.scheduled ? Icons.schedule_rounded : Icons.access_time_rounded,
+                                time: ''),
+                            );
+                          }
+                          return _bubbleFor(e.message!, pinnedId, look);
+                        })),
+                if (canReply && quickReplies.isNotEmpty)
+                  SizedBox(height: 45, child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    children: [
+                      for (final suggestion in quickReplies)
+                        Padding(
+                          padding: const EdgeInsetsDirectional.only(end: 7),
+                          child: ActionChip(
+                            avatar: Icon(Icons.auto_awesome_outlined, color: scheme.primary, size: 17),
+                            label: Text(suggestion, style: const TextStyle(fontSize: 12)),
+                            onPressed: () { input.text = suggestion; },
+                          ),
+                        ),
+                    ],
+                  )),
+                if (canReply) _inputBar(scheme, look) else Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  color: scheme.surface.withValues(alpha: .85),
+                  child: Text('این فرستنده پاسخ پیامکی دریافت نمی‌کند.', textAlign: TextAlign.center,
+                    style: TextStyle(color: scheme.onSurfaceVariant))),
+              ]),
+            ),
+          ),
         );
       },
     );
   }
 
+  Future<void> _stylePicker() async {
+    await showModalBottomSheet<void>(
+      context: context, showDragHandle: true,
+      builder: (sheet) => ListenableBuilder(
+        listenable: settings,
+        builder: (context, _) => SafeArea(child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('قالب گفتگو', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 12),
+            SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
+              for (final style in ChatStyle.values)
+                Padding(padding: const EdgeInsetsDirectional.only(end: 10),
+                  child: ChatStylePreview(style: style, selected: settings.chatStyle == style,
+                    onTap: () => settings.update(chatStyle: style))),
+            ])),
+            const SizedBox(height: 10),
+            Text('اندازه متن حباب‌ها: ${Jalali.digits(settings.bubbleText.round())}'),
+            Slider(value: settings.bubbleText, min: 13, max: 20, divisions: 14,
+              onChanged: (v) => settings.update(bubbleText: v)),
+          ]),
+        )),
+      ),
+    );
+  }
+
   bool _sameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
 
-  Widget _bubbleFor(MessageRecord m, int? pinnedId) {
+  Widget _bubbleFor(MessageRecord m, int? pinnedId, ChatLook look) {
     String? status;
+    IconData? icon;
     if (m.outgoing) {
-      status = m.type == 5
-          ? 'ارسال نشد'
-          : m.type == 4 || m.type == 6
-              ? (DateTime.now().difference(m.date).inSeconds >= 25
-                  ? 'در انتظار تأیید شبکه' : 'در حال ارسال')
-              : m.type == 3
-                  ? 'پیش‌نویس'
-                  : m.delivery == 0
-                      ? 'تحویل شد ✓✓'
-                      : m.delivery >= 64
-                          ? 'تحویل ناموفق'
-                          : 'ارسال شد ✓';
+      if (m.type == 5) {
+        status = 'ارسال نشد'; icon = Icons.error_outline_rounded;
+      } else if (m.type == 4 || m.type == 6) {
+        final waiting = DateTime.now().difference(m.date).inSeconds >= 25;
+        status = waiting ? 'در انتظار تأیید شبکه' : 'در حال ارسال';
+        icon = Icons.access_time_rounded;
+      } else if (m.type == 3) {
+        status = 'پیش‌نویس'; icon = Icons.edit_note_rounded;
+      } else if (m.delivery == 0) {
+        status = 'تحویل شد'; icon = Icons.done_all_rounded;
+      } else if (m.delivery >= 64) {
+        status = 'تحویل ناموفق'; icon = Icons.report_gmailerrorred_rounded;
+      } else {
+        status = 'ارسال شد'; icon = Icons.done_rounded;
+      }
     }
     final code = m.outgoing ? null : MessageLogic.otp(m.body);
     return _Bubble(
       text: m.body,
       outgoing: m.outgoing,
+      look: look,
+      textSize: settings.bubbleText,
       failed: m.type == 5,
       pinned: m.id != null && m.id == pinnedId,
       warning: !m.outgoing && MessageLogic.suspicious(m.body),
-      time: '${Jalali.time(m.date)}${status == null ? '' : ' • $status'}',
+      time: Jalali.time(m.date),
+      status: status,
+      statusIcon: icon,
       onLongPress: () => _messageActions(m),
       trailing: code == null ? null : ActionChip(
         avatar: const Icon(Icons.copy_rounded, size: 16),
@@ -395,87 +460,128 @@ class _ConversationScreenState extends State<ConversationScreen> {
     );
   }
 
-  Widget _inputBar(ColorScheme scheme) {
+  void _insert(String value) {
+    final v = input.value;
+    final start = v.selection.isValid ? v.selection.start : v.text.length;
+    final end = v.selection.isValid ? v.selection.end : v.text.length;
+    input.value = TextEditingValue(text: v.text.replaceRange(start, end, value),
+      selection: TextSelection.collapsed(offset: start + value.length));
+  }
+
+  Widget _inputBar(ColorScheme scheme, ChatLook look) {
     final dualSim = store.sims.length > 2;
+    final pendingHere = store.pendingSends.where((p) => store.key(p.to) == store.key(widget.address)).toList();
     return SafeArea(
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(4, 2, 8, 8),
+        padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ValueListenableBuilder<TextEditingValue>(
             valueListenable: input,
             builder: (context, value, _) => value.text.isEmpty
                 ? const SizedBox.shrink()
-                : Padding(padding: const EdgeInsets.only(bottom: 2), child: SmsCounter(text: value.text))),
+                : Padding(padding: const EdgeInsets.only(bottom: 3), child: SmsCounter(text: settings.withSignature(value.text)))),
           Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            // Composer pill: tools inside, typing area in the middle.
+            Expanded(child: AnimatedBuilder(
+              animation: focus,
+              builder: (context, child) => AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                decoration: look.composer.copyWith(
+                  border: focus.hasFocus ? Border.all(color: scheme.primary, width: 1.6) : look.composer.border,
+                  boxShadow: [BoxShadow(color: scheme.primary.withValues(alpha: focus.hasFocus ? .14 : .05),
+                    blurRadius: 14, offset: const Offset(0, 4))]),
+                child: child),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                IconButton(tooltip: 'شکلک‌ها', onPressed: _emojiPicker,
+                  icon: Icon(Icons.emoji_emotions_outlined, color: scheme.primary)),
+                Expanded(child: TextField(
+                  controller: input,
+                  focusNode: focus,
+                  minLines: 1,
+                  maxLines: 6,
+                  maxLength: 2000,
+                  style: TextStyle(fontSize: settings.bubbleText),
+                  textInputAction: settings.enterToSend ? TextInputAction.send : TextInputAction.newline,
+                  onSubmitted: settings.enterToSend ? (_) => _send() : null,
+                  decoration: const InputDecoration(
+                    hintText: 'پیام بنویسید…',
+                    counterText: '',
+                    filled: false,
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 14),
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                  ),
+                )),
+                if (dualSim)
+                  PopupMenuButton<int>(
+                    tooltip: 'انتخاب سیم‌کارت',
+                    icon: Icon(Icons.sim_card_outlined, color: scheme.primary),
+                    onSelected: (v) => setState(() => store.selectedSim = v),
+                    itemBuilder: (_) => [
+                      for (final sim in store.sims)
+                        CheckedPopupMenuItem(
+                          value: sim['id'] as int,
+                          checked: store.selectedSim == sim['id'],
+                          child: Text(sim['label'].toString())),
+                    ],
+                  ),
+                PopupMenuButton<String>(
+                  tooltip: 'ابزارهای پیام',
+                  icon: Icon(Icons.add_circle_outline_rounded, color: scheme.primary),
+                  onSelected: (option) {
+                    switch (option) {
+                      case 'templates': _templates();
+                      case 'polish': _polish();
+                      case 'schedule': _scheduleSend();
+                      case 'signature': if (settings.signature.isNotEmpty) _insert('\n${settings.signature}');
+                      case 'paste':
+                        Clipboard.getData('text/plain').then((d) { if (d?.text != null) _insert(d!.text!); });
+                    }
+                  },
+                  itemBuilder: (_) => [
+                    const PopupMenuItem(value: 'templates', child: ListTile(
+                      dense: true, leading: Icon(Icons.library_books_outlined), title: Text('پیام‌های آماده'))),
+                    const PopupMenuItem(value: 'polish', child: ListTile(
+                      dense: true, leading: Icon(Icons.auto_fix_high_rounded), title: Text('ویرایش و مرتب‌سازی متن'))),
+                    const PopupMenuItem(value: 'schedule', child: ListTile(
+                      dense: true, leading: Icon(Icons.schedule_send_rounded), title: Text('ارسال زمان‌دار'))),
+                    const PopupMenuItem(value: 'paste', child: ListTile(
+                      dense: true, leading: Icon(Icons.content_paste_rounded), title: Text('چسباندن'))),
+                    if (settings.signature.isNotEmpty && !settings.signatureEnabled)
+                      const PopupMenuItem(value: 'signature', child: ListTile(
+                        dense: true, leading: Icon(Icons.draw_outlined), title: Text('افزودن امضا'))),
+                  ],
+                ),
+              ]),
+            )),
+            const SizedBox(width: 6),
             Tooltip(
               message: 'ارسال (لمس طولانی: ارسال زمان‌دار)',
               child: SendControl(
-                requests: store.pendingSends.where((p) => store.key(p.to) == store.key(widget.address)).toList(),
+                requests: pendingHere,
                 sending: sending,
                 onSend: () => _send(),
                 onSchedule: _scheduleSend,
                 onUndo: () async {
-                  final pending = store.pendingSends.where(
-                    (p) => store.key(p.to) == store.key(widget.address)).toList();
+                  final list = store.pendingSends.where(
+                    (p) => store.key(p.to) == store.key(widget.address) && !p.scheduled).toList();
                   String? restore;
-                  for (final p in pending) {
+                  for (final p in list) {
                     if (await store.undo(p)) restore ??= p.body;
                   }
-                  if (restore != null && mounted) input.text = restore;
+                  if (restore != null && mounted) {
+                    final sig = settings.signature;
+                    final text = settings.signatureEnabled && sig.isNotEmpty && restore.endsWith('\n$sig')
+                        ? restore.substring(0, restore.length - sig.length - 1) : restore;
+                    input.text = text;
+                    input.selection = TextSelection.collapsed(offset: text.length);
+                  }
                 },
               ),
             ),
-            PopupMenuButton<String>(
-              tooltip: 'ابزارهای پیام',
-              icon: Icon(Icons.add_circle_outline_rounded, color: scheme.primary, size: 27),
-              onSelected: (option) {
-                if (option == 'templates') _templates();
-                if (option == 'polish') _polish();
-              },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'templates', child: ListTile(
-                  dense: true, leading: Icon(Icons.library_books_outlined), title: Text('پیام‌های آماده'))),
-                PopupMenuItem(value: 'polish', child: ListTile(
-                  dense: true, leading: Icon(Icons.auto_fix_high_rounded), title: Text('ویرایش متن'))),
-              ],
-            ),
-            IconButton(tooltip: 'شکلک‌ها', onPressed: _emojiPicker,
-              icon: Icon(Icons.sentiment_satisfied_alt_rounded, color: scheme.primary)),
-            if (dualSim)
-              PopupMenuButton<int>(
-                tooltip: 'انتخاب سیم‌کارت',
-                icon: Icon(Icons.sim_card_outlined, color: scheme.primary),
-                onSelected: (v) => setState(() => store.selectedSim = v),
-                itemBuilder: (_) => [
-                  for (final sim in store.sims)
-                    CheckedPopupMenuItem(
-                      value: sim['id'] as int,
-                      checked: store.selectedSim == sim['id'],
-                      child: Text(sim['label'].toString())),
-                ],
-              ),
-            Expanded(child: TextField(
-              controller: input,
-              minLines: 1,
-              maxLines: 5,
-              maxLength: 2000,
-              textInputAction: TextInputAction.newline,
-              decoration: InputDecoration(
-                hintText: 'پیام بنویسید…',
-                counterText: '',
-                filled: true,
-                fillColor: scheme.surface,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide(color: scheme.outlineVariant)),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide(color: scheme.outlineVariant)),
-              ),
-            )),
-            const SizedBox(width: 2),
           ]),
         ]),
       ),
@@ -485,17 +591,15 @@ class _ConversationScreenState extends State<ConversationScreen> {
 
 class _DayHeader extends StatelessWidget {
   final String label;
-  const _DayHeader(this.label);
+  final ChatLook look;
+  const _DayHeader(this.label, {required this.look});
   @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Center(child: Container(
-      margin: const EdgeInsets.symmetric(vertical: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(color: scheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(12)),
-      child: Text(label, style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
-    ));
-  }
+  Widget build(BuildContext context) => Center(child: Container(
+    margin: const EdgeInsets.symmetric(vertical: 10),
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+    decoration: look.dayChip,
+    child: Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: look.dayInk)),
+  ));
 }
 
 class _Bubble extends StatelessWidget {
@@ -505,21 +609,22 @@ class _Bubble extends StatelessWidget {
   final bool warning;
   final bool pinned;
   final String time;
+  final String? status;
+  final IconData? statusIcon;
+  final ChatLook look;
+  final double textSize;
   final Widget? trailing;
   final VoidCallback? onLongPress;
-  const _Bubble({required this.text, required this.outgoing, required this.time,
+  const _Bubble({required this.text, required this.outgoing, required this.time, required this.look,
+    this.textSize = 15.5, this.status, this.statusIcon,
     this.failed = false, this.warning = false, this.pinned = false, this.trailing, this.onLongPress});
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final bg = failed ? scheme.errorContainer
-      : outgoing ? (dark ? const Color(0xFF174D4E) : const Color(0xFFD9EFEB))
-      : (dark ? const Color(0xFF263A40) : Colors.white);
-    final fg = failed ? scheme.onErrorContainer
-      : outgoing && dark ? const Color(0xFFF1F8F6) : scheme.onSurface;
-    const r = Radius.circular(20);
+    final fg = look.ink(outgoing, failed);
+    final r = Radius.circular(look.radius);
+    final base = look.bubble(outgoing, failed);
+    final delivered = statusIcon == Icons.done_all_rounded;
     return Align(
       alignment: outgoing ? AlignmentDirectional.centerStart : AlignmentDirectional.centerEnd,
       child: ConstrainedBox(
@@ -527,16 +632,14 @@ class _Bubble extends StatelessWidget {
         child: GestureDetector(
           onLongPress: onLongPress,
           child: Container(
-            margin: const EdgeInsets.symmetric(vertical: 4),
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
-            decoration: BoxDecoration(
-              color: bg,
-              boxShadow: [BoxShadow(color: scheme.shadow.withValues(alpha: .05), blurRadius: 6, offset: const Offset(0, 2))],
-              border: pinned ? Border.all(color: const Color(0xFFD4A94E), width: 1.5) : null,
+            margin: const EdgeInsets.symmetric(vertical: 3.5),
+            padding: const EdgeInsets.fromLTRB(14, 9, 14, 7),
+            decoration: base.copyWith(
+              border: pinned ? Border.all(color: const Color(0xFFD4A94E), width: 1.6) : base.border,
               borderRadius: BorderRadiusDirectional.only(
                 topStart: r, topEnd: r,
-                bottomStart: outgoing ? r : const Radius.circular(6),
-                bottomEnd: outgoing ? const Radius.circular(6) : r,
+                bottomStart: outgoing ? r : const Radius.circular(5),
+                bottomEnd: outgoing ? const Radius.circular(5) : r,
               ),
             ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
@@ -544,13 +647,14 @@ class _Bubble extends StatelessWidget {
                 const Padding(padding: EdgeInsets.only(bottom: 6), child: Row(mainAxisSize: MainAxisSize.min, children: [
                   Icon(Icons.warning_amber_rounded, size: 16, color: Colors.orange),
                   SizedBox(width: 4),
-                  Text('احتمال کلاهبرداری؛ روی لینک نزنید', style: TextStyle(fontSize: 12, color: Colors.orange)),
+                  Flexible(child: Text('احتمال کلاهبرداری؛ روی لینک نزنید', style: TextStyle(fontSize: 12, color: Colors.orange))),
                 ])),
               Text(text.trim().isEmpty ? 'پیام بدون متن' : text.trim(),
                 maxLines: 8, overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: fg, fontSize: 15.5, height: 1.7)),
+                style: TextStyle(color: fg, fontSize: textSize, height: 1.7)),
               if (text.length > 260 || text.split('\n').length > 8)
                 TextButton(
+                  style: TextButton.styleFrom(foregroundColor: fg, padding: EdgeInsets.zero),
                   onPressed: () => showDialog<void>(
                     context: context,
                     builder: (ctx) => AlertDialog(
@@ -561,19 +665,26 @@ class _Bubble extends StatelessWidget {
                           style: const TextStyle(height: 1.8))),
                       ),
                       actions: [
-                        TextButton(onPressed: () => Navigator.pop(ctx),
-                          child: const Text('بستن')),
+                        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('بستن')),
                       ],
                     ),
                   ),
                   child: const Text('نمایش متن کامل'),
                 ),
               if (trailing != null) Padding(padding: const EdgeInsets.only(top: 6), child: trailing),
-              const SizedBox(height: 4),
+              const SizedBox(height: 3),
               Row(mainAxisSize: MainAxisSize.min, children: [
                 if (pinned) Padding(padding: const EdgeInsetsDirectional.only(end: 4),
                   child: Icon(Icons.push_pin_rounded, size: 12, color: fg.withValues(alpha: .7))),
-                Text(time, style: TextStyle(color: fg.withValues(alpha: .7), fontSize: 11)),
+                if (time.isNotEmpty)
+                  Text(time, style: TextStyle(color: fg.withValues(alpha: .7), fontSize: 11)),
+                if (status != null) ...[
+                  if (time.isNotEmpty) const SizedBox(width: 6),
+                  if (statusIcon != null)
+                    Icon(statusIcon, size: 14, color: delivered ? const Color(0xFF7FD3FF) : fg.withValues(alpha: .75)),
+                  const SizedBox(width: 3),
+                  Text(status!, style: TextStyle(color: fg.withValues(alpha: .75), fontSize: 11)),
+                ],
               ]),
             ]),
           ),

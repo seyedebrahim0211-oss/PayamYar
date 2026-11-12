@@ -32,6 +32,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     widget.store.onComposeIntent = _takeIntent;
+    widget.store.onOpenConversation = _openConversation;
     WidgetsBinding.instance.addPostFrameCallback((_) => _takeIntent());
   }
 
@@ -39,6 +40,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     widget.store.onComposeIntent = null;
+    widget.store.onOpenConversation = null;
     super.dispose();
   }
 
@@ -58,6 +60,13 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     }
   }
 
+  /// Opens a chat from the in-app glass banner.
+  void _openConversation(String address) {
+    if (!mounted) return;
+    Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => ConversationScreen(store: widget.store, address: address)));
+  }
+
   /// Opens the conversation of a tapped notification, or the composer for sms:/smsto: links.
   /// Nothing is ever sent automatically.
   Future<void> _takeIntent() async {
@@ -65,9 +74,16 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final value = await SmsBridge.composeIntent();
     if (value == null || !mounted) return;
     final open = value['open']?.toString();
-    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => open != null
-        ? ConversationScreen(store: widget.store, address: open)
-        : ComposeScreen(store: widget.store, initialTo: value['to']?.toString() ?? '', initialBody: value['body']?.toString() ?? '')));
+    final to = Uri.decodeComponent(value['to']?.toString() ?? '').trim();
+    final body = value['body']?.toString() ?? '';
+    // "Message" from the phone's Contacts app (smsto:NUMBER) goes straight into that
+    // person's chat, keeping its history; several recipients still open the composer.
+    final single = to.isNotEmpty && !to.contains(RegExp('[,;]')) &&
+        RegExp(r'^\+?\d{3,15}$').hasMatch(SmsBridge.normalizeNumber(to).replaceAll(RegExp(r'[\s()-]'), ''));
+    final address = open ?? (single ? (widget.store.conversationFor(to)?.address ?? to) : null);
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => address != null
+        ? ConversationScreen(store: widget.store, address: address, initialText: open != null ? '' : body)
+        : ComposeScreen(store: widget.store, initialTo: to, initialBody: body)));
   }
 
   @override

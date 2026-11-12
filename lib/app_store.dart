@@ -1,13 +1,16 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'conversation_logic.dart';
 import 'finance_logic.dart';
 import 'message_logic.dart';
+import 'notify_banner.dart';
 import 'sms_bridge.dart';
 import 'sms_groups.dart';
 import 'update_service.dart';
+import 'app_settings.dart';
 
 class PendingSend {
   final String id;
@@ -15,7 +18,10 @@ class PendingSend {
   final String body;
   final DateTime deadline;
   final bool scheduled;
-  PendingSend(this.id, this.to, this.body, this.deadline, {this.scheduled = false});
+  /// Length of the undo window, used to draw the countdown ring.
+  final Duration window;
+  PendingSend(this.id, this.to, this.body, this.deadline,
+      {this.scheduled = false, this.window = const Duration(seconds: 5)});
 }
 
 /// Per-conversation values computed once while messages are grouped, so list rows are cheap to draw.
@@ -44,6 +50,9 @@ class AppStore extends ChangeNotifier {
 
   /// True on a real Android phone; elsewhere (tests, Windows) the app shows sample messages.
   final bool android;
+
+  /// User preferences (send delay, signature). Set by the app shell.
+  AppSettings? settings;
 
   bool initialized = false;
   bool onboarded = false;
@@ -87,6 +96,8 @@ class AppStore extends ChangeNotifier {
   bool updatePermissionPending = false;
   void Function(String message)? onNotice;
   VoidCallback? onComposeIntent;
+  /// Opens a chat from the in-app glass banner; set by the home screen.
+  void Function(String address)? onOpenConversation;
   Timer? _debounce;
   int _generation = 0;
   List<MessageRecord> _buffer = [];
@@ -158,6 +169,11 @@ class AppStore extends ChangeNotifier {
           updateProgress = ((args as num?)?.toDouble() ?? 0) / 100;
         }
         notifyListeners();
+      case 'incomingBanner':
+        final banner = IncomingBanner.fromMap(args);
+        if (banner != null) currentBanner.value = banner;
+        _debounce?.cancel();
+        _debounce = Timer(const Duration(milliseconds: 350), refresh);
       case 'composeIntent':
         onComposeIntent?.call();
       default:
@@ -463,6 +479,47 @@ class AppStore extends ChangeNotifier {
       FinanceLogic.latestBalances(messages), counts, top.take(5).toList());
   }
 
+  // ───────────── backup ─────────────
+
+  void selectSim(int id) {
+    selectedSim = id;
+    notifyListeners();
+  }
+
+  /// Settings, templates and broadcast groups as portable JSON text (never SMS or contacts).
+  String exportBackup(AppSettings s) => jsonEncode({
+    'payamyar_backup': 1,
+    'settings': s.toJson(),
+    'templates': templates,
+    'groups': [for (final g in smsGroups.groups) g.toJson()],
+  });
+
+  /// Restores [exportBackup] output. Returns false for text that is not a PayamYar backup.
+  Future<bool> importBackup(String text, AppSettings s) async {
+    try {
+      final start = text.indexOf('{');
+      if (start < 0) return false;
+      final data = jsonDecode(text.substring(start)) as Map<String, dynamic>;
+      if (data['payamyar_backup'] != 1) return false;
+      if (data['settings'] is Map) await s.restore(Map<String, dynamic>.from(data['settings'] as Map));
+      final t = (data['templates'] as List?)?.whereType<String>().where((x) => x.trim().isNotEmpty) ?? const <String>[];
+      for (final x in t) {
+        if (!templates.contains(x) && templates.length < 300) templates.add(x);
+      }
+      for (final row in (data['groups'] as List?) ?? const []) {
+        try {
+          final g = SmsGroup.fromJson(Map<String, dynamic>.from(row as Map));
+          if (!smsGroups.groups.any((e) => e.name == g.name)) await smsGroups.save(g.name, g.recipients);
+        } catch (_) {/* skip invalid group */}
+      }
+      await _savePrefs();
+      notifyListeners();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // ───────────── local organisation ─────────────
 
   Future<void> _savePrefs() async {
@@ -589,7 +646,7 @@ class AppStore extends ChangeNotifier {
 
   /// Queues an SMS with a 5-second undo window. Returns null if sending failed to start.
   Future<PendingSend?> send(String to, String body, {DateTime? scheduledAt}) async {
-    final text = body.trim();
+    final text = settings?.withSignature(body) ?? body.trim();
     final target = to.trim();
     if (text.isEmpty || target.isEmpty) return null;
     if (!android) {
@@ -601,14 +658,15 @@ class AppStore extends ChangeNotifier {
     try {
       final now = DateTime.now();
       final delay = scheduledAt == null
-          ? const Duration(seconds: 5)
+          ? (settings?.sendDelay ?? const Duration(seconds: 5))
           : scheduledAt.difference(now);
-      if (delay.inMilliseconds < 5000 || delay > const Duration(days: 30)) {
+      if (scheduledAt != null && (delay.inMilliseconds < 5000 || delay > const Duration(days: 30))) {
         onNotice?.call('زمان ارسال را بین ۵ ثانیه تا ۳۰ روز آینده تنظیم کنید.');
         return null;
       }
       final id = await SmsBridge.queue(target, text, selectedSim, delay: delay);
-      final pending = PendingSend(id, target, text, now.add(delay), scheduled: scheduledAt != null);
+      final pending = PendingSend(id, target, text, now.add(delay),
+          scheduled: scheduledAt != null, window: delay);
       pendingSends.add(pending);
       notifyListeners();
       unawaited(_watch(pending));
@@ -634,6 +692,10 @@ class AppStore extends ChangeNotifier {
   Future<void> _watch(PendingSend p) async {
     final wait = p.deadline.difference(DateTime.now());
     if (wait > Duration.zero) await Future<void>.delayed(wait);
+    // The native queue has now written the real outbox row; show it at once so the
+    // local "queued" copy is replaced instead of appearing twice.
+    notifyListeners();
+    unawaited(Future<void>.delayed(const Duration(milliseconds: 350), refresh));
     var state = 'queued';
     for (var i = 0; i < 120 && (state == 'queued' || state == 'pending'); i++) {
       try {
