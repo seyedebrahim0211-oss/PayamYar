@@ -19,7 +19,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.settings_outlined));
     await tester.pumpAndSettle();
-    expect(find.text('ظاهر'), findsOneWidget);
+    expect(find.text('شخصی‌سازی ظاهر و فونت'), findsOneWidget);
     expect(find.text('حالت نمایش'), findsOneWidget);
   });
   testWidgets('Opening a conversation shows a one-tap code copy button', (tester) async {

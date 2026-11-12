@@ -6,6 +6,7 @@ import 'conversation_logic.dart';
 import 'finance_logic.dart';
 import 'message_logic.dart';
 import 'sms_bridge.dart';
+import 'sms_groups.dart';
 import 'update_service.dart';
 
 class PendingSend {
@@ -72,6 +73,7 @@ class AppStore extends ChangeNotifier {
   List<Map<dynamic, dynamic>> sims = [];
   int selectedSim = -1;
   final List<PendingSend> pendingSends = [];
+  final SmsGroupStore smsGroups = SmsGroupStore();
   ReleaseInfo? update;
   bool updateDismissed = false;
   bool updateCheckFailed = false;
@@ -101,6 +103,7 @@ class AppStore extends ChangeNotifier {
 
   Future<void> init() async {
     final p = await SharedPreferences.getInstance();
+    await smsGroups.load();
     onboarded = p.getBool('onboarded') ?? false;
     archived.addAll(p.getStringList('archived') ?? []);
     pinned.addAll(p.getStringList('pinned') ?? []);
@@ -629,6 +632,7 @@ class AppStore extends ChangeNotifier {
   void dispose() {
     _debounce?.cancel();
     if (android) SmsBridge.stopListening();
+    smsGroups.dispose();
     super.dispose();
   }
 }

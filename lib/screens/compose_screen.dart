@@ -5,14 +5,19 @@ import '../sms_bridge.dart';
 import 'compose_tools.dart';
 import 'contact_picker.dart';
 import 'conversation_screen.dart';
-import 'send_undo_bar.dart';
+import 'send_control.dart';
 
 /// SMS composition with an internal phone book and explicit multi-send confirmation.
 class ComposeScreen extends StatefulWidget {
   final AppStore store;
   final String? initialTo;
   final String? initialBody;
-  const ComposeScreen({super.key, required this.store, this.initialTo, this.initialBody});
+  final List<String>? initialRecipients;
+  final String? initialGroupName;
+  final String? initialGroupId;
+  final bool createGroup;
+  const ComposeScreen({super.key, required this.store, this.initialTo, this.initialBody,
+    this.initialRecipients, this.initialGroupName, this.initialGroupId, this.createGroup = false});
   @override
   State<ComposeScreen> createState() => _ComposeScreenState();
 }
@@ -27,11 +32,14 @@ class _ComposeScreenState extends State<ComposeScreen> {
   ];
   final to = TextEditingController();
   final body = TextEditingController();
+  final groupName = TextEditingController();
+  bool groupMode = false;
   final Set<String> recipients = {};
   final Map<String, String> contactNames = {};
   final List<PendingSend> undoGroup = [];
   String lastSentBody = '';
   bool sending = false;
+  bool stopQueueing = false;
   bool openingContacts = false;
   int queuedCount = 0;
   AppStore get store => widget.store;
@@ -39,17 +47,21 @@ class _ComposeScreenState extends State<ComposeScreen> {
   @override
   void initState() {
     super.initState();
+    groupMode = widget.createGroup;
+    groupName.text = widget.initialGroupName ?? '';
     _restore();
   }
 
   Future<void> _restore() async {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
-    final hasInitial = widget.initialTo != null || widget.initialBody != null;
+    final hasInitial = widget.initialTo != null || widget.initialBody != null ||
+        widget.initialRecipients != null || widget.createGroup;
     setState(() {
       to.text = hasInitial ? widget.initialTo ?? '' : prefs.getString('draft_to') ?? '';
       body.text = hasInitial ? widget.initialBody ?? '' : prefs.getString('draft_body') ?? '';
       if (!hasInitial) recipients.addAll(prefs.getStringList('draft_recipients') ?? []);
+      if (widget.initialRecipients != null) recipients.addAll(widget.initialRecipients!);
     });
   }
 
@@ -64,6 +76,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
   void dispose() {
     to.dispose();
     body.dispose();
+    groupName.dispose();
     super.dispose();
   }
 
@@ -144,6 +157,21 @@ class _ComposeScreenState extends State<ComposeScreen> {
     return result.toList(growable: false);
   }
 
+  Future<bool> _saveGroup(List<String> targets) async {
+    if (targets.length < 2) {
+      store.onNotice?.call('برای ساخت گروه حداقل ۲ مخاطب انتخاب کنید.');
+      return false;
+    }
+    try {
+      await store.smsGroups.save(groupName.text, targets, id: widget.initialGroupId);
+      store.onNotice?.call('گروه پیامکی ذخیره شد؛ پاسخ اعضا همچنان خصوصی است.');
+      return true;
+    } on ArgumentError catch (e) {
+      store.onNotice?.call(e.message?.toString() ?? 'نام یا مخاطبان گروه معتبر نیست.');
+      return false;
+    }
+  }
+
   Future<void> _send() async {
     if (sending) return;
     final targets = _targets();
@@ -153,10 +181,12 @@ class _ComposeScreenState extends State<ComposeScreen> {
       store.onNotice?.call('حداقل یک گیرنده و متن پیام را وارد کنید.');
       return;
     }
+    if (groupMode && !await _saveGroup(targets)) return;
+    if (!mounted) return;
     if (targets.length > 1) {
       final confirmed = await showDialog<bool>(context: context, builder: (ctx) =>
         AlertDialog(
-          title: const Text('تأیید ارسال گروهی'),
+          title: Text(groupMode ? 'تأیید ارسال به گروه' : 'تأیید ارسال جداگانه'),
           content: Text('متن پیام به ${targets.length} شماره، به‌صورت پیامک جداگانه ارسال می‌شود. '
             'اپراتور ممکن است برای هر پیامک هزینه دریافت کند. '
             'پس از تأیید، هر پیام جداگانه به صف ارسال می‌رود. به محدودیت‌های اپراتور و هزینه احتمالی توجه کنید؛ تا ۵ ثانیه پس از ثبت هر پیام امکان لغو آن وجود دارد.'),
@@ -167,27 +197,48 @@ class _ComposeScreenState extends State<ComposeScreen> {
         ));
       if (confirmed != true || !mounted) return;
     }
-    setState(() { sending = true; queuedCount = 0; undoGroup.clear(); });
+    setState(() {
+      sending = true;
+      stopQueueing = false;
+      queuedCount = 0;
+      lastSentBody = text;
+      undoGroup.clear();
+    });
     final failed = <String>[];
-    final queued = <PendingSend>[];
+    var processed = 0;
     for (final number in targets) {
+      if (stopQueueing) break;
       final pending = await store.send(number, text);
+      processed++;
+      if (stopQueueing && pending != null) {
+        await store.undo(pending);
+        break;
+      }
       if (pending == null && store.android) {
         failed.add(number);
       } else {
-        if (pending != null) queued.add(pending);
+        if (pending != null) undoGroup.add(pending);
         if (mounted) {
           queuedCount++;
-          if (queuedCount % 10 == 0 || queuedCount == targets.length) setState(() {});
+          if (queuedCount == 1 || queuedCount % 10 == 0 || processed == targets.length) {
+            setState(() {});
+          }
         }
       }
     }
     if (!mounted) return;
-    setState(() {
-      sending = false;
-      lastSentBody = text;
-      undoGroup.addAll(queued);
-    });
+    if (stopQueueing) {
+      setState(() {
+        sending = false;
+        recipients
+          ..clear()
+          ..addAll(targets);
+        body.text = text;
+      });
+      await _saveDraft();
+      return;
+    }
+    setState(() { sending = false; });
     if (targets.length == 1 && failed.isEmpty) {
       final address = targets.single;
       to.clear();
@@ -282,6 +333,51 @@ class _ComposeScreenState extends State<ComposeScreen> {
               ),
             ]),
           ),
+          if (count > 1 || groupMode) ...[
+            const SizedBox(height: 12),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(13),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Text('نوع ارسال', style: Theme.of(context).textTheme.titleSmall),
+                  const SizedBox(height: 10),
+                  SegmentedButton<bool>(
+                    segments: const [
+                      ButtonSegment(value: false, icon: Icon(Icons.person_outline_rounded),
+                        label: Text('جداگانه')),
+                      ButtonSegment(value: true, icon: Icon(Icons.groups_rounded),
+                        label: Text('گروه پیامکی')),
+                    ],
+                    selected: {groupMode},
+                    onSelectionChanged: sending ? null : (v) => setState(() => groupMode = v.first),
+                  ),
+                  if (groupMode) ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: groupName,
+                      maxLength: 60,
+                      decoration: const InputDecoration(
+                        labelText: 'نام گروه',
+                        hintText: 'مثلاً همکاران یا خانواده',
+                        prefixIcon: Icon(Icons.edit_outlined),
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const Text('برای هر عضو پیامک جدا ارسال می‌شود. پاسخ هر مخاطب فقط در گفتگوی خصوصی او دیده می‌شود.',
+                      style: TextStyle(fontSize: 12)),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: sending ? null : () async {
+                        final targets = _targets();
+                        if (targets != null) await _saveGroup(targets);
+                      },
+                      icon: const Icon(Icons.bookmark_add_outlined),
+                      label: const Text('ذخیره گروه بدون ارسال')),
+                  ],
+                ]),
+              ),
+            ),
+          ],
           const SizedBox(height: 20),
           Text('متن پیام', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
           const SizedBox(height: 10),
@@ -348,21 +444,6 @@ class _ComposeScreenState extends State<ComposeScreen> {
             ),
           ],
         ])),
-        SendUndoBar(
-            requests: undoGroup,
-            onUndo: () async {
-              var count = 0;
-              for (final pending in List<PendingSend>.of(undoGroup)) {
-                if (await store.undo(pending)) count++;
-              }
-              if (!mounted) return;
-              setState(() {
-                undoGroup.clear();
-                if (count > 0) body.text = lastSentBody;
-              });
-              if (count > 0) _saveDraft();
-            },
-          ),
         SafeArea(top: false, child: Container(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
           decoration: BoxDecoration(
@@ -370,16 +451,37 @@ class _ComposeScreenState extends State<ComposeScreen> {
             border: Border(top: BorderSide(color: scheme.outlineVariant.withValues(alpha: .5))),
           ),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            FilledButton.icon(
-              onPressed: sending ? null : _send,
-              icon: sending ? const SizedBox(width: 18, height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.send_rounded, textDirection: TextDirection.ltr),
-              label: Text(sending ? '$queuedCount از $count در صف ارسال'
-                : count > 1 ? 'ارسال به $count گیرنده' : 'ارسال پیامک'),
-            ),
+            Row(children: [
+              SendControl(
+                key: const ValueKey('compose-send-control'),
+                requests: undoGroup,
+                sending: sending,
+                enabled: !sending,
+                onSend: () => _send(),
+                onUndo: () async {
+                  var cancelled = 0;
+                  stopQueueing = true;
+                  for (final request in List<PendingSend>.of(undoGroup)) {
+                    if (!request.deadline.isAfter(DateTime.now())) continue;
+                    if (!store.pendingSends.contains(request)) continue;
+                    if (await store.undo(request)) cancelled++;
+                  }
+                  if (!mounted) return;
+                  setState(() {
+                    undoGroup.removeWhere((p) => !store.pendingSends.contains(p));
+                    if (cancelled > 0 || sending) body.text = lastSentBody;
+                  });
+                  if (cancelled > 0 || stopQueueing) _saveDraft();
+                },
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: Text(sending
+                  ? '$queuedCount از $count در صف'
+                  : count > 1 ? 'ارسال جداگانه به $count مخاطب' : 'ارسال پیامک',
+                style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w800))),
+            ]),
             const SizedBox(height: 6),
-            Text('تا ۵ ثانیه پس از ثبت هر پیام، می‌توانید ارسال آن را لغو کنید.',
+            Text('حلقه دور فلش، مهلت لغو پیام را نشان می‌دهد. پاسخ مخاطبان در گفتگوی شخصی آن‌هاست.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
           ]),

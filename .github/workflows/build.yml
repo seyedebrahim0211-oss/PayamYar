@@ -1,4 +1,4 @@
-name: PayamYar Android and Windows
+name: PayamYar Android
 'on':
   workflow_dispatch:
   push:
@@ -25,7 +25,7 @@ jobs:
           mkdir -p assets/fonts
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/main/ofl/vazirmatn/Vazirmatn%5Bwght%5D.ttf' --output assets/fonts/Vazirmatn.ttf
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/main/ofl/vazirmatn/OFL.txt' --output assets/fonts/OFL.txt
-      - run: flutter create --project-name payamyar --org ir.honarmardomi --platforms android,windows --no-overwrite .
+      - run: flutter create --project-name payamyar --org ir.honarmardomi --platforms android --no-overwrite .
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
@@ -90,31 +90,6 @@ jobs:
       # Publishing is exclusively managed in the WordPress dashboard:
       # https://honarmardomi.ir/wp-admin/admin.php?page=payamyar-releases
       # Do not overwrite the public release manifest from a CI build.
-  windows:
-    if: github.ref == 'refs/heads/main'
-    needs: analyze
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          flutter-version: '3.47.9'
-      - run: flutter config --enable-windows-desktop
-      - name: Install Persian font (OFL licensed)
-        shell: bash
-        run: |
-          mkdir -p assets/fonts
-          curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/main/ofl/vazirmatn/Vazirmatn%5Bwght%5D.ttf' --output assets/fonts/Vazirmatn.ttf
-          curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/main/ofl/vazirmatn/OFL.txt' --output assets/fonts/OFL.txt
-      - run: flutter create --project-name payamyar --org ir.honarmardomi --platforms windows --no-overwrite .
-      - run: flutter pub get
-      - run: flutter build windows --release
-      - uses: actions/upload-artifact@v4
-        with:
-          name: PayamYar-Windows
-          path: build/windows/x64/runner/Release/
-
   github_release:
     name: Publish signed Android APK to Releases
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')

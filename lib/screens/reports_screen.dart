@@ -27,6 +27,11 @@ class ReportsScreen extends StatelessWidget {
         String money(int v) => hide ? '••••' : Jalali.digits(FinanceLogic.formatTomans(v));
         final counts = report.counts;
         final top = report.top;
+        final byBank = <String, List<AccountBalance>>{};
+        for (final balance in report.balances) {
+          (byBank[balance.bank] ??= []).add(balance);
+        }
+        final bankNames = byBank.keys.toList()..sort();
         return Scaffold(
           appBar: AppBar(title: const Text('گزارش‌ها')),
           body: ListView(padding: const EdgeInsets.fromLTRB(16, 4, 16, 24), children: [
@@ -65,32 +70,41 @@ class ReportsScreen extends StatelessWidget {
                   Padding(padding: const EdgeInsets.symmetric(vertical: 11),
                     child: Text('هنوز پیامک دارای موجودی و واحد پول شناسایی نشده است.',
                       style: TextStyle(color: scheme.onSurfaceVariant))),
-                for (final balance in report.balances.take(30))
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: scheme.primaryContainer.withValues(alpha: .22),
-                      borderRadius: BorderRadius.circular(15)),
+                for (final bank in bankNames) ...[
+                  Padding(
+                    padding: const EdgeInsetsDirectional.only(top: 13, bottom: 7),
                     child: Row(children: [
-                      CircleAvatar(radius: 20, backgroundColor: scheme.primaryContainer,
-                        child: Icon(Icons.credit_card_rounded, color: scheme.onPrimaryContainer, size: 20)),
-                      const SizedBox(width: 11),
-                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(store.displayName(balance.sender), maxLines: 1,
-                          overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
-                        Text('${balance.label} · ${Jalali.short(balance.updatedAt)}',
-                          style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
-                      ])),
+                      Icon(Icons.account_balance_rounded, color: scheme.primary, size: 20),
                       const SizedBox(width: 8),
-                      Flexible(child: Text(money(balance.amountTomans),
-                        textAlign: TextAlign.left,
-                        style: TextStyle(fontWeight: FontWeight.w800, color: scheme.primary, fontSize: 12))),
+                      Expanded(child: Text(bank, style: const TextStyle(fontWeight: FontWeight.w800))),
+                      Text('${Jalali.digits(byBank[bank]!.length)} حساب',
+                        style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
                     ]),
                   ),
-                if (report.balances.length > 30)
-                  Text('۳۰ حساب اخیر نمایش داده شده است.',
-                    style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 11)),
+                  for (final balance in byBank[bank]!)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: scheme.primaryContainer.withValues(alpha: .22),
+                        borderRadius: BorderRadius.circular(15),
+                        border: Border.all(color: scheme.primary.withValues(alpha: .10))),
+                      child: Row(children: [
+                        CircleAvatar(radius: 18, backgroundColor: scheme.primaryContainer,
+                          child: Icon(Icons.credit_card_rounded, color: scheme.onPrimaryContainer, size: 18)),
+                        const SizedBox(width: 10),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(balance.label, style: const TextStyle(fontWeight: FontWeight.w700)),
+                          Text('آخرین اعلام: ${Jalali.short(balance.updatedAt)}',
+                            style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
+                        ])),
+                        const SizedBox(width: 7),
+                        Flexible(child: Text(money(balance.amountTomans),
+                          textAlign: TextAlign.left, maxLines: 2, overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontWeight: FontWeight.w800, color: scheme.primary, fontSize: 12))),
+                      ]),
+                    ),
+                ],
               ]),
             )),
             const SizedBox(height: 16),
@@ -101,6 +115,15 @@ class ReportsScreen extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(child: _stat(context, 'خوانده‌نشده',
                 store.unreadConversations, Icons.mark_email_unread_outlined)),
+            ]),
+            const SizedBox(height: 11),
+            Row(children: [
+              Expanded(child: _stat(context, 'بانک‌ها', byBank.length, Icons.account_balance_outlined)),
+              const SizedBox(width: 10),
+              Expanded(child: _stat(context, 'حساب‌ها', report.balances.length, Icons.credit_card_outlined)),
+              const SizedBox(width: 10),
+              Expanded(child: _stat(context, 'تبلیغاتی',
+                counts[MessageCategory.advertising] ?? 0, Icons.campaign_outlined)),
             ]),
             const SizedBox(height: 16),
             Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(

@@ -66,7 +66,7 @@ class _PayamYarState extends State<PayamYar> {
 
   ThemeData _theme(Brightness b) {
     final dark = b == Brightness.dark;
-    final selectedFont = settings.fontChoice == 0 ? 'Vazirmatn' : null;
+    final String? selectedFont = settings.fontChoice == 0 ? 'Vazirmatn' : settings.fontChoice == 2 ? 'serif' : null;
     // Teal identity with a warm gold accent on paper-like backgrounds.
     final scheme = ColorScheme.fromSeed(seedColor: palettes[settings.palette], brightness: b).copyWith(
       tertiary: dark ? const Color(0xFFE7C57C) : const Color(0xFF8A6417),
@@ -123,7 +123,7 @@ class _PayamYarState extends State<PayamYar> {
         backgroundColor: surface,
         selectedColor: scheme.primaryContainer,
         side: BorderSide(color: scheme.outlineVariant.withValues(alpha: .6)),
-        labelStyle: TextStyle(fontFamily: 'Vazirmatn', fontSize: 13, fontWeight: FontWeight.w600, color: scheme.onSurface),
+        labelStyle: TextStyle(fontFamily: selectedFont, fontSize: 13, fontWeight: FontWeight.w600, color: scheme.onSurface),
       ),
       bottomSheetTheme: BottomSheetThemeData(backgroundColor: paper, surfaceTintColor: Colors.transparent),
       dialogTheme: DialogThemeData(backgroundColor: surface, surfaceTintColor: Colors.transparent),
@@ -136,7 +136,7 @@ class _PayamYarState extends State<PayamYar> {
       filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(
         minimumSize: const Size.fromHeight(54),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        textStyle: const TextStyle(fontFamily: 'Vazirmatn', fontSize: 16, fontWeight: FontWeight.w700),
+        textStyle: TextStyle(fontFamily: selectedFont, fontSize: 16, fontWeight: FontWeight.w700),
       )),
       snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
     );
