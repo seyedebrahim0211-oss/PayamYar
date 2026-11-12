@@ -21,6 +21,22 @@ object AppUpdater {
     private const val HOST = "honarmardomi.ir"
     private const val MAX_APK_BYTES = 140L * 1024 * 1024
 
+    /** Public signing certificate of the installed APK; same for all official installs. */
+    @Suppress("DEPRECATION")
+    fun installedSignerSha256(activity: Activity): String {
+        val pm = activity.packageManager
+        val flags = if (Build.VERSION.SDK_INT >= 28)
+            android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES
+        else android.content.pm.PackageManager.GET_SIGNATURES
+        val pkg = pm.getPackageInfo(activity.packageName, flags)
+        val certificates = if (Build.VERSION.SDK_INT >= 28)
+            pkg.signingInfo?.apkContentsSigners?.map { it.toByteArray() }.orEmpty()
+        else pkg.signatures?.map { it.toByteArray() }.orEmpty()
+        val cert = certificates.singleOrNull() ?: return ""
+        return MessageDigest.getInstance("SHA-256").digest(cert)
+            .joinToString("") { "%02X".format(it.toInt() and 0xff) }
+    }
+
     fun canInstall(activity: Activity): Boolean =
         Build.VERSION.SDK_INT < 26 || activity.packageManager.canRequestPackageInstalls()
 
