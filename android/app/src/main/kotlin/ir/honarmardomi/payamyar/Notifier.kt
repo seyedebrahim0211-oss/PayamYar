@@ -11,6 +11,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -19,6 +20,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.provider.ContactsContract
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -74,6 +76,25 @@ object Notifier {
             canvas.drawCircle(size / 2f, size * .92f, size * .34f, paint)
         }
         return bitmap
+    }
+
+    private fun profileBitmap(c: Context, address: String, label: String): Bitmap {
+        if (ContextCompat.checkSelfPermission(c, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) {
+            try {
+                val uri = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(address))
+                c.contentResolver.query(uri, arrayOf(ContactsContract.PhoneLookup.PHOTO_THUMBNAIL_URI),
+                    null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val photo = cursor.getString(0)
+                        if (!photo.isNullOrBlank()) {
+                            val bmp = c.contentResolver.openInputStream(Uri.parse(photo))?.use { BitmapFactory.decodeStream(it) }
+                            if (bmp != null) return Bitmap.createScaledBitmap(bmp, 160, 160, true)
+                        }
+                    }
+                }
+            } catch (_: Exception) { }
+        }
+        return avatar(label, address)
     }
 
     private fun broadcast(c: Context, action: String, address: String, extra: String? = null, mutable: Boolean = false): PendingIntent {
@@ -142,8 +163,9 @@ object Notifier {
         val name = contact?.takeIf { it.isNotBlank() } ?: address
         val id = idFor(address)
         val text = if (preview) body else "پیامک جدید"
+        val picture = profileBitmap(c, address, name)
         val sender = Person.Builder().setName(name).setKey(address)
-            .setIcon(IconCompat.createWithBitmap(avatar(if (contact.isNullOrBlank()) address else name, address))).build()
+            .setIcon(IconCompat.createWithBitmap(picture)).build()
 
         // Stack this message under earlier unread ones from the same sender.
         val existing = manager.activeNotifications.firstOrNull { it.id == id }?.notification
@@ -161,7 +183,7 @@ object Notifier {
             .setSmallIcon(R.drawable.ic_stat_payamyar)
             .setColor(BRAND)
             .setStyle(style)
-            .setLargeIcon(avatar(if (contact.isNullOrBlank()) address else name, address))
+            .setLargeIcon(picture)
             .setContentTitle(name).setContentText(text)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
