@@ -16,7 +16,7 @@
         </intent>
     </queries>
     <application android:allowBackup="false" android:label="تماس‌یار"
-        android:icon="@drawable/ic_tamasyar" android:theme="@android:style/Theme.Material.Light.NoActionBar"
+        android:icon="@mipmap/ic_tamasyar" android:roundIcon="@mipmap/ic_tamasyar" android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:supportsRtl="true" android:usesCleartextTraffic="false">
         <provider android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.updates"
