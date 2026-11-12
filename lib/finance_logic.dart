@@ -13,14 +13,37 @@ class FinanceEntry {
 /// Latest balance explicitly stated in a bank SMS; never computed from transfers.
 class AccountBalance {
   final String sender;
+  final String bank;
   final String? lastFour;
   final int amountTomans;
   final DateTime updatedAt;
-  const AccountBalance(this.sender, this.lastFour, this.amountTomans, this.updatedAt);
+  const AccountBalance(this.sender, this.lastFour, this.amountTomans, this.updatedAt,
+      {String? bank}) : bank = bank ?? sender;
   String get label => lastFour == null ? 'حساب نامشخص' : 'حساب / کارت ••••$lastFour';
 }
 
 class FinanceLogic {
+  static const bankNames = <String>[
+    'ملی', 'ملت', 'صادرات', 'تجارت', 'سپه', 'کشاورزی',
+    'مسکن', 'رفاه', 'پاسارگاد', 'پارسیان', 'سامان', 'اقتصاد نوین',
+    'آینده', 'شهر', 'دی', 'سینا', 'گردشگری', 'ایران زمین',
+    'سرمایه', 'خاورمیانه', 'کارآفرین', 'توسعه تعاون', 'پست بانک',
+    'رسالت', 'مهر ایران', 'قرض الحسنه مهر', 'انصار', 'قوامین',
+  ];
+
+  /// Use sender/provider evidence, never infer a financial account from message totals.
+  static String bankOf(String sender, String body) {
+    final source = (sender + ' ' + body).replaceAll('ي', 'ی')
+        .replaceAll('ك', 'ک').replaceAll('\u200c', ' ');
+    for (final bank in bankNames) {
+      if (source.contains('بانک ' + bank) || source.contains('بانك ' + bank) ||
+          sender.trim() == bank || sender.startsWith(bank + ' ')) {
+        return 'بانک ' + bank;
+      }
+    }
+    return sender.trim().isEmpty ? 'بانک نامشخص' : sender.trim();
+  }
+
   static String digits(String s) {
     const persian = '۰۱۲۳۴۵۶۷۸۹';
     const arabic = '٠١٢٣٤٥٦٧٨٩';
@@ -57,14 +80,18 @@ class FinanceLogic {
   static List<AccountBalance> latestBalances(Iterable<MessageRecord> messages) {
     final latest = <String, AccountBalance>{};
     final balance = RegExp(
-      r'(?:موجودی|مانده(?:\s+حساب)?|باقی\s*مانده)\s*[:：\-]?\s*(?:مبلغ\s*)?([\d,٬،\s]+)\s*(ریال|تومان)',
+      r'(?:موجودی|موجودي|مانده(?:\\s+(?:حساب|کارت|سپرده))?|باقی\\s*مانده)'
+      r'(?:\\s+فعلی)?\\s*[:：\\-]?\\s*(?:مبلغ\\s*)?'
+      r'([\\d,٬،\\s]+)\\s*(ریال|تومان)',
       caseSensitive: false);
     final account = RegExp(
-      r'(?:شماره\s*)?(?:حساب|کارت|سپرده)\s*[:：#]?\s*([*xX\-\s\d]{4,40})',
+      r'(?:شماره\\s*)?(?:حساب|کارت|سپرده|شبا)\\s*[:：#\\-]?\\s*'
+      r'([*xX×\\-\\s\\d]{4,40})',
       caseSensitive: false);
     for (final m in messages) {
       if (m.outgoing || MessageLogic.category(m) != MessageCategory.banking) continue;
-      final raw = digits(m.body).replaceAll('\u200c', ' ');
+      final raw = digits(m.body).replaceAll('ي', 'ی').replaceAll('ك', 'ک')
+          .replaceAll('\u200c', ' ');
       final match = balance.firstMatch(raw);
       if (match == null) continue;
       final number = int.tryParse(match.group(1)!.replaceAll(RegExp(r'[,\s٬،]'), ''));
@@ -76,7 +103,8 @@ class FinanceLogic {
           ? suffix.substring(suffix.length - 4) : null;
       final key = '${m.sender}|${lastFour ?? 'unknown'}';
       if (!latest.containsKey(key) || m.date.isAfter(latest[key]!.updatedAt)) {
-        latest[key] = AccountBalance(m.sender, lastFour, value, m.date);
+        latest[key] = AccountBalance(m.sender, lastFour, value, m.date,
+          bank: bankOf(m.sender, m.body));
       }
     }
     return latest.values.toList()..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
