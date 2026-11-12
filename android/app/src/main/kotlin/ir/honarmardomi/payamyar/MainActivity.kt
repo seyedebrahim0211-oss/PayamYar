@@ -32,6 +32,7 @@ open class MainActivity : FlutterActivity() {
     private var permissionResult: MethodChannel.Result? = null
     private var defaultResult: MethodChannel.Result? = null
     private lateinit var channel: MethodChannel
+    private var contacts: ContactsChannel? = null
     private val worker = Executors.newSingleThreadExecutor()
     private val handler = Handler(Looper.getMainLooper())
     private val observer = object : ContentObserver(handler) {
@@ -41,6 +42,7 @@ open class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "ir.honarmardomi.payamyar/sms")
+        contacts = ContactsChannel(this, flutterEngine.dartExecutor.binaryMessenger)
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
                 "pickContact" -> {
@@ -373,6 +375,7 @@ open class MainActivity : FlutterActivity() {
     }
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (contacts?.onActivityResult(requestCode, resultCode, data) == true) return
         if (requestCode == 2110) {
             val result = contactResult ?: return
             contactResult = null
@@ -395,6 +398,7 @@ open class MainActivity : FlutterActivity() {
     }
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        contacts?.onPermissionResult(requestCode)
         observeMessages()
         if (requestCode == 2104) {
             permissionResult?.success(permissionMap())

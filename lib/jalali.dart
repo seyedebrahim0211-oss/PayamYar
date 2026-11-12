@@ -29,6 +29,34 @@ class Jalali {
     return [jy, jm, jd];
   }
 
+  /// Converts a Jalali date to [year, month, day] in the Gregorian calendar.
+  static List<int> toGregorian(int jy, int jm, int jd) {
+    final jy2 = jy + 1595;
+    var days = -355668 + (365 * jy2) + ((jy2 ~/ 33) * 8) + (((jy2 % 33) + 3) ~/ 4) + jd +
+        (jm < 7 ? (jm - 1) * 31 : ((jm - 7) * 30) + 186);
+    var gy = 400 * (days ~/ 146097);
+    days %= 146097;
+    if (days > 36524) {
+      gy += 100 * (--days ~/ 36524);
+      days %= 36524;
+      if (days >= 365) days++;
+    }
+    gy += 4 * (days ~/ 1461);
+    days %= 1461;
+    if (days > 365) {
+      gy += (days - 1) ~/ 365;
+      days = (days - 1) % 365;
+    }
+    var gd = days + 1;
+    final leap = (gy % 4 == 0 && gy % 100 != 0) || (gy % 400 == 0);
+    final monthDays = [0, 31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    var gm = 0;
+    for (gm = 1; gm <= 12 && gd > monthDays[gm]; gm++) {
+      gd -= monthDays[gm];
+    }
+    return [gy, gm, gd];
+  }
+
   static String digits(Object value) {
     const fa = '۰۱۲۳۴۵۶۷۸۹';
     return value.toString().split('').map((c) {
