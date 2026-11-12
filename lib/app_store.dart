@@ -192,8 +192,14 @@ class AppStore extends ChangeNotifier {
     updateCheckFailed = false;
     try {
       final info = await UpdateService.check();
+      final previousVersion = update?.version;
       update = info.available && UpdateService.trusted(info.url) ? info : null;
-      if (manual) updateDismissed = false;
+      if (manual || (update != null && update!.version != previousVersion)) {
+        updateDismissed = false;
+      }
+      if (!manual && update != null && update!.version != previousVersion) {
+        onNotice?.call('نسخه جدید پیامیار ${update!.version} آماده است؛ از همین برنامه به‌روزرسانی کنید.');
+      }
       notifyListeners();
       return update != null;
     } catch (_) {
@@ -214,7 +220,7 @@ class AppStore extends ChangeNotifier {
     updateProgress = 0;
     notifyListeners();
     try {
-      final state = await SmsBridge.installUpdate(info.url);
+      final state = await SmsBridge.installUpdate(info.url, sha256: info.sha256);
       if (state == 'needs_permission') {
         onNotice?.call('اجازه «نصب برنامه از پیامیار» را روشن کنید و دوباره «به‌روزرسانی» را بزنید.');
       }

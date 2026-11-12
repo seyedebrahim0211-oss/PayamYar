@@ -102,8 +102,9 @@ class SmsBridge {
 
   /// Downloads the release from honarmardomi.ir and opens Android's installer.
   /// Returns 'installing' or 'needs_permission' (the "install unknown apps" screen was opened).
-  static Future<String> installUpdate(String url) async =>
-    await _channel.invokeMethod<String>('installUpdate', {'url': url}) ?? 'installing';
+  static Future<String> installUpdate(String url, {String sha256 = ''}) async =>
+    await _channel.invokeMethod<String>('installUpdate',
+      {'url': url, 'sha256': sha256}) ?? 'installing';
   /// Phone-book entries for the in-app multi-select UI. Permission is requested by the caller.
   static Future<List<Map<String, String>>> listContacts() async {
     if (!supported) return [];
