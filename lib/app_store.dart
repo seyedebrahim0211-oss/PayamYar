@@ -79,6 +79,7 @@ class AppStore extends ChangeNotifier {
   bool updateCheckFailed = false;
   /// null when not downloading; 0..1 while the new version downloads.
   double? updateProgress;
+  bool updatePermissionPending = false;
   void Function(String message)? onNotice;
   VoidCallback? onComposeIntent;
   Timer? _debounce;
@@ -225,13 +226,35 @@ class AppStore extends ChangeNotifier {
     try {
       final state = await SmsBridge.installUpdate(info.url, sha256: info.sha256);
       if (state == 'needs_permission') {
-        onNotice?.call('اجازه «نصب برنامه از پیامیار» را روشن کنید و دوباره «به‌روزرسانی» را بزنید.');
+        updatePermissionPending = true;
+        onNotice?.call('مجوز نصب را برای پیامیار فعال کنید؛ پس از بازگشت، دریافت و نصب خودکار ادامه می‌یابد.');
+      } else if (state == 'installing') {
+        updatePermissionPending = false;
+        onNotice?.call('فایل با موفقیت بررسی شد. نصب نسخه جدید را در پنجره اندروید تأیید کنید.');
       }
     } on PlatformException catch (e) {
       onNotice?.call(e.message ?? 'به‌روزرسانی انجام نشد.');
     } finally {
       updateProgress = null;
       notifyListeners();
+    }
+  }
+
+  /// Continue exactly once after Android's "allow installing apps" settings screen.
+  /// The package installer still requires the user's explicit confirmation.
+  Future<void> resumePendingUpdate() async {
+    if (!android || !updatePermissionPending || update == null ||
+        updateProgress != null) return;
+    updatePermissionPending = false;
+    try {
+      if (await SmsBridge.canInstallUpdate()) {
+        onNotice?.call('مجوز نصب فعال شد. دریافت امن به‌روزرسانی ادامه پیدا می‌کند.');
+        await installUpdate();
+      } else {
+        onNotice?.call('مجوز نصب پیامیار فعال نشده؛ از تنظیمات برنامه آن را روشن کنید.');
+      }
+    } catch (_) {
+      onNotice?.call('بررسی مجوز نصب انجام نشد؛ دوباره به‌روزرسانی را امتحان کنید.');
     }
   }
 
