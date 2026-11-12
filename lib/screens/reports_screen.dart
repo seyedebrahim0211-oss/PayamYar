@@ -48,6 +48,52 @@ class ReportsScreen extends StatelessWidget {
               ]),
             ),
             const SizedBox(height: 16),
+            Card(child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Icon(Icons.account_balance_wallet_outlined, color: scheme.primary),
+                  const SizedBox(width: 9),
+                  Expanded(child: Text('آخرین موجودی هر حساب',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800))),
+                ]),
+                const SizedBox(height: 5),
+                Text('فقط موجودی صریح در پیامک بانکی نمایش داده می‌شود؛ نه موجودی تخمینی.',
+                  style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant)),
+                const SizedBox(height: 10),
+                if (report.balances.isEmpty)
+                  Padding(padding: const EdgeInsets.symmetric(vertical: 11),
+                    child: Text('هنوز پیامک دارای موجودی و واحد پول شناسایی نشده است.',
+                      style: TextStyle(color: scheme.onSurfaceVariant))),
+                for (final balance in report.balances.take(30))
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: scheme.primaryContainer.withValues(alpha: .22),
+                      borderRadius: BorderRadius.circular(15)),
+                    child: Row(children: [
+                      CircleAvatar(radius: 20, backgroundColor: scheme.primaryContainer,
+                        child: Icon(Icons.credit_card_rounded, color: scheme.onPrimaryContainer, size: 20)),
+                      const SizedBox(width: 11),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(store.displayName(balance.sender), maxLines: 1,
+                          overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
+                        Text('${balance.label} · ${Jalali.short(balance.updatedAt)}',
+                          style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant)),
+                      ])),
+                      const SizedBox(width: 8),
+                      Flexible(child: Text(money(balance.amountTomans),
+                        textAlign: TextAlign.left,
+                        style: TextStyle(fontWeight: FontWeight.w800, color: scheme.primary, fontSize: 12))),
+                    ]),
+                  ),
+                if (report.balances.length > 30)
+                  Text('۳۰ حساب اخیر نمایش داده شده است.',
+                    style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 11)),
+              ]),
+            )),
+            const SizedBox(height: 16),
             Row(children: [
               Expanded(child: _stat(context, 'پیام‌ها', store.messages.length, Icons.mail_outline_rounded)),
               const SizedBox(width: 10),
@@ -95,7 +141,7 @@ class ReportsScreen extends StatelessWidget {
                     ),
                 ]))),
             const SizedBox(height: 12),
-            Text('همه محاسبات روی گوشی شما انجام می‌شود و هیچ پیامی به جایی ارسال نمی‌شود.',
+            Text('موجودی‌ها براساس متن آخرین پیامک هر حساب‌اند و ممکن است قدیمی یا نامعتبر باشند؛ برای موجودی قطعی، برنامه یا سامانه رسمی بانک را بررسی کنید. پردازش پیامک فقط روی گوشی انجام می‌شود.',
               textAlign: TextAlign.center, style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
           ]),
         );
