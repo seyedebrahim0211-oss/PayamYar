@@ -98,6 +98,21 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     } catch (e: Exception) { result.success(false) }
                 }
+                "openNotificationChannel" -> {
+                    try {
+                        Notifier.configureChannels(this)
+                        if (Build.VERSION.SDK_INT >= 26) {
+                            startActivity(Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                                .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                                .putExtra(Settings.EXTRA_CHANNEL_ID,
+                                    if (call.argument<String>("channel") == "sent") Notifier.SENT_CHANNEL else Notifier.INCOMING_CHANNEL))
+                        } else {
+                            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                Uri.fromParts("package", packageName, null)))
+                        }
+                        result.success(true)
+                    } catch (_: Exception) { result.success(false) }
+                }
                 "clearNotifications" -> { Notifier.cancel(this, call.argument<String>("address").orEmpty()); result.success(null) }
                 "installUpdate" -> {
                     val url = call.argument<String>("url").orEmpty()
