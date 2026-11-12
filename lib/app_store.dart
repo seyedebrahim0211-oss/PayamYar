@@ -30,9 +30,11 @@ class ReportData {
   final int deposits;
   final int withdrawals;
   final List<FinanceEntry> recent;
+  final List<AccountBalance> balances;
   final Map<MessageCategory, int> counts;
   final List<Conversation> top;
-  const ReportData(this.revision, this.deposits, this.withdrawals, this.recent, this.counts, this.top);
+  const ReportData(this.revision, this.deposits, this.withdrawals, this.recent,
+      this.balances, this.counts, this.top);
 }
 
 /// Single source of truth for messages, permissions and local preferences.
@@ -405,7 +407,8 @@ class AppStore extends ChangeNotifier {
     }
     final top = conversations.toList()..sort((a, b) => b.count.compareTo(a.count));
     return _report = ReportData(revision, FinanceLogic.total(recent, FinanceKind.deposit),
-      FinanceLogic.total(recent, FinanceKind.withdrawal), recent, counts, top.take(5).toList());
+      FinanceLogic.total(recent, FinanceKind.withdrawal), recent,
+      FinanceLogic.latestBalances(messages), counts, top.take(5).toList());
   }
 
   // ───────────── local organisation ─────────────
