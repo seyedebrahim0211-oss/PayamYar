@@ -124,7 +124,11 @@ class MainActivity : FlutterActivity() {
                         try {
                             val apk = AppUpdater.download(this, url) { p -> runOnUiThread { channel.invokeMethod("updateProgress", p) } }
                             runOnUiThread {
-                                try { AppUpdater.install(this, apk); result.success("installing") }
+                                try {
+                                    AppUpdater.validateUpgrade(this, apk)
+                                    AppUpdater.install(this, apk)
+                                    result.success("installing")
+                                }
                                 catch (e: Exception) { result.error("UPDATE", e.message ?: "نصب انجام نشد.", null) }
                             }
                         } catch (e: Exception) {
