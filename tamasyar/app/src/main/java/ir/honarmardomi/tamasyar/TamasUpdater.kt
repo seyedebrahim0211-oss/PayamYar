@@ -211,7 +211,7 @@ object TamasUpdater {
         callback("در حال دریافت نسخه " + release.version + "…")
         Thread {
             val directory = File(activity.cacheDir, "verified-updates").apply { mkdirs() }
-            val staging = File(directory, "incoming.tmp")
+            val staging = File(directory, "incoming.apk")
             try {
                 val source = connect(release.url)
                 val digest = MessageDigest.getInstance("SHA-256")
