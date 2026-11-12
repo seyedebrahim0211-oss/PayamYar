@@ -81,7 +81,7 @@ object AppUpdater {
             } else {
                 val entry = zip.entries().asSequence().firstOrNull { !it.isDirectory && it.name.endsWith(".apk", true) }
                     ?: throw IllegalStateException("فایل نصبی داخل بسته پیدا نشد.")
-                check(entry.size in 1..MAX_APK_BYTES) { "حجم فایل نصبی داخل بسته معتبر نیست." }
+                check(entry.size in 1L..MAX_APK_BYTES) { "حجم فایل نصبی داخل بسته معتبر نیست." }
                 zip.getInputStream(entry).use { input ->
                     apk.outputStream().use { output ->
                         val buffer = ByteArray(64 * 1024)
@@ -118,7 +118,9 @@ object AppUpdater {
         check(incoming.packageName == activity.packageName) {
             "شناسه برنامه با پیامیار نصب‌شده متفاوت است. نصب متوقف شد."
         }
-        check(incoming.longVersionCode >= current.longVersionCode) {
+        val currentCode = if (Build.VERSION.SDK_INT >= 28) current.longVersionCode else current.versionCode.toLong()
+        val incomingCode = if (Build.VERSION.SDK_INT >= 28) incoming.longVersionCode else incoming.versionCode.toLong()
+        check(incomingCode >= currentCode) {
             "این بسته از نسخه نصب‌شده قدیمی‌تر است؛ نصب نسخه قدیمی مجاز نیست."
         }
         val existingCerts = if (Build.VERSION.SDK_INT >= 28)
