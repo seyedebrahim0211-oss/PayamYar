@@ -133,7 +133,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.byTooltip('ابزارهای پیام'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('ویرایش متن'));
+    await tester.tap(find.text('ویرایش و مرتب‌سازی متن'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('جایگزینی با متن نهایی'));
     await tester.pumpAndSettle();
