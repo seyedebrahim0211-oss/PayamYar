@@ -549,7 +549,7 @@ class _Bubble extends StatelessWidget {
               Text(text.trim().isEmpty ? 'پیام بدون متن' : text.trim(),
                 maxLines: 8, overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: fg, fontSize: 15.5, height: 1.7)),
-              if (text.length > 260 || text.split('\\n').length > 8)
+              if (text.length > 260 || text.split('\n').length > 8)
                 TextButton(
                   onPressed: () => showDialog<void>(
                     context: context,
