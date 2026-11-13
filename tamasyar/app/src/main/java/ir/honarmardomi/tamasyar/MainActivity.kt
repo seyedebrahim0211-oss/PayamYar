@@ -46,6 +46,7 @@ class MainActivity : Activity() {
     private var pendingNumber: String? = null
     private var historyFilter = 0
     private var favoriteOnly = false
+    private var renderEpoch = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -129,6 +130,7 @@ class MainActivity : Activity() {
         }
 
     private fun showTab() {
+        val epoch = ++renderEpoch
         window.navigationBarColor = paper
         window.decorView.systemUiVisibility =
             if (prefs.dark) 0 else View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
@@ -156,9 +158,9 @@ class MainActivity : Activity() {
         scroll.addView(content)
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         when (tab) {
-            0 -> showHistory(content)
+            0 -> showHistory(content, epoch)
             1 -> showDialPad(content)
-            2 -> showContacts(content)
+            2 -> showContacts(content, epoch)
             else -> showMore(content)
         }
         val nav = hbox().apply {
@@ -249,84 +251,106 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun showHistory(parent: LinearLayout) {
-        parent.addView(section("تماس‌های اخیر", "سوابق فقط روی همین گوشی خوانده می‌شوند."))
+    /**
+     * Content-provider queries run off the main thread. The epoch prevents late
+     * results from being painted over a newly selected screen.
+     */
+    private fun showHistory(parent: LinearLayout, epoch: Int) {
+        parent.addView(section("تماس‌های اخیر", "سوابق تماس فقط روی این گوشی خوانده می‌شوند."))
         if (!isDefaultDialer()) {
-            parent.addView(text("برای دسترسی به سابقه تماس باید تماس‌یار را برنامه پیش‌فرض تلفن کنید.", 14f))
+            parent.addView(text("برای نمایش سوابق، تماس‌یار باید شماره‌گیر پیش‌فرض باشد.", 14f))
             addGap(parent)
             parent.addView(action("انتخاب شماره‌گیر پیش‌فرض", true) { requestDialerRole() })
             return
         }
         if (!allowed(Manifest.permission.READ_CALL_LOG, 210)) {
-            parent.addView(text("برای مشاهده تاریخچه تماس، مجوز سوابق تماس را تأیید کنید.", 13f))
+            parent.addView(text("برای نمایش سوابق تماس، مجوز موردنیاز را تأیید کنید.", 13f))
             return
         }
-        val filters = listOf("همه", "بی‌پاسخ", "ورودی", "خروجی")
+        val filterNames = listOf("همه", "بی‌پاسخ", "ورودی", "خروجی")
         val types = listOf(0, CallLog.Calls.MISSED_TYPE,
             CallLog.Calls.INCOMING_TYPE, CallLog.Calls.OUTGOING_TYPE)
-        val buttons = hbox()
-        filters.forEachIndexed { index, label ->
-            val control = action(label, historyFilter == index) {
+        val controls = hbox()
+        filterNames.forEachIndexed { index, title ->
+            val control = action(title, historyFilter == index) {
                 historyFilter = index
                 showTab()
             }
             control.textSize = 12f * prefs.scale()
-            buttons.addView(control, LinearLayout.LayoutParams(0, dp(46), 1f).apply {
+            controls.addView(control, LinearLayout.LayoutParams(0, dp(46), 1f).apply {
                 setMargins(dp(2), 0, dp(2), 0)
             })
         }
-        parent.addView(buttons)
-        addGap(parent, 10)
-        val selection = if (historyFilter == 0) null else CallLog.Calls.TYPE + "=?"
-        val args = if (historyFilter == 0) null else arrayOf(types[historyFilter].toString())
-        val cursor = try {
-            contentResolver.query(CallLog.Calls.CONTENT_URI,
-                arrayOf(CallLog.Calls.NUMBER, CallLog.Calls.TYPE, CallLog.Calls.DATE,
-                    CallLog.Calls.DURATION),
-                selection, args, CallLog.Calls.DATE + " DESC")
-        } catch (_: SecurityException) { null }
-        if (cursor == null) {
-            parent.addView(text("تاریخچه تماس در دسترس نیست.", 14f))
-            return
-        }
-        cursor.use { c ->
-            val numberCol = c.getColumnIndexOrThrow(CallLog.Calls.NUMBER)
-            val typeCol = c.getColumnIndexOrThrow(CallLog.Calls.TYPE)
-            val dateCol = c.getColumnIndexOrThrow(CallLog.Calls.DATE)
-            val durationCol = c.getColumnIndexOrThrow(CallLog.Calls.DURATION)
-            var count = 0
-            val formatter = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale("fa", "IR"))
-            while (c.moveToNext() && count < 100) {
-                val number = c.getString(numberCol).orEmpty()
-                val type = when (c.getInt(typeCol)) {
-                    CallLog.Calls.INCOMING_TYPE -> "ورودی"
-                    CallLog.Calls.OUTGOING_TYPE -> "خروجی"
-                    CallLog.Calls.MISSED_TYPE -> "بی‌پاسخ"
-                    CallLog.Calls.REJECTED_TYPE -> "ردشده"
-                    else -> "تماس"
+        parent.addView(controls)
+        addGap(parent, 12)
+        val rows = vbox()
+        rows.addView(text("در حال خواندن سوابق تماس…", 13f, color = muted))
+        parent.addView(rows)
+        val historyType = historyFilter
+        Thread {
+            val entries = mutableListOf<Triple<String, String, String>>()
+            var error: String? = null
+            try {
+                val selection = if (historyType == 0) null else CallLog.Calls.TYPE + "=?"
+                val args = if (historyType == 0) null else arrayOf(types[historyType].toString())
+                val cursor = contentResolver.query(CallLog.Calls.CONTENT_URI,
+                    arrayOf(CallLog.Calls.NUMBER, CallLog.Calls.TYPE,
+                        CallLog.Calls.DATE, CallLog.Calls.DURATION),
+                    selection, args, CallLog.Calls.DATE + " DESC")
+                if (cursor == null) error = "دسترسی به تاریخچه تماس ممکن نیست."
+                else cursor.use { c ->
+                    val numberAt = c.getColumnIndexOrThrow(CallLog.Calls.NUMBER)
+                    val typeAt = c.getColumnIndexOrThrow(CallLog.Calls.TYPE)
+                    val dateAt = c.getColumnIndexOrThrow(CallLog.Calls.DATE)
+                    val durationAt = c.getColumnIndexOrThrow(CallLog.Calls.DURATION)
+                    val df = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale("fa", "IR"))
+                    while (c.moveToNext() && entries.size < 100) {
+                        val number = c.getString(numberAt).orEmpty()
+                        val type = when (c.getInt(typeAt)) {
+                            CallLog.Calls.INCOMING_TYPE -> "ورودی"
+                            CallLog.Calls.OUTGOING_TYPE -> "خروجی"
+                            CallLog.Calls.MISSED_TYPE -> "بی‌پاسخ"
+                            CallLog.Calls.REJECTED_TYPE -> "ردشده"
+                            else -> "تماس"
+                        }
+                        val info = type + " • " + df.format(Date(c.getLong(dateAt))) +
+                            " • " + c.getLong(durationAt) + " ثانیه"
+                        entries.add(Triple(if (number.isBlank()) "شماره خصوصی" else number,
+                            info, number))
+                    }
                 }
-                val whenCalled = formatter.format(Date(c.getLong(dateCol)))
-                val duration = c.getLong(durationCol)
-                contactRow(parent, if (number.isBlank()) "شماره خصوصی" else number,
-                    type + " • " + whenCalled + " • " + duration + " ثانیه", number)
-                count++
+            } catch (_: SecurityException) {
+                error = "مجوز نمایش سوابق تماس کافی نیست."
+            } catch (_: Exception) {
+                error = "در خواندن سوابق تماس خطایی رخ داد."
             }
-            if (count == 0) parent.addView(text("هنوز تماسی ثبت نشده است.", 14f))
-        }
+            runOnUiThread {
+                if (isFinishing || isDestroyed || renderEpoch != epoch || tab != 0)
+                    return@runOnUiThread
+                rows.removeAllViews()
+                if (error != null) rows.addView(text(error!!, 13f, color = muted))
+                else if (entries.isEmpty()) rows.addView(text("تماسی برای این فیلتر پیدا نشد.", 13f))
+                else entries.forEach { (title, info, number) ->
+                    contactRow(rows, title, info, number)
+                }
+            }
+        }.start()
     }
 
-    private fun showContacts(parent: LinearLayout) {
-        parent.addView(section("مخاطبین", "مخاطبین مشترک تلفن و پیامیار، بدون انتقال به سرور."))
+    private fun showContacts(parent: LinearLayout, epoch: Int) {
+        parent.addView(section("مخاطبین", "دفترچه مخاطبین مشترک تماس‌یار و پیامیار"))
         parent.addView(action("افزودن مخاطب جدید", true) {
             try {
-                startActivity(Intent(Intent.ACTION_INSERT).setType(ContactsContract.Contacts.CONTENT_TYPE))
+                startActivity(Intent(Intent.ACTION_INSERT).setType(
+                    ContactsContract.Contacts.CONTENT_TYPE))
             } catch (_: Exception) {
-                Toast.makeText(this, "ویرایشگر مخاطبین در دسترس نیست.", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "ویرایشگر مخاطبین در دسترس نیست.",
+                    Toast.LENGTH_LONG).show()
             }
         })
         addGap(parent)
         if (!allowed(Manifest.permission.READ_CONTACTS, 211)) {
-            parent.addView(text("برای نمایش مخاطبین مجوز دسترسی را تأیید کنید.", 13f))
+            parent.addView(text("برای نمایش مخاطبین، مجوز مربوط به دفترچه تلفن را بدهید.", 13f))
             return
         }
         val search = EditText(this).apply {
@@ -342,52 +366,72 @@ class MainActivity : Activity() {
         parent.addView(search)
         addGap(parent)
         val tools = hbox()
-        val buttonSearch = action("جست‌وجو") {
+        tools.addView(action("جست‌وجو") {
             filter = search.text.toString().trim()
             showTab()
-        }
-        val buttonFavorites = action(if (favoriteOnly) "نمایش همه" else "فقط منتخب‌ها",
-            favoriteOnly) {
-            favoriteOnly = !favoriteOnly
-            filter = search.text.toString().trim()
-            showTab()
-        }
-        tools.addView(buttonSearch, LinearLayout.LayoutParams(0, dp(49), 1f).apply {
+        }, LinearLayout.LayoutParams(0, dp(49), 1f).apply {
             setMargins(dp(3), 0, dp(3), 0)
         })
-        tools.addView(buttonFavorites, LinearLayout.LayoutParams(0, dp(49), 1f).apply {
+        tools.addView(action(if (favoriteOnly) "نمایش همه" else "فقط منتخب‌ها",
+            favoriteOnly) {
+            filter = search.text.toString().trim()
+            favoriteOnly = !favoriteOnly
+            showTab()
+        }, LinearLayout.LayoutParams(0, dp(49), 1f).apply {
             setMargins(dp(3), 0, dp(3), 0)
         })
         parent.addView(tools)
-        addGap(parent, 10)
-        val selection = if (filter.isBlank()) null else
-            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " LIKE ? OR " +
-            ContactsContract.CommonDataKinds.Phone.NUMBER + " LIKE ?"
-        val args = if (filter.isBlank()) null else arrayOf("%" + filter + "%", "%" + filter + "%")
-        val cursor = try {
-            contentResolver.query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
-                    ContactsContract.CommonDataKinds.Phone.NUMBER),
-                selection, args, ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC")
-        } catch (_: SecurityException) { null }
-        if (cursor == null) {
-            parent.addView(text("مخاطبین در دسترس نیستند.", 13f))
-            return
-        }
-        cursor.use { c ->
-            val nameCol = c.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
-            val numberCol = c.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER)
-            var count = 0
-            while (c.moveToNext() && count < 150) {
-                val number = c.getString(numberCol).orEmpty()
-                if (!favoriteOnly || prefs.isFavorite(number)) {
-                    contactRow(parent, c.getString(nameCol).orEmpty(),
-                        "شماره: " + number, number)
-                    count++
+        addGap(parent, 13)
+        val rows = vbox()
+        rows.addView(text("در حال بارگذاری مخاطبین…", 13f, color = muted))
+        parent.addView(rows)
+        val query = filter
+        val onlyStars = favoriteOnly
+        val selected = if (onlyStars) prefs.favorites() else emptySet()
+        Thread {
+            val entries = mutableListOf<Triple<String, String, String>>()
+            var error: String? = null
+            try {
+                val selection = if (query.isBlank()) null else
+                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " LIKE ? OR " +
+                    ContactsContract.CommonDataKinds.Phone.NUMBER + " LIKE ?"
+                val args = if (query.isBlank()) null else arrayOf(
+                    "%" + query + "%", "%" + TamasPhone.ascii(query) + "%")
+                val cursor = contentResolver.query(
+                    ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                    arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                        ContactsContract.CommonDataKinds.Phone.NUMBER),
+                    selection, args, ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC")
+                if (cursor == null) error = "مخاطبین در دسترس نیستند."
+                else cursor.use { c ->
+                    val nameAt = c.getColumnIndexOrThrow(
+                        ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                    val numberAt = c.getColumnIndexOrThrow(
+                        ContactsContract.CommonDataKinds.Phone.NUMBER)
+                    while (c.moveToNext() && entries.size < 150) {
+                        val number = c.getString(numberAt).orEmpty()
+                        if (!onlyStars || TamasPhone.normalize(number) in selected) {
+                            entries.add(Triple(c.getString(nameAt).orEmpty(),
+                                "شماره: " + number, number))
+                        }
+                    }
+                }
+            } catch (_: SecurityException) {
+                error = "مجوز نمایش مخاطبین کافی نیست."
+            } catch (_: Exception) {
+                error = "خواندن مخاطبین با مشکل روبه‌رو شد."
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed || renderEpoch != epoch || tab != 2)
+                    return@runOnUiThread
+                rows.removeAllViews()
+                if (error != null) rows.addView(text(error!!, 13f, color = muted))
+                else if (entries.isEmpty()) rows.addView(text("مخاطبی پیدا نشد.", 13f))
+                else entries.forEach { (name, description, number) ->
+                    contactRow(rows, name, description, number)
                 }
             }
-            if (count == 0) parent.addView(text("مخاطبی پیدا نشد.", 13f))
-        }
+        }.start()
     }
 
     private fun contactRow(parent: LinearLayout, title: String, subtitle: String, number: String) {
