@@ -37,6 +37,28 @@ class TamasPreferences(context: Context) {
         get() = values.getString("pending_apk", "").orEmpty()
         set(v) = values.edit().putString("pending_apk", v).apply()
 
+    /** Use the system's SIM chooser when multiple outgoing accounts exist. */
+    var chooseSim: Boolean
+        get() = values.getBoolean("choose_sim", true)
+        set(v) = values.edit().putBoolean("choose_sim", v).apply()
+
+    /** A local shortcut list, stored separately from the phone's contacts database. */
+    fun favorites(): Set<String> = values.getStringSet("favorite_numbers", emptySet())
+        .orEmpty().toSet()
+
+    fun isFavorite(number: String): Boolean =
+        favorites().contains(TamasPhone.normalize(number))
+
+    fun toggleFavorite(number: String): Boolean {
+        val id = TamasPhone.normalize(number)
+        if (id.isEmpty()) return false
+        val modified = favorites().toMutableSet()
+        val added = if (id in modified) { modified.remove(id); false }
+                    else { modified.add(id); true }
+        values.edit().putStringSet("favorite_numbers", modified).apply()
+        return added
+    }
+
     fun scale(): Float = when (textSize) {
         0 -> 0.92f
         2 -> 1.16f
