@@ -1,6 +1,11 @@
 package ir.honarmardomi.tamasyar
 
+import android.Manifest
 import android.app.Activity
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.ContactsContract
+import java.util.Locale
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -23,6 +28,23 @@ class CallScreenActivity : Activity() {
     private val gold = TamasStyle.goldLight
     private val handler = Handler(Looper.getMainLooper())
     private val observer: () -> Unit = { if (!isFinishing) draw() }
+    private val callerNames = mutableMapOf<String, String>()
+    private val pendingNames = mutableSetOf<String>()
+    private var durationView: TextView? = null
+    private val ticker = object : Runnable {
+        override fun run() {
+            val call = LiveCalls.current()
+            if (call != null && call.state == Call.STATE_ACTIVE) {
+                val connected = call.details.connectTimeMillis
+                if (connected > 0) {
+                    val seconds = ((System.currentTimeMillis() - connected) / 1000).coerceAtLeast(0)
+                    durationView?.text = String.format(Locale.US, "%02d:%02d",
+                        seconds / 60, seconds % 60)
+                }
+            }
+            handler.postDelayed(this, 1000)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,8 +60,17 @@ class CallScreenActivity : Activity() {
         }
         draw()
     }
-    override fun onResume() { super.onResume(); LiveCalls.subscribe(observer); draw() }
-    override fun onPause() { LiveCalls.unsubscribe(observer); super.onPause() }
+    override fun onResume() {
+        super.onResume()
+        LiveCalls.subscribe(observer)
+        draw()
+        handler.post(ticker)
+    }
+    override fun onPause() {
+        handler.removeCallbacks(ticker)
+        LiveCalls.unsubscribe(observer)
+        super.onPause()
+    }
     private fun dp(n: Int) = (n * resources.displayMetrics.density).toInt()
     private fun label(value: String, size: Float, color: Int = Color.WHITE): TextView =
         TextView(this).apply {
@@ -78,7 +109,16 @@ class CallScreenActivity : Activity() {
             else -> "در حال برقراری تماس…"
         }
         root.addView(label(status, 20f))
-        root.addView(label(call.details.handle?.schemeSpecificPart ?: "شماره ناشناس", 27f))
+        val number = call.details.handle?.schemeSpecificPart.orEmpty()
+        if (number.isNotBlank()) lookupCaller(number)
+        val name = callerNames[number]
+        if (!name.isNullOrBlank()) {
+            root.addView(label(name, 27f))
+            root.addView(label(number, 17f, Color.rgb(193, 218, 212)))
+        } else {
+            root.addView(label(if (number.isBlank()) "شماره ناشناس" else number, 27f))
+        }
+        durationView = label("", 19f, gold).also { root.addView(it) }
         root.addView(View(this), LinearLayout.LayoutParams(1, 0, 1f))
         if (incoming) {
             root.addView(button("پاسخ  ✓", Color.rgb(35, 142, 106)) {
@@ -124,11 +164,40 @@ class CallScreenActivity : Activity() {
         setContentView(root)
     }
 
+    /** Local caller ID; never sends the phone number to a remote service. */
+    private fun lookupCaller(number: String) {
+        if (number in callerNames || number in pendingNames ||
+            checkSelfPermission(Manifest.permission.READ_CONTACTS) !=
+                PackageManager.PERMISSION_GRANTED) return
+        pendingNames.add(number)
+        Thread {
+            var resolved: String? = null
+            try {
+                val uri = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
+                    Uri.encode(number))
+                contentResolver.query(uri,
+                    arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME),
+                    null, null, null)?.use { c ->
+                    if (c.moveToFirst()) resolved = c.getString(0)
+                }
+            } catch (_: Exception) { /* caller ID is optional */ }
+            runOnUiThread {
+                pendingNames.remove(number)
+                callerNames[number] = resolved.orEmpty()
+                if (!isFinishing && !isDestroyed &&
+                    LiveCalls.current()?.details?.handle?.schemeSpecificPart == number) draw()
+            }
+        }.start()
+    }
+
     private fun showDtmf(call: Call) {
         val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         listOf(listOf("1", "2", "3"), listOf("4", "5", "6"),
             listOf("7", "8", "9"), listOf("*", "0", "#")).forEach { digits ->
-            val row = LinearLayout(this)
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutDirection = View.LAYOUT_DIRECTION_LTR
+            }
             digits.forEach { digit ->
                 val cell = label(digit, 23f, dark)
                 cell.setOnClickListener {
