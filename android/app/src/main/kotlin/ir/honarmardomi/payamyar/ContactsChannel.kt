@@ -362,7 +362,7 @@ class ContactsChannel(private val activity: Activity, messenger: BinaryMessenger
         worker.execute {
             try {
                 val value: Any? = when (requestCode) {
-                    REQ_PHOTO -> cr.openInputStream(uri)?.use { it.readBytes() }?.let { shrink(it, 720) }
+                    REQ_PHOTO -> cr.openInputStream(uri)?.use { Xlsx.readLimited(it, 25L * 1024 * 1024) }?.let { shrink(it, 720) }
                     REQ_CREATE -> {
                         val bytes = pendingBytes ?: ByteArray(0)
                         cr.openOutputStream(uri, "wt")?.use { it.write(bytes) }
@@ -442,13 +442,31 @@ object Xlsx {
         return n - 1
     }
 
+    /** Reads a stream with a hard cap, so a tiny "zip bomb" or huge file cannot exhaust memory. */
+    fun readLimited(input: java.io.InputStream, max: Long): ByteArray {
+        val out = ByteArrayOutputStream()
+        val buffer = ByteArray(32 * 1024)
+        var total = 0L
+        while (true) {
+            val n = input.read(buffer)
+            if (n < 0) break
+            total += n
+            check(total <= max) { "حجم فایل بیش از حد مجاز است." }
+            out.write(buffer, 0, n)
+        }
+        return out.toByteArray()
+    }
+
     /** First worksheet as rows of text; shared strings, inline strings and numbers are supported. */
     fun read(bytes: ByteArray): List<List<String>> {
         val entries = HashMap<String, ByteArray>()
         ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
             var e = zip.nextEntry
             while (e != null) {
-                if (e.name == "xl/sharedStrings.xml" || e.name.startsWith("xl/worksheets/sheet")) entries[e.name] = zip.readBytes()
+                if (e.name == "xl/sharedStrings.xml" || e.name.startsWith("xl/worksheets/sheet")) {
+                    check(entries.size < 16) { "این فایل اکسل بیش از حد برگه دارد." }
+                    entries[e.name] = readLimited(zip, 12L * 1024 * 1024)
+                }
                 e = zip.nextEntry
             }
         }

@@ -645,11 +645,27 @@ class _Bubble extends StatelessWidget {
             ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
               if (warning)
-                const Padding(padding: EdgeInsets.only(bottom: 6), child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.warning_amber_rounded, size: 16, color: Colors.orange),
-                  SizedBox(width: 4),
-                  Flexible(child: Text('احتمال کلاهبرداری؛ روی لینک نزنید', style: TextStyle(fontSize: 12, color: Colors.orange))),
-                ])),
+                InkWell(
+                  onTap: () {
+                    final reasons = MessageLogic.risk(text).reasons;
+                    showDialog<void>(context: context, builder: (ctx) => AlertDialog(
+                      icon: const Icon(Icons.gpp_maybe_rounded, color: Colors.orange, size: 36),
+                      title: const Text('چرا این پیام مشکوک است؟'),
+                      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        for (final r in reasons) Padding(padding: const EdgeInsets.only(bottom: 6), child: Text('• $r')),
+                        const SizedBox(height: 6),
+                        const Text('روی لینک نزنید، کد یا رمز کارت وارد نکنید و برنامه‌ای از لینک نصب نکنید. '
+                          'برای پیگیری، مستقیم به سایت یا برنامه رسمی بروید.', style: TextStyle(fontSize: 12.5, height: 1.7)),
+                      ]),
+                      actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('متوجه شدم'))],
+                    ));
+                  },
+                  child: const Padding(padding: EdgeInsets.only(bottom: 6), child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.warning_amber_rounded, size: 16, color: Colors.orange),
+                    SizedBox(width: 4),
+                    Flexible(child: Text('احتمال کلاهبرداری؛ روی لینک نزنید (جزئیات)', style: TextStyle(fontSize: 12, color: Colors.orange))),
+                  ])),
+                ),
               Text(text.trim().isEmpty ? 'پیام بدون متن' : text.trim(),
                 maxLines: 8, overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: fg, fontSize: textSize, height: 1.7)),

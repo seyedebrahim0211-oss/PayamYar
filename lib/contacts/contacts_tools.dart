@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../app_store.dart';
+import '../csv_util.dart';
 import '../jalali.dart';
 import '../message_logic.dart';
 import 'contact_detail_screen.dart';
@@ -162,9 +163,7 @@ Future<void> exportContacts(BuildContext context, ContactStore contacts, List<Ph
     final bytes = await ContactsBridge.xlsxWrite(contactsToRows(list, groups));
     ok = await ContactsBridge.saveFile('$base.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', bytes);
   } else if (format == 'csv') {
-    final rows = contactsToRows(list, groups);
-    final text = '﻿${rows.map((r) => r.map((c) => '"${c.replaceAll('"', '""')}"').join(',')).join('\r\n')}';
-    ok = await ContactsBridge.saveFile('$base.csv', 'text/csv', Uint8List.fromList(utf8.encode(text)));
+    ok = await ContactsBridge.saveFile('$base.csv', 'text/csv', csvBytes(contactsToRows(list, groups)));
   } else {
     ok = await ContactsBridge.saveFile('$base.vcf', 'text/x-vcard', Uint8List.fromList(utf8.encode(toVcf(list, groupsOf: groups))));
   }
@@ -477,9 +476,27 @@ class ContactToolsScreen extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return ListView.builder(
       padding: const EdgeInsets.all(12),
-      itemCount: clusters.length,
-      itemBuilder: (context, i) {
-        final group = clusters[i];
+      itemCount: clusters.length + 1,
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: FilledButton.icon(
+              onPressed: () async {
+                final n = Jalali.digits(clusters.length);
+                if (!await confirm(context, 'ادغام همه ($n دسته)',
+                    'هر دسته تکراری به یک مخاطب با همه شماره‌ها، ایمیل‌ها و گروه‌ها تبدیل می‌شود.')) {
+                  return;
+                }
+                final merged = await contacts.mergeAll();
+                store.onNotice?.call('${Jalali.digits(merged)} دسته تکراری ادغام شد.');
+              },
+              icon: const Icon(Icons.merge_type_rounded),
+              label: const Text('ادغام همه تکراری‌ها با یک لمس'),
+            ),
+          );
+        }
+        final group = clusters[index - 1];
         return Card(
           child: Padding(
             padding: const EdgeInsets.all(8),
