@@ -2,6 +2,8 @@ package ir.honarmardomi.tamasyar
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
+import android.widget.Toast
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.ContactsContract
@@ -28,6 +30,9 @@ class CallScreenActivity : Activity() {
     private val gold = TamasStyle.goldLight
     private val handler = Handler(Looper.getMainLooper())
     private val observer: () -> Unit = { if (!isFinishing) draw() }
+    private val recordingObserver: () -> Unit = { runOnUiThread {
+        if (!isFinishing && !isDestroyed) draw()
+    } }
     private val callerNames = mutableMapOf<String, String>()
     private val pendingNames = mutableSetOf<String>()
     private var durationView: TextView? = null
@@ -63,12 +68,14 @@ class CallScreenActivity : Activity() {
     override fun onResume() {
         super.onResume()
         LiveCalls.subscribe(observer)
+        TamasRecordings.subscribe(recordingObserver)
         draw()
         handler.post(ticker)
     }
     override fun onPause() {
         handler.removeCallbacks(ticker)
         LiveCalls.unsubscribe(observer)
+        TamasRecordings.unsubscribe(recordingObserver)
         super.onPause()
     }
     private fun dp(n: Int) = (n * resources.displayMetrics.density).toInt()
@@ -147,6 +154,27 @@ class CallScreenActivity : Activity() {
                 handler.postDelayed({ draw() }, 120)
             }, LinearLayout.LayoutParams(0, dp(64), 1f).apply { marginStart = dp(5) })
             root.addView(controls)
+            if (call.state == Call.STATE_ACTIVE || TamasRecordings.active) {
+                root.addView(button(
+                    if (TamasRecordings.active) "● توقف ضبط میکروفون"
+                    else "● ضبط دستی میکروفون",
+                    if (TamasRecordings.active) Color.rgb(163, 52, 68)
+                    else TamasStyle.teal
+                ) {
+                    if (TamasRecordings.active) TamasRecordings.stop(this)
+                    else askRecordingPermissionAndConsent()
+                }, LinearLayout.LayoutParams(-1, dp(62)).apply {
+                    topMargin = dp(12)
+                })
+                root.addView(label(
+                    if (TamasRecordings.active) "ضبط روشن است · فقط صدایی که میکروفون دستگاه دریافت می‌کند."
+                    else "ضبط فقط با تأیید شما؛ صدای طرف مقابل ممکن است ضبط نشود.",
+                    12f, Color.rgb(204, 223, 222)
+                ))
+            }
+            if (TamasRecordings.lastError.isNotBlank()) {
+                root.addView(label(TamasRecordings.lastError, 12f, gold))
+            }
             root.addView(button("شماره‌گیر حین تماس", Color.rgb(50, 87, 92)) {
                 showDtmf(call)
             }, LinearLayout.LayoutParams(-1, dp(62)).apply { topMargin = dp(12) })
@@ -188,6 +216,50 @@ class CallScreenActivity : Activity() {
                     LiveCalls.current()?.details?.handle?.schemeSpecificPart == number) draw()
             }
         }.start()
+    }
+
+    private fun askRecordingPermissionAndConsent() {
+        if (LiveCalls.current()?.state != Call.STATE_ACTIVE) {
+            Toast.makeText(this, "ضبط فقط در تماس فعال قابل شروع است.", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) !=
+            PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 420)
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("ضبط دستی با میکروفون")
+            .setMessage(
+                "این ابزار فقط ورودی میکروفون را ذخیره می‌کند. اندروید دسترسی عمومی " +
+                "به صدای تماس دوطرفه را نمی‌دهد؛ بنابراین صدای طرف مقابل ممکن است در فایل نباشد.\n\n" +
+                "پیش از ضبط، رضایت افراد مکالمه را کسب کنید. ضبط به‌صورت مخفی یا خودکار " +
+                "انجام نمی‌شود و با قطع تماس متوقف می‌شود. فایل روی همین گوشی باقی می‌ماند."
+            )
+            .setNegativeButton("انصراف", null)
+            .setPositiveButton("شروع ضبط") { _, _ ->
+                try {
+                    TamasRecordings.start(this)
+                } catch (_: Exception) {
+                    Toast.makeText(this,
+                        "ضبط ممکن نشد. مجوز میکروفون و محدودیت باتری را بررسی کنید.",
+                        Toast.LENGTH_LONG).show()
+                }
+            }
+            .show()
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int, permissions: Array<out String>, grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 420) {
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+                askRecordingPermissionAndConsent()
+            } else Toast.makeText(this,
+                "بدون دسترسی به میکروفون امکان ضبط وجود ندارد.",
+                Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun showDtmf(call: Call) {
