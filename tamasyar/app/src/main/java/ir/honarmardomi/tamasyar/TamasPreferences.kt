@@ -8,7 +8,8 @@ import android.content.SharedPreferences
  * identifiers are synchronized to the website or the SMS companion app.
  */
 class TamasPreferences(context: Context) {
-    private val values: SharedPreferences = context.getSharedPreferences(
+    private val appContext = context.applicationContext
+    private val values: SharedPreferences = appContext.getSharedPreferences(
         "tamasyar_preferences", Context.MODE_PRIVATE
     )
     var autoUpdates: Boolean
@@ -18,7 +19,7 @@ class TamasPreferences(context: Context) {
     /** 0 = light; 1 = dark. */
     var dark: Boolean
         get() = isDark()
-        set(v) = themeMode = if (v) 2 else 1
+        set(v) { themeMode = if (v) 2 else 1 }
 
     /** 0 = compact; 1 = normal; 2 = large. */
     var textSize: Int
@@ -68,7 +69,7 @@ class TamasPreferences(context: Context) {
     fun isDark(): Boolean = when (themeMode) {
         2 -> true
         1 -> false
-        else -> (android.content.res.Resources.getSystem().configuration.uiMode and
+        else -> (appContext.resources.configuration.uiMode and
             android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
             android.content.res.Configuration.UI_MODE_NIGHT_YES
     }
