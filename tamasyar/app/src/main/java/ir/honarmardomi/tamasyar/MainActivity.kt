@@ -487,6 +487,13 @@ class MainActivity : Activity() {
             showTab()
             if (prefs.autoUpdates) TamasUpdater.check(this, automatic = true) { _, _ -> }
         }
+        settingCard(parent, "انتخاب سیم‌کارت تماس",
+            if (prefs.chooseSim) "اگر گوشی چند حساب تماس فعال داشته باشد، می‌توانید سیم‌کارت را هنگام تماس انتخاب کنید."
+            else "سیم‌کارت بر اساس تنظیمات پیش‌فرض اندروید انتخاب می‌شود.",
+            if (prefs.chooseSim) "استفاده از سیم‌کارت پیش‌فرض" else "فعال کردن انتخاب سیم‌کارت") {
+            prefs.chooseSim = !prefs.chooseSim
+            showTab()
+        }
         settingCard(parent, "دانلود و نصب نسخه جدید",
             "بررسی آنلاین نسخه، نمایش تغییرات و نصب فقط پس از تأیید شما. " +
                 "فایل نصب قبل از اجرا با SHA-256 کنترل می‌شود.",
@@ -611,8 +618,42 @@ class MainActivity : Activity() {
             Toast.makeText(this, "مجوز تماس هنوز فعال نیست.", Toast.LENGTH_LONG).show()
             return
         }
+        val telecom = getSystemService(TELECOM_SERVICE) as TelecomManager
+        if (prefs.chooseSim && checkSelfPermission(Manifest.permission.READ_PHONE_STATE) ==
+            PackageManager.PERMISSION_GRANTED) {
+            try {
+                val accounts = telecom.callCapablePhoneAccounts
+                if (accounts.size > 1) {
+                    val options = accounts.mapIndexed { index, account ->
+                        val label = telecom.getPhoneAccount(account)?.label?.toString()
+                        if (label.isNullOrBlank()) "سیم‌کارت ${index + 1}" else label
+                    }.toTypedArray()
+                    AlertDialog.Builder(this)
+                        .setTitle("انتخاب سیم‌کارت")
+                        .setItems(options) { _, index -> placeOutgoing(target, accounts[index]) }
+                        .setNeutralButton("حساب پیش‌فرض") { _, _ -> placeOutgoing(target, null) }
+                        .setNegativeButton("انصراف", null)
+                        .show()
+                    return
+                }
+            } catch (_: SecurityException) {
+                // Android can show its own SIM selection if the role lacks account access.
+            } catch (_: Exception) { }
+        }
+        placeOutgoing(target, null)
+    }
+
+    private fun placeOutgoing(uri: Uri, account: PhoneAccountHandle?) {
+        if (checkSelfPermission(Manifest.permission.CALL_PHONE) !=
+            PackageManager.PERMISSION_GRANTED || !isDefaultDialer()) {
+            Toast.makeText(this, "ابتدا نقش تلفن و مجوز تماس را فعال کنید.",
+                Toast.LENGTH_LONG).show()
+            return
+        }
+        val extras = Bundle()
+        if (account != null) extras.putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, account)
         try {
-            (getSystemService(TELECOM_SERVICE) as TelecomManager).placeCall(target, Bundle())
+            (getSystemService(TELECOM_SERVICE) as TelecomManager).placeCall(uri, extras)
         } catch (_: SecurityException) {
             Toast.makeText(this, "مجوز برقراری تماس وجود ندارد.", Toast.LENGTH_LONG).show()
         } catch (_: Exception) {
