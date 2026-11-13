@@ -154,7 +154,7 @@ class TamasRecordingService : Service() {
 
     private fun startRecording() {
         val notice = notification()
-        if (Build.VERSION.SDK_INT >= 29) {
+        if (Build.VERSION.SDK_INT >= 30) {
             startForeground(ID, notice, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
         } else {
             startForeground(ID, notice)
