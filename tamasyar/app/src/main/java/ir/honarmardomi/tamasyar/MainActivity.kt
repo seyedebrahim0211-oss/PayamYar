@@ -30,6 +30,9 @@ import android.view.View
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ListView
+import android.view.HapticFeedbackConstants
+import android.media.AudioManager
+import android.media.ToneGenerator
 import android.widget.ScrollView
 import android.widget.TextView
 import android.text.InputType
@@ -46,6 +49,8 @@ class MainActivity : Activity() {
     private val muted get() = if (prefs.dark) Color.rgb(174, 200, 194) else TamasStyle.muted
     private val requestedPermissions = mutableSetOf<String>()
     private var tab = 1
+    private var dialToneGenerator: ToneGenerator? = null
+    private var settingsSection = 0
     private var digits = ""
     private var filter = ""
     private var pendingNumber: String? = null
@@ -64,7 +69,8 @@ class MainActivity : Activity() {
         intent?.data?.takeIf { it.scheme == "tel" }?.let {
             digits = it.schemeSpecificPart.orEmpty()
         }
-        if (intent?.getBooleanExtra("open_updates", false) == true) tab = 3
+        if (intent?.data?.scheme != "tel") tab = prefs.startTab
+        if (intent?.getBooleanExtra("open_updates", false) == true) { tab = 3; settingsSection = 5 }
         showTab()
         if (intent?.getBooleanExtra("open_updates", false) == true) checkForUpdates()
         TamasUpdateWorker.configure(this)
@@ -77,6 +83,12 @@ class MainActivity : Activity() {
         TamasUpdater.check(this, automatic = true) { _, _ -> }
     }
 
+    override fun onDestroy() {
+        dialToneGenerator?.release()
+        dialToneGenerator = null
+        super.onDestroy()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -87,6 +99,7 @@ class MainActivity : Activity() {
         }
         if (intent.getBooleanExtra("open_updates", false)) {
             tab = 3
+            settingsSection = 5
             showTab()
             checkForUpdates()
         }
@@ -178,7 +191,7 @@ class MainActivity : Activity() {
             setBackgroundColor(surface)
             setPadding(dp(5), dp(10), dp(5), dp(10))
         }
-        listOf("تماس‌ها", "شماره‌گیر", "مخاطبین", "بیشتر").forEachIndexed { index, label ->
+        listOf("تماس‌ها", "شماره‌گیر", "مخاطبین", "تنظیمات").forEachIndexed { index, label ->
             nav.addView(action(label, index == tab) {
                 tab = index
                 showTab()
@@ -215,20 +228,37 @@ class MainActivity : Activity() {
         }
         parent.addView(entry)
         addGap(parent, 15)
+        // Telephone keypads have a fixed physical LTR sequence: 1 2 3 / 4 5 6.
+        // A RTL container mirrored these digits and caused wrong key positioning.
         val dial = listOf(
-            listOf("۱", "۲", "۳"), listOf("۴", "۵", "۶"),
-            listOf("۷", "۸", "۹"), listOf("*", "۰", "#")
+            listOf("1", "2", "3"), listOf("4", "5", "6"),
+            listOf("7", "8", "9"), listOf("*", "0", "#")
         )
-        val englishDigits = mapOf('۰' to '0', '۱' to '1', '۲' to '2', '۳' to '3',
-            '۴' to '4', '۵' to '5', '۶' to '6', '۷' to '7', '۸' to '8', '۹' to '9')
         dial.forEach { line ->
-            val row = hbox()
-            line.forEach { label ->
-                row.addView(action(label) {
-                    val c = label.first()
-                    entry.append((englishDigits[c] ?: c).toString())
-                    digits = entry.text.toString()
-                }, LinearLayout.LayoutParams(0, dp(64), 1f).apply {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutDirection = View.LAYOUT_DIRECTION_LTR
+            }
+            line.forEach { digit ->
+                val visual = if (prefs.latinKeycaps) digit else
+                    "۰۱۲۳۴۵۶۷۸۹".getOrNull(digit.toIntOrNull() ?: -1)?.toString() ?: digit
+                val key = action(visual) {
+                    if (prefs.dialHaptics)
+                        entry.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    if (prefs.dialTones) playDialTone(digit)
+                    val selection = entry.selectionStart.coerceIn(0, entry.length())
+                    entry.text.insert(selection, digit)
+                    digits = TamasPhone.dial(entry.text.toString())
+                }.apply {
+                    textSize = 26f * prefs.scale()
+                    contentDescription = "شماره " + visual
+                }
+                if (digit == "0") key.setOnLongClickListener {
+                    val position = entry.selectionStart.coerceIn(0, entry.length())
+                    entry.text.insert(position, "+")
+                    true
+                }
+                row.addView(key, LinearLayout.LayoutParams(0, dp(68), 1f).apply {
                     setMargins(dp(4), dp(3), dp(4), dp(3))
                 })
             }
@@ -236,12 +266,17 @@ class MainActivity : Activity() {
         }
         addGap(parent, 12)
         val buttons = hbox()
-        buttons.addView(action("حذف یک رقم") {
-            val value = entry.text.toString()
-            if (value.isNotEmpty()) entry.setText(value.dropLast(1))
-            entry.setSelection(entry.length())
-            digits = entry.text.toString()
-        }, LinearLayout.LayoutParams(0, dp(52), 1f).apply { setMargins(dp(4), 0, dp(4), 0) })
+        val deleteButton = action("⌫ حذف") {
+            val pos = entry.selectionStart.coerceIn(0, entry.length())
+            if (pos > 0) entry.text.delete(pos - 1, pos)
+            digits = TamasPhone.dial(entry.text.toString())
+        }
+        deleteButton.setOnLongClickListener {
+            entry.text.clear()
+            digits = ""
+            true
+        }
+        buttons.addView(deleteButton, LinearLayout.LayoutParams(0, dp(52), 1f).apply { setMargins(dp(4), 0, dp(4), 0) })
         buttons.addView(action("تماس  ☎", true) {
             digits = entry.text.toString().trim()
             callNumber(digits)
@@ -253,8 +288,8 @@ class MainActivity : Activity() {
             openSms(digits)
         })
         addGap(parent, 15)
-        if (checkSelfPermission(Manifest.permission.READ_CONTACTS) ==
-            PackageManager.PERMISSION_GRANTED && prefs.favorites().isNotEmpty()) {
+        if (prefs.showQuickContacts &&
+            prefs.favorites().isNotEmpty()) {
             parent.addView(section("شماره‌های منتخب", "شماره‌های پرتکرار را از مخاطبین ستاره‌دار کن."))
             for (number in prefs.favorites().sorted().take(6)) {
                 contactRow(parent, number, "منتخب", number)
@@ -266,6 +301,29 @@ class MainActivity : Activity() {
      * Content-provider queries run off the main thread. The epoch prevents late
      * results from being painted over a newly selected screen.
      */
+    private fun playDialTone(key: String) {
+        val tone = when (key) {
+            "0" -> ToneGenerator.TONE_DTMF_0
+            "1" -> ToneGenerator.TONE_DTMF_1
+            "2" -> ToneGenerator.TONE_DTMF_2
+            "3" -> ToneGenerator.TONE_DTMF_3
+            "4" -> ToneGenerator.TONE_DTMF_4
+            "5" -> ToneGenerator.TONE_DTMF_5
+            "6" -> ToneGenerator.TONE_DTMF_6
+            "7" -> ToneGenerator.TONE_DTMF_7
+            "8" -> ToneGenerator.TONE_DTMF_8
+            "9" -> ToneGenerator.TONE_DTMF_9
+            "*" -> ToneGenerator.TONE_DTMF_S
+            "#" -> ToneGenerator.TONE_DTMF_P
+            else -> return
+        }
+        try {
+            if (dialToneGenerator == null)
+                dialToneGenerator = ToneGenerator(AudioManager.STREAM_DTMF, 35)
+            dialToneGenerator?.startTone(tone, 90)
+        } catch (_: RuntimeException) { /* Some devices restrict DTMF audio output. */ }
+    }
+
     private fun showHistory(parent: LinearLayout, epoch: Int) {
         parent.addView(section("تماس‌های اخیر", "سوابق تماس فقط روی این گوشی خوانده می‌شوند."))
         if (!isDefaultDialer()) {
