@@ -5,6 +5,10 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.widget.Toast
 import android.app.role.RoleManager
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.ContentUris
+import android.content.Context
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -25,6 +29,7 @@ import android.view.Gravity
 import android.view.View
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ListView
 import android.widget.ScrollView
 import android.widget.TextView
 import android.text.InputType
@@ -46,6 +51,8 @@ class MainActivity : Activity() {
     private var pendingNumber: String? = null
     private var historyFilter = 0
     private var favoriteOnly = false
+    private var contactsCache: List<TamasContact>? = null
+    private var contactsListEpoch = 0
     private var renderEpoch = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -150,18 +157,22 @@ class MainActivity : Activity() {
         heading.addView(text("مدیریت تماس • خانواده پیامیار", 12f, color = muted))
         header.addView(heading, LinearLayout.LayoutParams(0, -2, 1f))
         root.addView(header)
-        val scroll = ScrollView(this).apply {
-            isFillViewport = false
-            clipToPadding = false
-        }
-        val content = vbox().apply { setPadding(dp(16), dp(10), dp(16), dp(18)) }
-        scroll.addView(content)
-        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
-        when (tab) {
-            0 -> showHistory(content, epoch)
-            1 -> showDialPad(content)
-            2 -> showContacts(content, epoch)
-            else -> showMore(content)
+        val content = vbox().apply { setPadding(dp(16), dp(10), dp(16), dp(16)) }
+        if (tab == 2) {
+            root.addView(content, LinearLayout.LayoutParams(-1, 0, 1f))
+            showContacts(content, epoch)
+        } else {
+            val scroll = ScrollView(this).apply {
+                isFillViewport = false
+                clipToPadding = false
+            }
+            scroll.addView(content)
+            root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+            when (tab) {
+                0 -> showHistory(content, epoch)
+                1 -> showDialPad(content)
+                else -> showMore(content)
+            }
         }
         val nav = hbox().apply {
             setBackgroundColor(surface)
@@ -337,101 +348,177 @@ class MainActivity : Activity() {
         }.start()
     }
 
+    private fun isFavoriteContact(contact: TamasContact): Boolean =
+        contact.starred || contact.phones.any { prefs.isFavorite(it) }
+
     private fun showContacts(parent: LinearLayout, epoch: Int) {
-        parent.addView(section("مخاطبین", "دفترچه مخاطبین مشترک تماس‌یار و پیامیار"))
-        parent.addView(action("افزودن مخاطب جدید", true) {
+        parent.addView(section("همه مخاطبین گوشی",
+            "دفترچه مشترک اندروید و پیامیار؛ حتی مخاطبین بدون شماره"))
+        val actions = hbox()
+        actions.addView(action("＋ افزودن", true) {
             try {
                 startActivity(Intent(Intent.ACTION_INSERT).setType(
                     ContactsContract.Contacts.CONTENT_TYPE))
             } catch (_: Exception) {
-                Toast.makeText(this, "ویرایشگر مخاطبین در دسترس نیست.",
-                    Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "برنامه مخاطبین پیدا نشد.", Toast.LENGTH_LONG).show()
             }
+        }, LinearLayout.LayoutParams(0, dp(47), 1f).apply {
+            setMargins(dp(3), 0, dp(3), 0)
         })
-        addGap(parent)
+        actions.addView(action("↻ تازه‌سازی") {
+            contactsCache = null
+            showTab()
+        }, LinearLayout.LayoutParams(0, dp(47), 1f).apply {
+            setMargins(dp(3), 0, dp(3), 0)
+        })
+        parent.addView(actions)
+        addGap(parent, 10)
         if (!allowed(Manifest.permission.READ_CONTACTS, 211)) {
-            parent.addView(text("برای نمایش مخاطبین، مجوز مربوط به دفترچه تلفن را بدهید.", 13f))
+            parent.addView(text("برای نمایش همه مخاطبین سیم‌کارت، حساب‌ها و گوشی، دسترسی مخاطبین را تأیید کنید.", 13f))
             return
         }
         val search = EditText(this).apply {
             typeface = TamasStyle.font(this@MainActivity)
+            textSize = 16f * prefs.scale()
             setTextColor(ink)
             setHintTextColor(muted)
-            hint = "جست‌وجوی نام یا شماره"
+            hint = "جست‌وجوی سریع نام یا شماره…"
             setSingleLine(true)
             setText(filter)
-            setPadding(dp(12), dp(12), dp(12), dp(12))
+            setPadding(dp(15), dp(13), dp(15), dp(13))
             background = shape(surface)
         }
         parent.addView(search)
-        addGap(parent)
-        val tools = hbox()
-        tools.addView(action("جست‌وجو") {
-            filter = search.text.toString().trim()
-            showTab()
-        }, LinearLayout.LayoutParams(0, dp(49), 1f).apply {
-            setMargins(dp(3), 0, dp(3), 0)
-        })
-        tools.addView(action(if (favoriteOnly) "نمایش همه" else "فقط منتخب‌ها",
-            favoriteOnly) {
-            filter = search.text.toString().trim()
+        addGap(parent, 8)
+        val switches = hbox()
+        switches.addView(action(if (favoriteOnly) "★ منتخب‌ها" else "☆ فقط منتخب‌ها", favoriteOnly) {
             favoriteOnly = !favoriteOnly
+            filter = search.text.toString()
             showTab()
-        }, LinearLayout.LayoutParams(0, dp(49), 1f).apply {
-            setMargins(dp(3), 0, dp(3), 0)
+        }, LinearLayout.LayoutParams(0, dp(44), 1f).apply {
+            setMargins(dp(2), 0, dp(2), 0)
         })
-        parent.addView(tools)
-        addGap(parent, 13)
-        val rows = vbox()
-        rows.addView(text("در حال بارگذاری مخاطبین…", 13f, color = muted))
-        parent.addView(rows)
-        val query = filter
-        val onlyStars = favoriteOnly
-        val selected = if (onlyStars) prefs.favorites() else emptySet()
-        Thread {
-            val entries = mutableListOf<Triple<String, String, String>>()
-            var error: String? = null
-            try {
-                val selection = if (query.isBlank()) null else
-                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " LIKE ? OR " +
-                    ContactsContract.CommonDataKinds.Phone.NUMBER + " LIKE ?"
-                val args = if (query.isBlank()) null else arrayOf(
-                    "%" + query + "%", "%" + TamasPhone.ascii(query) + "%")
-                val cursor = contentResolver.query(
-                    ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                    arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
-                        ContactsContract.CommonDataKinds.Phone.NUMBER),
-                    selection, args, ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC")
-                if (cursor == null) error = "مخاطبین در دسترس نیستند."
-                else cursor.use { c ->
-                    val nameAt = c.getColumnIndexOrThrow(
-                        ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
-                    val numberAt = c.getColumnIndexOrThrow(
-                        ContactsContract.CommonDataKinds.Phone.NUMBER)
-                    while (c.moveToNext() && entries.size < 150) {
-                        val number = c.getString(numberAt).orEmpty()
-                        if (!onlyStars || TamasPhone.normalize(number) in selected) {
-                            entries.add(Triple(c.getString(nameAt).orEmpty(),
-                                "شماره: " + number, number))
-                        }
-                    }
-                }
-            } catch (_: SecurityException) {
-                error = "مجوز نمایش مخاطبین کافی نیست."
-            } catch (_: Exception) {
-                error = "خواندن مخاطبین با مشکل روبه‌رو شد."
+        switches.addView(action(
+            if (prefs.favoritesFirst) "★ منتخب‌ها ابتدا" else "الفبایی"
+        ) {
+            prefs.favoritesFirst = !prefs.favoritesFirst
+            filter = search.text.toString()
+            showTab()
+        }, LinearLayout.LayoutParams(0, dp(44), 1f).apply {
+            setMargins(dp(2), 0, dp(2), 0)
+        })
+        parent.addView(switches)
+        val status = text("در حال خواندن مخاطبین گوشی…", 12f, color = muted)
+        parent.addView(status)
+        val adapter = TamasContactAdapter(this,
+            onOpen = { openContactActions(it) },
+            isFavorite = { isFavoriteContact(it) })
+        val list = ListView(this).apply {
+            divider = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
+            dividerHeight = dp(5)
+            clipToPadding = false
+            setPadding(0, dp(5), 0, dp(8))
+            isFastScrollEnabled = true
+            this.adapter = adapter
+        }
+        parent.addView(list, LinearLayout.LayoutParams(-1, 0, 1f))
+        val applyFilter = {
+            val all = contactsCache.orEmpty()
+            val matches = TamasContactRepository.search(
+                all, search.text.toString(), favoriteOnly,
+                prefs.favorites(), prefs.favoritesFirst
+            )
+            adapter.submit(matches)
+            status.text = if (all.isEmpty()) "مخاطبی در گوشی یافت نشد."
+                else matches.size.toString() + " مخاطب از " + all.size + " مخاطب گوشی"
+        }
+        search.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                filter = s?.toString().orEmpty()
+                if (contactsCache != null) applyFilter()
             }
+            override fun afterTextChanged(s: Editable?) {}
+        })
+        if (contactsCache != null) applyFilter()
+        val loadToken = ++contactsListEpoch
+        Thread {
+            var found: List<TamasContact>? = null
+            var issue: String? = null
+            try { found = TamasContactRepository.load(applicationContext) }
+            catch (_: SecurityException) { issue = "دسترسی مخاطبین محدود شده است." }
+            catch (_: Exception) { issue = "خواندن مخاطبین با مشکل روبه‌رو شد؛ دوباره تلاش کنید." }
             runOnUiThread {
-                if (isFinishing || isDestroyed || renderEpoch != epoch || tab != 2)
+                if (isFinishing || isDestroyed || tab != 2 ||
+                    renderEpoch != epoch || contactsListEpoch != loadToken) return@runOnUiThread
+                if (issue != null) {
+                    if (contactsCache == null) status.text = issue
                     return@runOnUiThread
-                rows.removeAllViews()
-                if (error != null) rows.addView(text(error!!, 13f, color = muted))
-                else if (entries.isEmpty()) rows.addView(text("مخاطبی پیدا نشد.", 13f))
-                else entries.forEach { (name, description, number) ->
-                    contactRow(rows, name, description, number)
                 }
+                contactsCache = found.orEmpty()
+                applyFilter()
             }
         }.start()
+    }
+
+    private fun openContactActions(contact: TamasContact) {
+        if (contact.phones.isEmpty()) {
+            openSystemContact(contact)
+            return
+        }
+        val options = contact.phones.map { "☎  " + it }.toMutableList()
+        options.add("مشاهده و ویرایش مخاطب در دفترچه گوشی")
+        AlertDialog.Builder(this)
+            .setTitle(contact.name)
+            .setItems(options.toTypedArray()) { _, position ->
+                if (position == contact.phones.size) openSystemContact(contact)
+                else openNumberActions(contact.name, contact.phones[position])
+            }
+            .setNegativeButton("بستن", null)
+            .show()
+    }
+
+    private fun openSystemContact(contact: TamasContact) {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW,
+                ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, contact.id)))
+        } catch (_: Exception) {
+            Toast.makeText(this, "صفحه مخاطب در دسترس نیست.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun openNumberActions(name: String, number: String) {
+        val starred = prefs.isFavorite(number)
+        val labels = arrayOf(
+            "تماس با " + number,
+            "ارسال پیام با پیامیار",
+            "کپی شماره",
+            "اشتراک‌گذاری شماره",
+            if (starred) "حذف از منتخب‌های تماس‌یار" else "افزودن به منتخب‌های تماس‌یار"
+        )
+        AlertDialog.Builder(this).setTitle(name).setItems(labels) { _, position ->
+            when (position) {
+                0 -> callNumber(number)
+                1 -> openSms(number)
+                2 -> {
+                    val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText("phone", number))
+                    Toast.makeText(this, "شماره کپی شد.", Toast.LENGTH_SHORT).show()
+                }
+                3 -> try {
+                    startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, name + "\n" + number)
+                    }, "اشتراک‌گذاری شماره"))
+                } catch (_: Exception) {
+                    Toast.makeText(this, "اشتراک‌گذاری ممکن نیست.", Toast.LENGTH_SHORT).show()
+                }
+                4 -> {
+                    prefs.toggleFavorite(number)
+                    showTab()
+                }
+            }
+        }.setNegativeButton("بستن", null).show()
     }
 
     private fun contactRow(parent: LinearLayout, title: String, subtitle: String, number: String) {
