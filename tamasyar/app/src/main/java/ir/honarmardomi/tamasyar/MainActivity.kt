@@ -5,6 +5,9 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.widget.Toast
 import android.app.role.RoleManager
+import java.io.File
+import android.media.MediaMetadataRetriever
+import androidx.core.content.FileProvider
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ContentUris
@@ -53,6 +56,7 @@ class MainActivity : Activity() {
     private var tab = 1
     private var dialToneGenerator: ToneGenerator? = null
     private var settingsSection = 0
+    private var visibleRecordings = 25
     private var digits = ""
     private var filter = ""
     private var pendingNumber: String? = null
@@ -694,7 +698,7 @@ class MainActivity : Activity() {
         val categories = listOf(
             "☎ تماس‌ها", "☷ مخاطبین", "🔔 اعلان‌ها",
             "◐ ظاهر و خوانایی", "♙ حریم خصوصی", "↻ به‌روزرسانی",
-            "◈ پیامیار و درباره"
+            "◈ پیامیار و درباره", "● فایل‌های ضبط"
         )
         categories.indices.chunked(2).forEach { group ->
             val row = hbox()
@@ -721,6 +725,7 @@ class MainActivity : Activity() {
             3 -> "قالب ایرانی، نوشته‌های خوانا و صفحه کلید"
             4 -> "مجوزها، اطلاعات محلی و حفاظت از نمایش صفحه"
             5 -> "بررسی خودکار و نصب امن نسخه امضاشده"
+            7 -> "ضبط دستی با رضایت افراد، مدیریت فایل‌ها و حریم خصوصی"
             else -> "اتصال به خانواده برنامه‌های هنر مردمی"
         }))
         when (settingsSection) {
@@ -933,6 +938,47 @@ class MainActivity : Activity() {
                     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TamasUpdater.PAGE_URL)))
                 }
             }
+            7 -> {
+                settingCard(parent, "ضبط دستی هنگام تماس",
+                    "با مجوز میکروفون و تأیید شما آغاز می‌شود. Android ممکن است هنگام تماس فقط صدای خودتان را ثبت کند یا ضبط را مسدود کند. هیچ ضبط مخفی یا خودکاری انجام نمی‌شود.",
+                    "نحوه ضبط و مجوز میکروفون") {
+                    AlertDialog.Builder(this).setTitle("ضبط دستی")
+                        .setMessage("هنگام تماس فعال، صفحه تماس را باز کنید و «ضبط دستی میکروفون» را بزنید. " +
+                            "قبل از شروع باید رضایت طرف مکالمه را بگیرید. روی برخی دستگاه‌ها " +
+                            "صدای طرف مقابل ضبط نمی‌شود. برای توقف، کلید توقف یا اعلان را بزنید.")
+                        .setPositiveButton("متوجه شدم", null).show()
+                }
+                settingCard(parent, "وضعیت فعلی ضبط",
+                    if (TamasRecordings.active) "ضبط میکروفون فعال است؛ در اعلان اندروید نیز نمایش داده می‌شود."
+                    else "در حال حاضر ضبط فعالی وجود ندارد.",
+                    if (TamasRecordings.active) "توقف ضبط" else "نمایش فایل‌های ضبط") {
+                    if (TamasRecordings.active) TamasRecordings.stop(this)
+                    showTab()
+                }
+                val existing = TamasRecordings.list(this)
+                parent.addView(text(existing.size.toString() + " فایل ذخیره‌شده در حافظه خصوصی تماس‌یار",
+                    14f, true))
+                parent.addView(text("فایل‌ها فقط روی دستگاه ذخیره می‌شوند. با حذف برنامه، فایل‌های خصوصی برنامه نیز ممکن است پاک شوند؛ فایل‌های مهم را جداگانه اشتراک‌گذاری یا پشتیبان‌گیری کنید.",
+                    12f, color = muted))
+                addGap(parent, 10)
+                if (existing.isEmpty()) parent.addView(text("هنوز ضبطی ذخیره نشده است.", 13f))
+                else {
+                    for (file in existing.take(visibleRecordings)) {
+                        val date = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale("fa", "IR"))
+                            .format(Date(file.lastModified()))
+                        val size = (file.length() / 1024L).toString() + " کیلوبایت"
+                        settingCard(parent, file.name.removeSuffix(".m4a"),
+                            date + "  •  " + size,
+                            "پخش / اشتراک‌گذاری / حذف") { showRecordingActions(file) }
+                    }
+                    if (existing.size > visibleRecordings) {
+                        parent.addView(action("نمایش فایل‌های بیشتر", true) {
+                            visibleRecordings += 25
+                            showTab()
+                        })
+                    }
+                }
+            }
             else -> {
                 settingCard(parent, "باز کردن پیامیار",
                     "با لمس پیامک در تماس‌یار، گفت‌وگوی پیامیار یا برنامه پیامک پیش‌فرض باز می‌شود.",
@@ -946,13 +992,55 @@ class MainActivity : Activity() {
                     catch (_: Exception) { "?" }
                 settingCard(parent, "درباره نسخه",
                     "نسخه " + version + " • شناسه " + packageName +
-                        "\nقابلیت‌های ضبط مکالمه، تشخیص خودکار مزاحم و انسداد شماره‌ها هنوز در این نسخه فعال نیستند.",
+                        "\nضبط دستی میکروفون با محدودیت‌های Android موجود است؛ ضبط قطعی هر دو طرف و شناسایی مزاحم هنوز در دسترس نیستند.",
                     "بررسی مجوزها") {
                     startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                         Uri.parse("package:" + packageName)))
                 }
             }
         }
+    }
+
+    private fun showRecordingActions(file: File) {
+        val root = TamasRecordings.folder(this).canonicalFile
+        if (!file.exists() || file.parentFile?.canonicalFile != root ||
+            file.extension != "m4a") {
+            Toast.makeText(this, "فایل قابل دسترس نیست.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        AlertDialog.Builder(this).setTitle(file.name)
+            .setItems(arrayOf("پخش فایل", "اشتراک‌گذاری یا ذخیره نسخه پشتیبان", "حذف فایل")) { _, which ->
+                when (which) {
+                    0, 1 -> try {
+                        val uri = FileProvider.getUriForFile(this, packageName + ".updates", file)
+                        if (which == 0) {
+                            startActivity(Intent(Intent.ACTION_VIEW).apply {
+                                setDataAndType(uri, "audio/mp4")
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            })
+                        } else {
+                            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                                type = "audio/mp4"
+                                putExtra(Intent.EXTRA_STREAM, uri)
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }, "اشتراک‌گذاری ضبط"))
+                        }
+                    } catch (_: Exception) {
+                        Toast.makeText(this, "برنامه مناسب برای پخش یا اشتراک‌گذاری یافت نشد.",
+                            Toast.LENGTH_LONG).show()
+                    }
+                    2 -> AlertDialog.Builder(this)
+                        .setTitle("حذف دائمی فایل؟")
+                        .setMessage("این فایل از حافظه تماس‌یار حذف می‌شود و قابل بازیابی نیست.")
+                        .setNegativeButton("انصراف", null)
+                        .setPositiveButton("حذف") { _, _ ->
+                            if (file.delete()) {
+                                Toast.makeText(this, "فایل حذف شد.", Toast.LENGTH_SHORT).show()
+                                showTab()
+                            } else Toast.makeText(this, "حذف انجام نشد.", Toast.LENGTH_LONG).show()
+                        }.show()
+                }
+            }.setNegativeButton("بستن", null).show()
     }
 
     private fun openNotificationSettings() {
