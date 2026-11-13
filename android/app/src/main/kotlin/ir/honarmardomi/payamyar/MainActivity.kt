@@ -26,6 +26,19 @@ open class MainActivity : FlutterActivity() {
     companion object {
         /** Set while a PayamYar screen is in front; Notifier then shows the in-app glass banner instead. */
         @Volatile @JvmStatic var foregroundChannel: MethodChannel? = null
+
+        /**
+         * Per-install secret placed on PayamYar's own notification, shortcut and bubble intents.
+         * MainActivity is exported (sms:/smsto: links), so an "open_address" extra sent by any
+         * other app is ignored unless it carries this token.
+         */
+        @JvmStatic fun launchToken(c: android.content.Context): String {
+            val prefs = c.getSharedPreferences("payamyar_security", android.content.Context.MODE_PRIVATE)
+            prefs.getString("launch_token", null)?.let { return it }
+            val token = java.util.UUID.randomUUID().toString()
+            prefs.edit().putString("launch_token", token).commit()
+            return token
+        }
     }
     private var observing = false
     private var contactResult: MethodChannel.Result? = null
@@ -43,6 +56,7 @@ open class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "ir.honarmardomi.payamyar/sms")
         contacts = ContactsChannel(this, flutterEngine.dartExecutor.binaryMessenger)
+        VaultChannel(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
                 "pickContact" -> {
@@ -145,6 +159,21 @@ open class MainActivity : FlutterActivity() {
                     } catch (_: Exception) { result.success(false) }
                 }
                 "previewSentSound" -> { SentSound.play(this); result.success(null) }
+                "setSecureScreen" -> {
+                    // Blocks screenshots, screen recording and the recent-apps preview of private chats.
+                    if (call.argument<Boolean>("on") == true) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+                    else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+                    result.success(null)
+                }
+                "openUrl" -> {
+                    // Only fixed https pages of the SMS panel provider (charging credit, login).
+                    val url = call.argument<String>("url").orEmpty()
+                    val host = try { Uri.parse(url).host.orEmpty() } catch (_: Exception) { "" }
+                    if (url.startsWith("https://") && (host == "melipayamak.com" || host.endsWith(".melipayamak.com"))) {
+                        try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))); result.success(true) }
+                        catch (_: Exception) { result.success(false) }
+                    } else result.success(false)
+                }
                 "signingFingerprint" -> result.success(AppUpdater.installedSignerSha256(this))
                 "canInstallUpdate" -> result.success(AppUpdater.canInstall(this))
                 "installUpdate" -> {
@@ -190,6 +219,7 @@ open class MainActivity : FlutterActivity() {
                     val data = intent
                     val address = data.data?.schemeSpecificPart?.substringBefore('?').orEmpty()
                     val open = data.getStringExtra("open_address")
+                        ?.takeIf { data.getStringExtra("open_token") == launchToken(this) }
                     result.success(if (open != null) mapOf("open" to open)
                         else if (data.action == Intent.ACTION_SENDTO) mapOf("to" to address,
                         "body" to (data.getStringExtra("sms_body") ?: "")) else null)

@@ -295,6 +295,40 @@ class ContactStore extends ChangeNotifier {
     await load();
   }
 
+  /// Stars or un-stars many contacts at once; returns how many changed.
+  Future<int> setStar(List<PhoneContact> list, bool value) async {
+    if (!await ensureWrite()) return 0;
+    var n = 0;
+    for (final c in list.where((c) => c.starred != value)) {
+      if (await ContactsBridge.star(c.id, value)) n++;
+    }
+    await load();
+    return n;
+  }
+
+  /// Merges every duplicate cluster. [progress] gets (done, total). Returns clusters merged.
+  Future<int> mergeAll({void Function(int done, int total)? progress}) async {
+    if (!await ensureWrite()) return 0;
+    final clusters = List.of(duplicates);
+    var merged = 0;
+    for (var i = 0; i < clusters.length; i++) {
+      final group = clusters[i];
+      final union = <String>{for (final c in group) ...?members[c.key]};
+      try {
+        if (await ContactsBridge.join([for (final c in group) c.id])) {
+          merged++;
+          if (union.isNotEmpty) members[group.first.key] = union;
+        }
+      } catch (_) {
+        // Skip a cluster the phone book refused; continue with the rest.
+      }
+      progress?.call(i + 1, clusters.length);
+    }
+    await _saveGroups();
+    await load();
+    return merged;
+  }
+
   Future<int> remove(List<PhoneContact> list) async {
     if (!await ensureWrite()) return 0;
     final n = await ContactsBridge.delete([for (final c in list) c.id]);

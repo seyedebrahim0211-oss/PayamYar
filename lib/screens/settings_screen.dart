@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../app_channel.dart';
+import '../security/app_lock.dart';
+import '../sms_panel/admin_panel_screen.dart';
 import '../app_settings.dart';
 import '../app_store.dart';
 import '../brand_mark.dart';
@@ -63,10 +67,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   void _open(Widget page) => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
 
+  bool admin = false;
+  int _taps = 0;
+  DateTime _lastTap = DateTime(0);
+
+  @override
+  void initState() {
+    super.initState();
+    AdminAccess.enabled().then((v) {
+      if (mounted) setState(() => admin = v);
+    });
+  }
+
+  Future<void> _openAdmin() async {
+    await AdminAccess.open(context, onNotice: store.onNotice);
+    final v = await AdminAccess.enabled();
+    if (mounted) setState(() => admin = v);
+  }
+
+  void _secretTap() {
+    final now = DateTime.now();
+    _taps = now.difference(_lastTap).inMilliseconds < 700 ? _taps + 1 : 1;
+    _lastTap = now;
+    if (_taps >= 7) {
+      _taps = 0;
+      _openAdmin();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([store, settings]),
+      listenable: Listenable.merge([store, settings, AppLock.instance]),
       builder: (context, _) {
         final scheme = Theme.of(context).colorScheme;
         final delay = settings.sendDelayEnabled ? '${Jalali.digits(settings.sendDelaySeconds)} ثانیه فرصت لغو' : 'ارسال فوری';
@@ -74,7 +106,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return Scaffold(
           appBar: AppBar(title: const Text('تنظیمات')),
           body: ListView(padding: const EdgeInsets.fromLTRB(16, 4, 16, 28), children: [
-            _HeaderCard(packageInfo: packageInfo, store: store, checking: checking, onCheck: _checkUpdate),
+            _HeaderCard(packageInfo: packageInfo, store: store, checking: checking, onCheck: _checkUpdate,
+              onSecretTap: _secretTap),
             const SizedBox(height: 14),
             Row(children: [
               _QuickAction(
@@ -120,7 +153,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
               SettingsTile(icon: Icons.shield_outlined, color: const Color(0xFF305F91),
                 title: 'حریم خصوصی و امنیت', subtitle: 'مخفی‌سازی متن، مسدودها و دسترسی‌ها',
                 onTap: () => _open(PrivacySettingsPage(store: store, settings: settings))),
+              SettingsTile(icon: Icons.lock_outline_rounded, color: const Color(0xFF3F3A88),
+                title: 'قفل برنامه', subtitle: AppLock.instance.enabled ? 'فعال • رمز هنگام ورود' : 'رمز ورود و جلوگیری از عکس صفحه',
+                onTap: () => _open(AppLockSettingsPage(lock: AppLock.instance, onNotice: store.onNotice))),
             ]),
+            if (admin) ...[
+              const SizedBox(height: 12),
+              SettingsGroup(children: [
+                SettingsTile(icon: Icons.admin_panel_settings_rounded, color: const Color(0xFF305F91),
+                  title: 'پنل ملی پیامک (مدیر)', subtitle: 'اعتبار، شارژ، ارسال و پیام‌های دریافتی خط ۹۰۰۰۸۳۲۵',
+                  onTap: _openAdmin),
+              ]),
+            ],
             const SizedBox(height: 12),
             SettingsGroup(children: [
               SettingsTile(icon: Icons.cake_outlined, color: const Color(0xFFB4537A),
@@ -208,7 +252,9 @@ class _HeaderCard extends StatelessWidget {
   final AppStore store;
   final bool checking;
   final VoidCallback onCheck;
-  const _HeaderCard({required this.packageInfo, required this.store, required this.checking, required this.onCheck});
+  final VoidCallback onSecretTap;
+  const _HeaderCard({required this.packageInfo, required this.store, required this.checking, required this.onCheck,
+    required this.onSecretTap});
   @override
   Widget build(BuildContext context) {
     final busy = checking || store.updateProgress != null;
@@ -222,11 +268,23 @@ class _HeaderCard extends StatelessWidget {
         const PayamYarLogotype(height: 48, tagline: true, color: Colors.white),
         const SizedBox(height: 14),
         Row(children: [
-          Expanded(child: FutureBuilder<PackageInfo>(
-            future: packageInfo,
-            builder: (context, snap) => Text(
-              snap.hasData ? 'نسخه ${Jalali.digits(snap.data!.version)} • اندروید' : 'در حال خواندن نسخه…',
-              style: const TextStyle(color: Color(0xFFD8E9E6), fontSize: 12.5)))),
+          Expanded(child: GestureDetector(
+            // Hidden admin entry: seven quick taps on the version text.
+            behavior: HitTestBehavior.opaque,
+            onTap: onSecretTap,
+            child: FutureBuilder<PackageInfo>(
+              future: packageInfo,
+              builder: (context, snap) => Text(
+                snap.hasData ? 'نسخه ${Jalali.digits(snap.data!.version)} • ${AppChannel.isSite ? 'اندروید' : AppChannel.storeName}' : 'در حال خواندن نسخه…',
+                style: const TextStyle(color: Color(0xFFD8E9E6), fontSize: 12.5))))),
+          if (!AppChannel.inAppUpdates)
+            FilledButton.icon(
+              style: FilledButton.styleFrom(minimumSize: const Size(0, 40),
+                backgroundColor: const Color(0xFFFFD27A), foregroundColor: const Color(0xFF3A2A05)),
+              onPressed: () => launchUrl(Uri.parse(AppChannel.storeUrl), mode: LaunchMode.externalApplication),
+              icon: const Icon(Icons.storefront_rounded, size: 18),
+              label: Text('به‌روزرسانی در ${AppChannel.storeName}'))
+          else
           FilledButton.icon(
             style: FilledButton.styleFrom(minimumSize: const Size(0, 40),
               backgroundColor: const Color(0xFFFFD27A), foregroundColor: const Color(0xFF3A2A05)),
@@ -597,7 +655,8 @@ class PrivacySettingsPage extends StatelessWidget {
               onTap: SmsBridge.manageBlocked),
           ]),
         const Padding(padding: EdgeInsets.all(12), child: Text(
-          'پیامیار متن پیامک‌ها و مخاطبان شما را به هیچ سروری ارسال نمی‌کند. تنها ارتباط اینترنتی برنامه، بررسی نسخه جدید از honarmardomi.ir است.',
+          'پیامیار متن پیامک‌ها و مخاطبان شما را به هیچ سروری ارسال نمی‌کند. تنها ارتباط اینترنتی برنامه، بررسی نسخه جدید از honarmardomi.ir '
+          '(فقط نسخه سایت) و در صورت فعال‌سازی پنل مدیر، اتصال مستقیم به وب‌سرویس ملی پیامک است.',
           style: TextStyle(fontSize: 12.5, height: 1.8))),
       ];
     },

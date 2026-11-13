@@ -7,6 +7,7 @@ import 'sms_bridge.dart';
 import 'screens/glass_banner.dart';
 import 'screens/home_screen.dart';
 import 'screens/onboarding_screen.dart';
+import 'security/app_lock.dart';
 
 export 'app_settings.dart';
 
@@ -56,6 +57,7 @@ class _PayamYarState extends State<PayamYar> {
         ));
     store.settings = settings;
     settings.load();
+    AppLock.instance.load();
     store.init();
   }
 
@@ -166,7 +168,10 @@ class _PayamYarState extends State<PayamYar> {
           textDirection: TextDirection.rtl,
           child: MediaQuery(
             data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(settings.scale)),
-            child: BannerHost(store: store, settings: settings, child: child!),
+            child: LockGate(
+              lock: AppLock.instance,
+              child: BannerHost(store: store, settings: settings, child: child!),
+            ),
           ),
         ),
         home: RootGate(store: store, settings: settings),

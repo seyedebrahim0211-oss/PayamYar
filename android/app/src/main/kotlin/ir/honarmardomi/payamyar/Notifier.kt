@@ -195,7 +195,15 @@ object Notifier {
                 if (cursor.moveToFirst()) {
                     val photo = cursor.getString(0)
                     if (!photo.isNullOrBlank()) {
-                        return c.contentResolver.openInputStream(Uri.parse(photo))?.use { BitmapFactory.decodeStream(it) }
+                        // Bounded read + sampled decode: a huge contact photo must not crash the receiver.
+                        val bytes = c.contentResolver.openInputStream(Uri.parse(photo))?.use {
+                            Xlsx.readLimited(it, 6L * 1024 * 1024) } ?: return null
+                        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                        var sample = 1
+                        while (bounds.outWidth / (sample * 2) >= 192 && bounds.outHeight / (sample * 2) >= 192) sample *= 2
+                        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size,
+                            BitmapFactory.Options().apply { inSampleSize = sample })
                     }
                 }
             }
@@ -281,7 +289,7 @@ object Notifier {
             .setIcon(icon)
             .setLocusId(LocusIdCompat(id))
             .setIntent(Intent(c, MainActivity::class.java).setAction(Intent.ACTION_VIEW)
-                .putExtra("open_address", address))
+                .putExtra("open_address", address).putExtra("open_token", MainActivity.launchToken(c)))
             .build()
         ShortcutManagerCompat.pushDynamicShortcut(c, shortcut)
         id
@@ -291,7 +299,7 @@ object Notifier {
         if (Build.VERSION.SDK_INT < 30 || !enabled(c, "notifyBubbles")) return null
         val target = Intent(c, BubbleActivity::class.java).setAction(Intent.ACTION_VIEW)
             .setData(Uri.parse("payamyar:bubble/" + Uri.encode(address)))
-            .putExtra("open_address", address)
+            .putExtra("open_address", address).putExtra("open_token", MainActivity.launchToken(c))
         val pending = PendingIntent.getActivity(c, 1, target,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE)
         return NotificationCompat.BubbleMetadata.Builder(pending, icon)
@@ -340,7 +348,7 @@ object Notifier {
 
         val open = PendingIntent.getActivity(c, 0,
             Intent(c, MainActivity::class.java).setAction("ir.honarmardomi.payamyar.OPEN_CONVERSATION")
-                .setData(Uri.parse("payamyar:open/" + Uri.encode(address))).putExtra("open_address", address)
+                .setData(Uri.parse("payamyar:open/" + Uri.encode(address))).putExtra("open_address", address).putExtra("open_token", MainActivity.launchToken(c))
                 .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'app_channel.dart';
 import 'conversation_logic.dart';
 import 'finance_logic.dart';
 import 'message_logic.dart';
@@ -226,6 +227,8 @@ class AppStore extends ChangeNotifier {
   /// Reads the release info published on honarmardomi.ir; quiet unless a newer version exists.
   Future<bool> checkForUpdate({bool manual = false}) async {
     updateCheckFailed = false;
+    // Bazaar/Myket editions are updated only by their store (store policy).
+    if (!AppChannel.inAppUpdates) return false;
     try {
       final info = await UpdateService.check();
       final previousVersion = update?.version;

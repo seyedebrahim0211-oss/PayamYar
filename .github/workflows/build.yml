@@ -167,6 +167,40 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           echo "Android release APK signed by the pinned permanent certificate."
 
+      - name: Build Cafe Bazaar and Myket editions (store updates only, no self-install)
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          PAYAMYAR_KEYSTORE_PASSWORD: ${{ secrets.PAYAMYAR_KEYSTORE_PASSWORD }}
+          PAYAMYAR_KEY_ALIAS: ${{ secrets.PAYAMYAR_KEY_ALIAS }}
+          PAYAMYAR_KEY_PASSWORD: ${{ secrets.PAYAMYAR_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          want_name="$(sed -n 's/^version: *\([0-9][0-9.]*\)+\([0-9]*\).*/\1/p' pubspec.yaml)"
+          manifest=android/app/src/main/AndroidManifest.xml
+          cp "$manifest" "$RUNNER_TEMP/AndroidManifest.site.xml"
+          # Stores forbid apps that download/install APKs: drop the permission; the Dart side
+          # (PAYAMYAR_STORE) hides the updater and points to the store page instead.
+          sed -i '/android.permission.REQUEST_INSTALL_PACKAGES/d' "$manifest"
+          if grep -q REQUEST_INSTALL_PACKAGES "$manifest"; then echo "::error::Could not remove install permission"; exit 1; fi
+          aapt="$(find "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/opt/android-sdk}}/build-tools" -maxdepth 2 -type f -name aapt2 | sort -V | tail -n 1)"
+          signer="$(find "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/opt/android-sdk}}/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)"
+          expected="$(tr -d '\r\n' < .github/payamyar-release-cert.sha256)"
+          for store in bazaar myket; do
+            flutter build apk --release --dart-define=PAYAMYAR_STORE=$store
+            label="$( [ "$store" = bazaar ] && echo Bazaar || echo Myket )"
+            out="dist/PayamYar-$label-$want_name.apk"
+            cp build/app/outputs/flutter-apk/app-release.apk "$out"
+            if "$aapt" dump permissions "$out" | grep -q REQUEST_INSTALL_PACKAGES; then
+              echo "::error::$label APK still requests REQUEST_INSTALL_PACKAGES"; exit 1
+            fi
+            actual="$("$signer" verify --verbose --print-certs "$out" | awk -F': ' '/[Ss]igner.*certificate SHA-256 digest/{print toupper($NF); exit}' | tr -d ': \r\n')"
+            [ "$actual" = "$expected" ] || { echo "::error::$label APK signed with wrong certificate"; exit 1; }
+            sha256sum "$out" | awk '{print $1"  '"$(basename "$out")"'"}' >> dist/PayamYar-stores.sha256
+            echo "- $label: \`$(basename "$out")\` ($(stat -c %s "$out") bytes)" >> "$GITHUB_STEP_SUMMARY"
+          done
+          cp "$RUNNER_TEMP/AndroidManifest.site.xml" "$manifest"
+
       - name: Remove temporary private signing material
         if: always() && github.event_name != 'pull_request'
         shell: bash
@@ -180,6 +214,7 @@ jobs:
             dist/PayamYar-release.apk
             dist/PayamYar-*.apk
             dist/PayamYar-release.apk.sha256
+            dist/PayamYar-stores.sha256
           if-no-files-found: error
       # Publishing is exclusively managed in the WordPress dashboard:
       # https://honarmardomi.ir/wp-admin/admin.php?page=payamyar-releases
@@ -217,6 +252,9 @@ jobs:
           files: |
             release-apk/PayamYar-${{ steps.version.outputs.number }}.apk
             release-apk/PayamYar-release.apk.sha256
+            release-apk/PayamYar-Bazaar-${{ steps.version.outputs.number }}.apk
+            release-apk/PayamYar-Myket-${{ steps.version.outputs.number }}.apk
+            release-apk/PayamYar-stores.sha256
           fail_on_unmatched_files: true
 
   site_publish:
