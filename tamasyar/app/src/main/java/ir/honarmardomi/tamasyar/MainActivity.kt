@@ -17,6 +17,10 @@ import android.os.Bundle
 import android.provider.CallLog
 import android.provider.ContactsContract
 import android.telecom.TelecomManager
+import android.telecom.PhoneAccountHandle
+import android.content.ContentValues
+import android.text.TextWatcher
+import android.text.Editable
 import android.view.Gravity
 import android.view.View
 import android.widget.EditText
@@ -40,6 +44,8 @@ class MainActivity : Activity() {
     private var digits = ""
     private var filter = ""
     private var pendingNumber: String? = null
+    private var historyFilter = 0
+    private var favoriteOnly = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -183,6 +189,13 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
             setText(digits)
             setSelection(text.length)
+            addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    digits = TamasPhone.dial(s?.toString().orEmpty())
+                }
+                override fun afterTextChanged(s: Editable?) {}
+            })
             hint = "۰۹۱۲ ۰۰۰ ۰۰۰۰"
             background = shape(surface)
             setPadding(dp(15), dp(18), dp(15), dp(18))
@@ -223,9 +236,17 @@ class MainActivity : Activity() {
         parent.addView(buttons)
         addGap(parent)
         parent.addView(action("ارسال پیامک در پیامیار") {
-            digits = entry.text.toString().trim()
+            digits = TamasPhone.dial(entry.text.toString())
             openSms(digits)
         })
+        addGap(parent, 15)
+        if (checkSelfPermission(Manifest.permission.READ_CONTACTS) ==
+            PackageManager.PERMISSION_GRANTED && prefs.favorites().isNotEmpty()) {
+            parent.addView(section("شماره‌های منتخب", "شماره‌های پرتکرار را از مخاطبین ستاره‌دار کن."))
+            for (number in prefs.favorites().sorted().take(6)) {
+                contactRow(parent, number, "منتخب", number)
+            }
+        }
     }
 
     private fun showHistory(parent: LinearLayout) {
@@ -240,11 +261,29 @@ class MainActivity : Activity() {
             parent.addView(text("برای مشاهده تاریخچه تماس، مجوز سوابق تماس را تأیید کنید.", 13f))
             return
         }
+        val filters = listOf("همه", "بی‌پاسخ", "ورودی", "خروجی")
+        val types = listOf(0, CallLog.Calls.MISSED_TYPE,
+            CallLog.Calls.INCOMING_TYPE, CallLog.Calls.OUTGOING_TYPE)
+        val buttons = hbox()
+        filters.forEachIndexed { index, label ->
+            val control = action(label, historyFilter == index) {
+                historyFilter = index
+                showTab()
+            }
+            control.textSize = 12f * prefs.scale()
+            buttons.addView(control, LinearLayout.LayoutParams(0, dp(46), 1f).apply {
+                setMargins(dp(2), 0, dp(2), 0)
+            })
+        }
+        parent.addView(buttons)
+        addGap(parent, 10)
+        val selection = if (historyFilter == 0) null else CallLog.Calls.TYPE + "=?"
+        val args = if (historyFilter == 0) null else arrayOf(types[historyFilter].toString())
         val cursor = try {
             contentResolver.query(CallLog.Calls.CONTENT_URI,
                 arrayOf(CallLog.Calls.NUMBER, CallLog.Calls.TYPE, CallLog.Calls.DATE,
                     CallLog.Calls.DURATION),
-                null, null, CallLog.Calls.DATE + " DESC")
+                selection, args, CallLog.Calls.DATE + " DESC")
         } catch (_: SecurityException) { null }
         if (cursor == null) {
             parent.addView(text("تاریخچه تماس در دسترس نیست.", 14f))
@@ -278,6 +317,14 @@ class MainActivity : Activity() {
 
     private fun showContacts(parent: LinearLayout) {
         parent.addView(section("مخاطبین", "مخاطبین مشترک تلفن و پیامیار، بدون انتقال به سرور."))
+        parent.addView(action("افزودن مخاطب جدید", true) {
+            try {
+                startActivity(Intent(Intent.ACTION_INSERT).setType(ContactsContract.Contacts.CONTENT_TYPE))
+            } catch (_: Exception) {
+                Toast.makeText(this, "ویرایشگر مخاطبین در دسترس نیست.", Toast.LENGTH_LONG).show()
+            }
+        })
+        addGap(parent)
         if (!allowed(Manifest.permission.READ_CONTACTS, 211)) {
             parent.addView(text("برای نمایش مخاطبین مجوز دسترسی را تأیید کنید.", 13f))
             return
@@ -294,10 +341,24 @@ class MainActivity : Activity() {
         }
         parent.addView(search)
         addGap(parent)
-        parent.addView(action("جست‌وجو") {
+        val tools = hbox()
+        val buttonSearch = action("جست‌وجو") {
             filter = search.text.toString().trim()
             showTab()
+        }
+        val buttonFavorites = action(if (favoriteOnly) "نمایش همه" else "فقط منتخب‌ها",
+            favoriteOnly) {
+            favoriteOnly = !favoriteOnly
+            filter = search.text.toString().trim()
+            showTab()
+        }
+        tools.addView(buttonSearch, LinearLayout.LayoutParams(0, dp(49), 1f).apply {
+            setMargins(dp(3), 0, dp(3), 0)
         })
+        tools.addView(buttonFavorites, LinearLayout.LayoutParams(0, dp(49), 1f).apply {
+            setMargins(dp(3), 0, dp(3), 0)
+        })
+        parent.addView(tools)
         addGap(parent, 10)
         val selection = if (filter.isBlank()) null else
             ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " LIKE ? OR " +
@@ -318,9 +379,12 @@ class MainActivity : Activity() {
             val numberCol = c.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER)
             var count = 0
             while (c.moveToNext() && count < 150) {
-                contactRow(parent, c.getString(nameCol).orEmpty(), "شماره: " +
-                    c.getString(numberCol).orEmpty(), c.getString(numberCol).orEmpty())
-                count++
+                val number = c.getString(numberCol).orEmpty()
+                if (!favoriteOnly || prefs.isFavorite(number)) {
+                    contactRow(parent, c.getString(nameCol).orEmpty(),
+                        "شماره: " + number, number)
+                    count++
+                }
             }
             if (count == 0) parent.addView(text("مخاطبی پیدا نشد.", 13f))
         }
@@ -331,9 +395,28 @@ class MainActivity : Activity() {
             background = shape(surface)
             setPadding(dp(10), dp(10), dp(10), dp(10))
         }
-        card.addView(text(title, 16f, true))
-        card.addView(text(subtitle, 12f, color = muted))
+        val heading = hbox().apply { gravity = Gravity.CENTER_VERTICAL }
+        val initials = text(TamasPhone.initials(title), 17f, true, TamasStyle.teal).apply {
+            gravity = Gravity.CENTER
+            background = shape(if (prefs.dark) Color.rgb(35, 76, 74) else TamasStyle.mist)
+        }
+        heading.addView(initials, LinearLayout.LayoutParams(dp(46), dp(46)))
+        val identity = vbox().apply { setPadding(dp(7), 0, dp(7), 0) }
+        identity.addView(text(title, 16f, true))
+        identity.addView(text(subtitle, 12f, color = muted))
+        heading.addView(identity, LinearLayout.LayoutParams(0, -2, 1f))
         if (number.isNotBlank()) {
+            heading.addView(action(if (prefs.isFavorite(number)) "★" else "☆") {
+                val added = prefs.toggleFavorite(number)
+                Toast.makeText(this,
+                    if (added) "به منتخب‌ها افزوده شد." else "از منتخب‌ها حذف شد.",
+                    Toast.LENGTH_SHORT).show()
+                showTab()
+            }, LinearLayout.LayoutParams(dp(49), dp(49)))
+        }
+        card.addView(heading)
+        if (number.isNotBlank()) {
+            addGap(card, 6)
             val buttons = hbox()
             buttons.addView(action("تماس") { callNumber(number) },
                 LinearLayout.LayoutParams(0, dp(42), 1f).apply { setMargins(dp(3), 0, dp(3), 0) })
