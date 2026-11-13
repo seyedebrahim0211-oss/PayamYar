@@ -31,6 +31,8 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ListView
 import android.view.HapticFeedbackConstants
+import android.view.WindowManager
+import android.provider.Settings
 import android.media.AudioManager
 import android.media.ToneGenerator
 import android.widget.ScrollView
@@ -154,6 +156,11 @@ class MainActivity : Activity() {
         window.navigationBarColor = paper
         window.decorView.systemUiVisibility =
             if (prefs.dark) 0 else View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+        if (prefs.screenshotProtection) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
         val root = vbox().apply { setBackgroundColor(paper) }
         val header = hbox().apply {
             setPadding(dp(19), dp(17), dp(19), dp(12))
@@ -633,98 +640,284 @@ class MainActivity : Activity() {
     }
 
     private fun showMore(parent: LinearLayout) {
-        parent.addView(section("تنظیمات", "دسترسی آسان، شخصی‌سازی و به‌روزرسانی تماس‌یار"))
-        settingCard(parent, "برنامه تلفن پیش‌فرض",
-            if (isDefaultDialer()) "تماس‌یار شماره‌گیر پیش‌فرض گوشی است."
-            else "برای نمایش سوابق و مدیریت تماس‌ها، اجازه نقش تلفن را به تماس‌یار بدهید.",
-            if (isDefaultDialer()) "فعال است ✓" else "فعال کردن تماس‌یار") {
-            if (!isDefaultDialer()) requestDialerRole() else
-                Toast.makeText(this, "تماس‌یار فعال است.", Toast.LENGTH_SHORT).show()
+        parent.addView(section("تنظیمات تماس‌یار",
+            "مدیریت حرفه‌ای تلفن با گزینه‌های روشن، دسته‌بندی‌شده و بدون پیچیدگی"))
+        val categories = listOf(
+            "☎ تماس‌ها", "☷ مخاطبین", "🔔 اعلان‌ها",
+            "◐ ظاهر و خوانایی", "♙ حریم خصوصی", "↻ به‌روزرسانی",
+            "◈ پیامیار و درباره"
+        )
+        categories.indices.chunked(2).forEach { group ->
+            val row = hbox()
+            group.forEach { index ->
+                val item = action(categories[index], settingsSection == index) {
+                    settingsSection = index
+                    showTab()
+                }
+                item.textSize = 13f * prefs.scale()
+                row.addView(item, LinearLayout.LayoutParams(0, dp(53), 1f).apply {
+                    setMargins(dp(3), dp(3), dp(3), dp(3))
+                })
+            }
+            if (group.size == 1) row.addView(View(this),
+                LinearLayout.LayoutParams(0, dp(53), 1f))
+            parent.addView(row)
         }
-        settingCard(parent, "دسترسی‌ها و حریم خصوصی",
-            "مخاطبین، سابقه تماس و اعلان‌ها فقط با مجوز سیستم خوانده می‌شوند.",
-            "مدیریت مجوزها") {
-            val i = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                Uri.parse("package:" + packageName))
-            startActivity(i)
-        }
-        if (Build.VERSION.SDK_INT >= 33) {
-            settingCard(parent, "اجازه اعلان‌ها",
-                if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
-                    PackageManager.PERMISSION_GRANTED) "اعلان‌های تماس و به‌روزرسانی مجاز هستند."
-                else "برای دریافت هشدار نسخه جدید، نمایش اعلان‌ها را فعال کنید.",
-                "مدیریت اعلان‌ها") {
-                if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
-                    PackageManager.PERMISSION_GRANTED &&
-                    requestedPermissions.add(Manifest.permission.POST_NOTIFICATIONS)) {
-                    requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 213)
-                } else {
-                    startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+        addGap(parent, 15)
+        val categoryTitle = categories[settingsSection.coerceIn(0, categories.lastIndex)]
+        parent.addView(section(categoryTitle, when (settingsSection) {
+            0 -> "رفتار تماس‌ها، سیم‌کارت و صفحه شماره‌گیر"
+            1 -> "دفترچه گوشی؛ هماهنگ با پیامیار و بدون انتقال اطلاعات"
+            2 -> "هشدارهای تماس، تماس ازدست‌رفته و نسخه جدید"
+            3 -> "قالب ایرانی، نوشته‌های خوانا و صفحه کلید"
+            4 -> "مجوزها، اطلاعات محلی و حفاظت از نمایش صفحه"
+            5 -> "بررسی خودکار و نصب امن نسخه امضاشده"
+            else -> "اتصال به خانواده برنامه‌های هنر مردمی"
+        }))
+        when (settingsSection) {
+            0 -> {
+                settingCard(parent, "شماره‌گیر پیش‌فرض",
+                    if (isDefaultDialer()) "تماس‌یار اکنون برنامه تلفن پیش‌فرض اندروید است."
+                    else "برای مدیریت واقعی تماس ورودی و خروجی، نقش تلفن باید با تأیید شما فعال شود.",
+                    if (isDefaultDialer()) "فعال است ✓" else "انتخاب تماس‌یار") {
+                    if (!isDefaultDialer()) requestDialerRole()
+                }
+                settingCard(parent, "انتخاب سیم‌کارت برای تماس",
+                    if (prefs.chooseSim) "فعال؛ در صورت وجود چند سیم‌کارت و داشتن مجوز، حساب تماس را انتخاب می‌کنید."
+                    else "اندروید از سیم‌کارت پیش‌فرض استفاده می‌کند.",
+                    if (prefs.chooseSim) "خاموش کردن انتخاب" else "روشن کردن انتخاب") {
+                    prefs.chooseSim = !prefs.chooseSim
+                    showTab()
+                }
+                settingCard(parent, "دسترسی به حساب‌های سیم‌کارت",
+                    if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) ==
+                        PackageManager.PERMISSION_GRANTED) "مجوز وضعیت تلفن فعال است."
+                    else "برای فهرست سیم‌کارت‌ها، اندروید ممکن است مجوز وضعیت تلفن بخواهد.",
+                    "بررسی مجوز سیم‌کارت") {
+                    if (!allowed(Manifest.permission.READ_PHONE_STATE, 214))
+                        Toast.makeText(this, "مجوز را از پنجره اندروید تأیید کنید.", Toast.LENGTH_SHORT).show()
+                    else Toast.makeText(this, "مجوز فعال است.", Toast.LENGTH_SHORT).show()
+                }
+                settingCard(parent, "تأیید قبل از شماره‌گیری",
+                    if (prefs.confirmOutgoing) "برای جلوگیری از تماس اشتباهی، قبل از تماس تأیید می‌خواهیم."
+                    else "شماره پس از لمس تماس، بدون تأیید اضافه شماره‌گیری می‌شود.",
+                    if (prefs.confirmOutgoing) "خاموش کردن تأیید" else "روشن کردن تأیید") {
+                    prefs.confirmOutgoing = !prefs.confirmOutgoing
+                    showTab()
+                }
+                settingCard(parent, "لرزش کلیدهای شماره‌گیر",
+                    if (prefs.dialHaptics) "بازخورد لمسی فعال است." else "بازخورد لمسی غیرفعال است.",
+                    if (prefs.dialHaptics) "خاموش کردن لرزش" else "روشن کردن لرزش") {
+                    prefs.dialHaptics = !prefs.dialHaptics
+                    showTab()
+                }
+                settingCard(parent, "صدای شماره‌گیری",
+                    if (prefs.dialTones) "آوای کوتاه DTMF کلیدها فعال است."
+                    else "صدا غیرفعال است؛ شماره‌گیری بی‌صدا انجام می‌شود.",
+                    if (prefs.dialTones) "خاموش کردن صدا" else "روشن کردن صدا") {
+                    prefs.dialTones = !prefs.dialTones
+                    showTab()
+                }
+                val startTabs = listOf("تماس‌ها", "شماره‌گیر", "مخاطبین")
+                settingCard(parent, "صفحه نخست برنامه",
+                    "پس از اجرای تماس‌یار: " + startTabs[prefs.startTab],
+                    "تغییر صفحه نخست") {
+                    prefs.startTab = (prefs.startTab + 1) % startTabs.size
+                    showTab()
+                }
+            }
+            1 -> {
+                settingCard(parent, "همه مخاطبین گوشی",
+                    "نمایش مخاطبین ذخیره‌شده در حساب‌های موجود در Android Contacts؛ حتی افراد بدون شماره.",
+                    "نمایش و تازه‌سازی مخاطبین") {
+                    tab = 2
+                    contactsCache = null
+                    showTab()
+                }
+                settingCard(parent, "دسترسی به مخاطبین",
+                    if (checkSelfPermission(Manifest.permission.READ_CONTACTS) ==
+                        PackageManager.PERMISSION_GRANTED) "مجوز دفترچه مخاطبین فعال است."
+                    else "برای نمایش و جست‌وجوی همه مخاطبین باید مجوز اندروید را فعال کنید.",
+                    "بررسی دسترسی") {
+                    if (checkSelfPermission(Manifest.permission.READ_CONTACTS) !=
+                        PackageManager.PERMISSION_GRANTED) {
+                        startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            Uri.parse("package:" + packageName)))
+                    } else Toast.makeText(this, "دسترسی فعال است.", Toast.LENGTH_SHORT).show()
+                }
+                settingCard(parent, "مرتب‌سازی هوشمند منتخب‌ها",
+                    if (prefs.favoritesFirst) "مخاطبین موردعلاقه ابتدا و سپس بقیه به‌ترتیب نام نمایش داده می‌شوند."
+                    else "همه مخاطبین به ترتیب حروف نام نمایش داده می‌شوند.",
+                    if (prefs.favoritesFirst) "ترتیب الفبایی" else "منتخب‌ها ابتدا") {
+                    prefs.favoritesFirst = !prefs.favoritesFirst
+                    showTab()
+                }
+                settingCard(parent, "منتخب‌ها در شماره‌گیر",
+                    if (prefs.showQuickContacts) "میان‌بُر شماره‌های ستاره‌دار روی شماره‌گیر دیده می‌شود."
+                    else "میان‌بُر منتخب‌ها از شماره‌گیر مخفی است.",
+                    if (prefs.showQuickContacts) "مخفی کردن میان‌بُرها" else "نمایش میان‌بُرها") {
+                    prefs.showQuickContacts = !prefs.showQuickContacts
+                    showTab()
+                }
+                settingCard(parent, "مدیریت مخاطبین اندروید",
+                    "افزودن، ویرایش، ادغام و حذف مخاطبین توسط برنامه رسمی دفترچه تلفن انجام می‌شود.",
+                    "باز کردن دفترچه تلفن") {
+                    try {
+                        startActivity(Intent(Intent.ACTION_VIEW,
+                            ContactsContract.Contacts.CONTENT_URI))
+                    } catch (_: Exception) {
+                        Toast.makeText(this, "برنامه مخاطبین پیدا نشد.", Toast.LENGTH_LONG).show()
+                    }
+                }
+                parent.addView(text("جست‌وجوی سریع نام، شماره‌های فارسی/عربی و شماره‌های بین‌المللی روی گوشی انجام می‌شود. همگام‌سازی ابری با حساب گوگل یا سیم‌کارت در کنترل سیستم اندروید است.", 12f, color = muted))
+            }
+            2 -> {
+                settingCard(parent, "اجازه اعلان‌ها",
+                    if (Build.VERSION.SDK_INT < 33 ||
+                        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+                        PackageManager.PERMISSION_GRANTED)
+                        "اجازه نمایش اعلان‌ها فعال است یا در این نسخه اندروید نیازی به آن نیست."
+                    else "اعلان تماس و نسخه جدید به مجوز اعلان‌ها نیاز دارد.",
+                    "بررسی و فعال‌سازی اعلان") {
+                    if (Build.VERSION.SDK_INT >= 33 &&
+                        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                        PackageManager.PERMISSION_GRANTED) {
+                        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 213)
+                    } else openNotificationSettings()
+                }
+                settingCard(parent, "کانال اعلان تماس‌ها",
+                    "تنظیم صدا، لرزش، صفحه قفل و اعلان شناور در تنظیمات اندروید.",
+                    "تنظیم اعلان‌های گوشی") { openNotificationSettings() }
+                settingCard(parent, "اعلان به‌روزرسانی برنامه",
+                    "وقتی نسخه رسمی تازه منتشر شود، در صورت مجاز بودن اعلان و محدودیت‌های باتری، اطلاع‌رسانی می‌شود.",
+                    "تنظیمات بررسی نسخه جدید") {
+                    settingsSection = 5
+                    showTab()
+                }
+                if (Build.VERSION.SDK_INT >= 34) {
+                    settingCard(parent, "نمایش تمام‌صفحه تماس ورودی",
+                        "اندروید ۱۴ و جدیدتر نمایش صفحه کامل تماس را با مجوز ویژه کنترل می‌کنند.",
+                        "مدیریت مجوز صفحه کامل") {
+                        try {
+                            startActivity(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                                Uri.parse("package:" + packageName)))
+                        } catch (_: Exception) { openNotificationSettings() }
+                    }
+                }
+            }
+            3 -> {
+                val modes = listOf("خودکار مطابق گوشی", "روشن", "تیره")
+                settingCard(parent, "حالت نمایش",
+                    "حالت فعلی: " + modes[prefs.themeMode] +
+                        " • پالت فیروزه‌ای، طلایی و کرم هماهنگ پیامیار",
+                    "تغییر حالت نمایش") {
+                    prefs.themeMode = (prefs.themeMode + 1) % 3
+                    showTab()
+                }
+                val sizes = listOf("کوچک", "استاندارد", "درشت")
+                settingCard(parent, "اندازه نوشته‌ها",
+                    "اندازه فعلی: " + sizes[prefs.textSize] + " • فونت وزیرمتن",
+                    "تغییر اندازه") {
+                    prefs.textSize = (prefs.textSize + 1) % 3
+                    showTab()
+                }
+                settingCard(parent, "نمایش ارقام صفحه‌کلید",
+                    if (prefs.latinKeycaps) "کلیدها با ارقام 1 تا 9 انگلیسی دیده می‌شوند."
+                    else "کلیدها با ارقام ۱ تا ۹ فارسی نمایش داده می‌شوند.",
+                    if (prefs.latinKeycaps) "نمایش ارقام فارسی" else "نمایش ارقام انگلیسی") {
+                    prefs.latinKeycaps = !prefs.latinKeycaps
+                    showTab()
+                }
+                parent.addView(text("ترتیب فیزیکی صفحه‌کلید در هر دو حالت استاندارد است: 1 2 3 از چپ به راست؛ زبان فارسی فقط شکل عدد را تغییر می‌دهد.", 12f, color = muted))
+            }
+            4 -> {
+                settingCard(parent, "مجوزهای برنامه",
+                    "مخاطبین، سابقه تماس، وضعیت سیم‌کارت، اعلان‌ها و نقش تلفن را از اندروید مدیریت کنید.",
+                    "مدیریت دسترسی‌های اندروید") {
+                    startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.parse("package:" + packageName)))
+                }
+                settingCard(parent, "جلوگیری از عکس‌برداری صفحه",
+                    if (prefs.screenshotProtection) "فعال؛ اسکرین‌شات و پیش‌نمایش برنامه در برنامه‌های اخیر محدود می‌شود."
+                    else "غیرفعال؛ اسکرین‌شات مجاز است.",
+                    if (prefs.screenshotProtection) "خاموش کردن محافظت" else "فعال کردن محافظت") {
+                    prefs.screenshotProtection = !prefs.screenshotProtection
+                    showTab()
+                }
+                settingCard(parent, "حریم خصوصی و اطلاعات محلی",
+                    "مخاطبین و تماس‌ها از پایگاه داده اندروید خوانده می‌شوند؛ هیچ داده تماسی به سایت یا پیامیار فرستاده نمی‌شود.",
+                    "راهنمای حریم خصوصی") {
+                    AlertDialog.Builder(this).setTitle("حریم خصوصی تماس‌یار")
+                        .setMessage("تمام اطلاعات مخاطبین و سوابق تماس روی همین گوشی باقی می‌مانند. " +
+                            "تماس‌یار برای جست‌وجو، هیچ شماره یا نامی به هوش مصنوعی ابری ارسال نمی‌کند. " +
+                            "ارتباط اینترنت برای بررسی نسخه رسمی برنامه است. " +
+                            "مجوزها را از تنظیمات سیستم بازبینی کنید.")
+                        .setPositiveButton("متوجه شدم", null).show()
+                }
+            }
+            5 -> {
+                val version = try { packageManager.getPackageInfo(packageName, 0).versionName }
+                    catch (_: Exception) { "?" }
+                settingCard(parent, "نسخه نصب‌شده",
+                    "تماس‌یار " + version +
+                        " • بروزرسانی فقط از دامنه رسمی هنر مردمی و پس از تأیید کاربر",
+                    "بررسی نسخه جدید") { checkForUpdates() }
+                settingCard(parent, "بررسی خودکار",
+                    if (prefs.autoUpdates) "فعال؛ هنگام ورود و طبق محدودیت‌های اندروید در پس‌زمینه بررسی می‌شود."
+                    else "خاموش؛ برای بررسی باید دکمه را لمس کنید.",
+                    if (prefs.autoUpdates) "خاموش کردن بررسی خودکار" else "فعال کردن بررسی خودکار") {
+                    prefs.autoUpdates = !prefs.autoUpdates
+                    prefs.lastChecked = 0L
+                    TamasUpdateWorker.configure(this)
+                    showTab()
+                    if (prefs.autoUpdates) TamasUpdater.check(this, automatic = true) { _, _ -> }
+                }
+                val last = if (prefs.lastChecked > 0)
+                    SimpleDateFormat("yyyy/MM/dd HH:mm", Locale("fa", "IR"))
+                        .format(Date(prefs.lastChecked)) else "هنوز بررسی نشده است."
+                settingCard(parent, "آخرین بررسی نسخه",
+                    last + " • اثرانگشت فایل و شناسه APK قبل از نصب کنترل می‌شود.",
+                    "بررسی دوباره") { checkForUpdates() }
+                settingCard(parent, "دریافت از سایت رسمی",
+                    "در صورت انتشار نسخه تأییدشده، امکان دریافت از صفحه تماس‌یار فعال است.",
+                    "صفحه دانلود هنر مردمی") {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TamasUpdater.PAGE_URL)))
+                }
+            }
+            else -> {
+                settingCard(parent, "باز کردن پیامیار",
+                    "با لمس پیامک در تماس‌یار، گفت‌وگوی پیامیار یا برنامه پیامک پیش‌فرض باز می‌شود.",
+                    "رفتن به پیامیار") { openPayamYar() }
+                settingCard(parent, "وب‌سایت هنر مردمی",
+                    "معرفی تماس‌یار، تغییرات نسخه و راهنمای نصب",
+                    "مشاهده وب‌سایت") {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TamasUpdater.PAGE_URL)))
+                }
+                val version = try { packageManager.getPackageInfo(packageName, 0).versionName }
+                    catch (_: Exception) { "?" }
+                settingCard(parent, "درباره نسخه",
+                    "نسخه " + version + " • شناسه " + packageName +
+                        "\nقابلیت‌های ضبط مکالمه، تشخیص خودکار مزاحم و انسداد شماره‌ها هنوز در این نسخه فعال نیستند.",
+                    "بررسی مجوزها") {
+                    startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                         Uri.parse("package:" + packageName)))
                 }
             }
         }
+    }
 
-        parent.addView(section("به‌روزرسانی برنامه", "نسخه‌ها از سایت رسمی هنر مردمی بررسی می‌شوند."))
-        settingCard(parent, "بررسی خودکار نسخه جدید",
-            if (prefs.autoUpdates) "فعال؛ هنگام اجرای برنامه و در پس‌زمینه با رعایت محدودیت باتری اندروید نسخه جدید بررسی می‌شود."
-            else "غیرفعال؛ فقط با درخواست شما بررسی انجام می‌شود.",
-            if (prefs.autoUpdates) "خاموش کردن بررسی خودکار" else "روشن کردن بررسی خودکار") {
-            prefs.autoUpdates = !prefs.autoUpdates
-            prefs.lastChecked = 0L
-            TamasUpdateWorker.configure(this)
-            showTab()
-            if (prefs.autoUpdates) TamasUpdater.check(this, automatic = true) { _, _ -> }
-        }
-        settingCard(parent, "انتخاب سیم‌کارت تماس",
-            if (prefs.chooseSim) "اگر گوشی چند حساب تماس فعال داشته باشد، می‌توانید سیم‌کارت را هنگام تماس انتخاب کنید."
-            else "سیم‌کارت بر اساس تنظیمات پیش‌فرض اندروید انتخاب می‌شود.",
-            if (prefs.chooseSim) "استفاده از سیم‌کارت پیش‌فرض" else "فعال کردن انتخاب سیم‌کارت") {
-            prefs.chooseSim = !prefs.chooseSim
-            showTab()
-        }
-        settingCard(parent, "دانلود و نصب نسخه جدید",
-            "بررسی آنلاین نسخه، نمایش تغییرات و نصب فقط پس از تأیید شما. " +
-                "فایل نصب قبل از اجرا با SHA-256 کنترل می‌شود.",
-            "بررسی نسخه جدید") { checkForUpdates() }
-        settingCard(parent, "صفحه دانلود رسمی",
-            "اگر نسخه منتشرشده‌ای موجود باشد، در سایت هنر مردمی نمایش داده می‌شود.",
-            "صفحه تماس‌یار") {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TamasUpdater.PAGE_URL)))
-        }
-
-        parent.addView(section("ظاهر و خوانایی", "هماهنگ با رنگ فیروزه‌ای و طلایی پیامیار"))
-        settingCard(parent, "حالت نمایش",
-            if (prefs.dark) "حالت تیره فعال است." else "حالت روشن فعال است.",
-            if (prefs.dark) "تغییر به حالت روشن" else "تغییر به حالت تیره") {
-            prefs.dark = !prefs.dark
-            showTab()
-        }
-        val scales = listOf("کوچک", "استاندارد", "درشت")
-        settingCard(parent, "اندازه نوشته‌ها",
-            "اندازه فعلی: " + scales[prefs.textSize] + " • فونت فارسی وزیرمتن",
-            "تغییر اندازه") {
-            prefs.textSize = (prefs.textSize + 1) % 3
-            showTab()
-        }
-
-        parent.addView(section("ارتباط و درباره برنامه", "دو برنامه مستقل، دفترچه مخاطبین مشترک"))
-        settingCard(parent, "پیامیار",
-            "برای ارسال و دریافت پیامک، پیامیار را باز کنید. تماس‌یار مستقل باقی می‌ماند.",
-            "رفتن به پیامیار") { openPayamYar() }
-        val version = try {
-            packageManager.getPackageInfo(packageName, 0).versionName
-        } catch (_: Exception) { "?" }
-        settingCard(parent, "درباره تماس‌یار",
-            "نسخه " + version + " • شناسه: " + packageName +
-                "\nضبط تماس، تشخیص هوشمند مزاحم و انتخاب اختصاصی سیم‌کارت هنوز فعال نیستند.",
-            "راهنمای حریم خصوصی") {
-            AlertDialog.Builder(this).setTitle("حریم خصوصی تماس‌یار")
-                .setMessage("مخاطبین و سوابق تماس فقط روی گوشی خوانده می‌شوند. " +
-                    "داده تماس یا مخاطبین به پیامیار و سایت هنر مردمی ارسال نمی‌شود. " +
-                    "ارتباط شبکه صرفاً برای بررسی نسخه‌های منتشرشده است. " +
-                    "برای حذف مجوزها از تنظیمات اندروید استفاده کنید.")
-                .setPositiveButton("متوجه شدم", null).show()
+    private fun openNotificationSettings() {
+        try {
+            if (Build.VERSION.SDK_INT >= 26) {
+                startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                    putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                })
+            } else {
+                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:" + packageName)))
+            }
+        } catch (_: Exception) {
+            Toast.makeText(this, "تنظیمات اعلان دستگاه در دسترس نیست.", Toast.LENGTH_LONG).show()
         }
     }
 
