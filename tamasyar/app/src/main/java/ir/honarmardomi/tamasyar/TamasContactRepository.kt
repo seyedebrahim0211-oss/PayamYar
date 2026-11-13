@@ -78,17 +78,20 @@ object TamasContactRepository {
     fun search(all: List<TamasContact>, typed: String, starsOnly: Boolean,
                starred: Set<String>, sortFavoritesFirst: Boolean): List<TamasContact> {
         val query = TamasPhone.ascii(typed).trim().lowercase()
-        val normalizedQuery = TamasPhone.normalize(query)
+        val numberQuery = TamasPhone.dial(query)
+        val normalizedQuery = if (numberQuery.isBlank()) ""
+            else TamasPhone.normalize(numberQuery)
         val filtered = all.filter { person ->
             val favorite = person.starred || person.phones.any {
                 TamasPhone.normalize(it) in starred
             }
             (!starsOnly || favorite) &&
                 (query.isBlank() || person.name.lowercase().contains(query) ||
-                    person.phones.any { number ->
-                        TamasPhone.ascii(number).contains(query) ||
-                            TamasPhone.normalize(number).contains(normalizedQuery)
-                    })
+                    (numberQuery.isNotBlank() && person.phones.any { number ->
+                        TamasPhone.ascii(number).contains(numberQuery) ||
+                            (normalizedQuery.isNotBlank() &&
+                                TamasPhone.normalize(number).contains(normalizedQuery))
+                    }))
         }
         if (!sortFavoritesFirst) return filtered
         return filtered.sortedWith(
