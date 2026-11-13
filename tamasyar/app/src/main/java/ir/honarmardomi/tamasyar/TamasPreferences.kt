@@ -17,8 +17,8 @@ class TamasPreferences(context: Context) {
 
     /** 0 = light; 1 = dark. */
     var dark: Boolean
-        get() = values.getBoolean("dark", false)
-        set(v) = values.edit().putBoolean("dark", v).apply()
+        get() = isDark()
+        set(v) = themeMode = if (v) 2 else 1
 
     /** 0 = compact; 1 = normal; 2 = large. */
     var textSize: Int
@@ -58,6 +58,52 @@ class TamasPreferences(context: Context) {
         values.edit().putStringSet("favorite_numbers", modified).apply()
         return added
     }
+
+    /** 0=system, 1=light, 2=dark. Retains migration from earlier theme toggle. */
+    var themeMode: Int
+        get() = values.getInt("theme_mode",
+            if (values.getBoolean("dark", false)) 2 else 1).coerceIn(0, 2)
+        set(v) = values.edit().putInt("theme_mode", v.coerceIn(0, 2)).apply()
+
+    fun isDark(): Boolean = when (themeMode) {
+        2 -> true
+        1 -> false
+        else -> (android.content.res.Resources.getSystem().configuration.uiMode and
+            android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+    }
+
+    var favoritesFirst: Boolean
+        get() = values.getBoolean("favorites_first", true)
+        set(v) = values.edit().putBoolean("favorites_first", v).apply()
+
+    var dialHaptics: Boolean
+        get() = values.getBoolean("dial_haptics", true)
+        set(v) = values.edit().putBoolean("dial_haptics", v).apply()
+
+    var dialTones: Boolean
+        get() = values.getBoolean("dial_tones", false)
+        set(v) = values.edit().putBoolean("dial_tones", v).apply()
+
+    var latinKeycaps: Boolean
+        get() = values.getBoolean("latin_keycaps", false)
+        set(v) = values.edit().putBoolean("latin_keycaps", v).apply()
+
+    var confirmOutgoing: Boolean
+        get() = values.getBoolean("confirm_outgoing", false)
+        set(v) = values.edit().putBoolean("confirm_outgoing", v).apply()
+
+    var startTab: Int
+        get() = values.getInt("start_tab", 1).coerceIn(0, 2)
+        set(v) = values.edit().putInt("start_tab", v.coerceIn(0, 2)).apply()
+
+    var screenshotProtection: Boolean
+        get() = values.getBoolean("protect_screenshots", false)
+        set(v) = values.edit().putBoolean("protect_screenshots", v).apply()
+
+    var showQuickContacts: Boolean
+        get() = values.getBoolean("quick_contacts", true)
+        set(v) = values.edit().putBoolean("quick_contacts", v).apply()
 
     fun scale(): Float = when (textSize) {
         0 -> 0.92f
