@@ -192,8 +192,7 @@ class CallScreenActivity : Activity() {
 
     private fun showDtmf(call: Call) {
         val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        listOf(listOf("1", "2", "3"), listOf("4", "5", "6"),
-            listOf("7", "8", "9"), listOf("*", "0", "#")).forEach { digits ->
+        TamasPhone.KEYPAD_ROWS.forEach { digits ->
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 layoutDirection = View.LAYOUT_DIRECTION_LTR
