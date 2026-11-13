@@ -299,6 +299,53 @@ class MainActivity : Activity() {
             digits = TamasPhone.dial(entry.text.toString())
             openSms(digits)
         })
+        val suggestionRows = vbox()
+        parent.addView(suggestionRows)
+        val activeEpoch = renderEpoch
+        val renderSuggestions = {
+            suggestionRows.removeAllViews()
+            val value = TamasPhone.dial(entry.text.toString())
+            if (value.length >= 3 && !value.contains("*") && !value.contains("#") &&
+                contactsCache != null) {
+                val match = TamasContactRepository.search(
+                    contactsCache.orEmpty(), value, false, prefs.favorites(), true)
+                    .filter { it.phones.isNotEmpty() }.take(5)
+                if (match.isNotEmpty()) {
+                    suggestionRows.addView(section("پیشنهادهای هوشمند گوشی",
+                        "تطبیق محلی شماره؛ بدون ارسال مخاطبین به اینترنت"))
+                    match.forEach { person ->
+                        val number = person.primaryNumber
+                        suggestionRows.addView(action(person.name + "  ·  " + number) {
+                            entry.setText(TamasPhone.dial(number))
+                            entry.setSelection(entry.length())
+                        })
+                        addGap(suggestionRows, 5)
+                    }
+                }
+            }
+        }
+        entry.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                renderSuggestions()
+            }
+            override fun afterTextChanged(s: Editable?) {}
+        })
+        renderSuggestions()
+        if (contactsCache == null &&
+            checkSelfPermission(Manifest.permission.READ_CONTACTS) ==
+                PackageManager.PERMISSION_GRANTED) {
+            Thread {
+                val loaded = try { TamasContactRepository.load(applicationContext) }
+                    catch (_: Exception) { emptyList() }
+                runOnUiThread {
+                    if (!isFinishing && !isDestroyed && renderEpoch == activeEpoch && tab == 1) {
+                        contactsCache = loaded
+                        renderSuggestions()
+                    }
+                }
+            }.start()
+        }
         addGap(parent, 15)
         if (prefs.showQuickContacts &&
             prefs.favorites().isNotEmpty()) {
