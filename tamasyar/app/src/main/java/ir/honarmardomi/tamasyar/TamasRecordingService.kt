@@ -161,8 +161,9 @@ class TamasRecordingService : Service() {
         }
         val stamp = SimpleDateFormat("yyyyMMdd-HHmmss-SSS", Locale.US).format(Date())
         val target = File(TamasRecordings.folder(this), "TamasYar-" + stamp + ".m4a")
+        @Suppress("DEPRECATION")
         val media = if (Build.VERSION.SDK_INT >= 31) MediaRecorder(this)
-            else @Suppress("DEPRECATION") MediaRecorder()
+            else MediaRecorder()
         try {
             media.setAudioSource(MediaRecorder.AudioSource.MIC)
             media.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
@@ -198,8 +199,9 @@ class TamasRecordingService : Service() {
                 TamasRecordings.failed("ضبط قابل استفاده‌ای ذخیره نشد؛ محدودیت میکروفون دستگاه را بررسی کنید.")
             } else TamasRecordings.stopped()
         } else TamasRecordings.stopped()
+        @Suppress("DEPRECATION")
         if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE)
-        else @Suppress("DEPRECATION") stopForeground(true)
+        else stopForeground(true)
     }
 
     override fun onDestroy() {
