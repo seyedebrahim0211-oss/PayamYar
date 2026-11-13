@@ -242,10 +242,7 @@ class MainActivity : Activity() {
         addGap(parent, 15)
         // Telephone keypads have a fixed physical LTR sequence: 1 2 3 / 4 5 6.
         // A RTL container mirrored these digits and caused wrong key positioning.
-        val dial = listOf(
-            listOf("1", "2", "3"), listOf("4", "5", "6"),
-            listOf("7", "8", "9"), listOf("*", "0", "#")
-        )
+        val dial = TamasPhone.KEYPAD_ROWS
         dial.forEach { line ->
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
