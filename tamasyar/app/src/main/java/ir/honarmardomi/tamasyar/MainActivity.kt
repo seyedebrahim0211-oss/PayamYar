@@ -83,6 +83,11 @@ class MainActivity : Activity() {
         super.onResume()
         TamasUpdater.resumePendingInstall(this)
         TamasUpdater.check(this, automatic = true) { _, _ -> }
+        // Reflect edits made in the Android Contacts app while TamasYar was paused.
+        if (tab == 2 && contactsCache != null) {
+            contactsCache = null
+            showTab()
+        }
     }
 
     override fun onDestroy() {
@@ -947,7 +952,7 @@ class MainActivity : Activity() {
         super.onRequestPermissionsResult(requestCode, permissions, results)
         if (requestCode == 210 || requestCode == 211) showTab()
         if (requestCode == 212 && results.firstOrNull() == PackageManager.PERMISSION_GRANTED)
-            pendingNumber?.let { pendingNumber = null; callNumber(it) }
+            pendingNumber?.let { pendingNumber = null; dialNumber(it) }
     }
 
     private fun isDefaultDialer(): Boolean {
@@ -978,7 +983,22 @@ class MainActivity : Activity() {
     }
 
     private fun callNumber(number: String) {
-        if (number.isBlank()) return
+        val formatted = TamasPhone.dial(number)
+        if (formatted.isEmpty()) {
+            Toast.makeText(this, "شماره‌ای برای تماس وارد نشده است.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (prefs.confirmOutgoing && isDefaultDialer()) {
+            AlertDialog.Builder(this)
+                .setTitle("تأیید تماس خروجی")
+                .setMessage("آیا با " + formatted + " تماس گرفته شود؟")
+                .setNegativeButton("انصراف", null)
+                .setPositiveButton("تماس") { _, _ -> dialNumber(formatted) }
+                .show()
+        } else dialNumber(formatted)
+    }
+
+    private fun dialNumber(number: String) {
         val target = Uri.fromParts("tel", number, null)
         if (!isDefaultDialer()) {
             val currentDialer = (getSystemService(TELECOM_SERVICE) as TelecomManager).defaultDialerPackage
@@ -995,8 +1015,7 @@ class MainActivity : Activity() {
             pendingNumber = number
             return
         }
-        if (checkSelfPermission(Manifest.permission.CALL_PHONE) !=
-            PackageManager.PERMISSION_GRANTED) {
+        if (checkSelfPermission(Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) {
             Toast.makeText(this, "مجوز تماس هنوز فعال نیست.", Toast.LENGTH_LONG).show()
             return
         }
@@ -1007,11 +1026,11 @@ class MainActivity : Activity() {
                 val accounts = telecom.callCapablePhoneAccounts
                 if (accounts.size > 1) {
                     val options = accounts.mapIndexed { index, account ->
-                        val label = telecom.getPhoneAccount(account)?.label?.toString()
-                        if (label.isNullOrBlank()) "سیم‌کارت ${index + 1}" else label
+                        val name = telecom.getPhoneAccount(account)?.label?.toString()
+                        if (name.isNullOrBlank()) "سیم‌کارت " + (index + 1) else name
                     }.toTypedArray()
                     AlertDialog.Builder(this)
-                        .setTitle("انتخاب سیم‌کارت")
+                        .setTitle("انتخاب سیم‌کارت تماس")
                         .setItems(options) { _, index -> placeOutgoing(target, accounts[index]) }
                         .setNeutralButton("حساب پیش‌فرض") { _, _ -> placeOutgoing(target, null) }
                         .setNegativeButton("انصراف", null)
@@ -1019,7 +1038,7 @@ class MainActivity : Activity() {
                     return
                 }
             } catch (_: SecurityException) {
-                // Android can show its own SIM selection if the role lacks account access.
+                // Android may display the device's own SIM picker instead.
             } catch (_: Exception) { }
         }
         placeOutgoing(target, null)
@@ -1046,7 +1065,9 @@ class MainActivity : Activity() {
 
     private fun openSms(number: String) {
         if (number.isBlank()) return
-        val uri = Uri.fromParts("smsto", number, null)
+        val destination = TamasPhone.dial(number)
+        if (destination.isEmpty()) return
+        val uri = Uri.fromParts("smsto", destination, null)
         val intent = Intent(Intent.ACTION_SENDTO, uri)
         try {
             startActivity(Intent(intent).setPackage("ir.honarmardomi.payamyar"))
