@@ -4,6 +4,12 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class TamasPhoneTest {
+    @Test fun physicalKeypadNeverMirrorsInRtl() {
+        assertEquals(listOf("1", "2", "3"), TamasPhone.KEYPAD_ROWS[0])
+        assertEquals(listOf("4", "5", "6"), TamasPhone.KEYPAD_ROWS[1])
+        assertEquals(listOf("7", "8", "9"), TamasPhone.KEYPAD_ROWS[2])
+        assertEquals(listOf("*", "0", "#"), TamasPhone.KEYPAD_ROWS[3])
+    }
     @Test fun persianAndArabicDigits() {
         assertEquals("09123456789", TamasPhone.dial("۰۹۱۲ ٣٤٥ ۶۷۸۹"))
     }
