@@ -2,6 +2,14 @@ package ir.honarmardomi.tamasyar
 
 /** Local phone helpers: Persian/Arabic digits, contact matching and safe dial input. */
 object TamasPhone {
+    /** Physical LTR standard telephone layout, independent of Persian UI direction. */
+    val KEYPAD_ROWS: List<List<String>> = listOf(
+        listOf("1", "2", "3"),
+        listOf("4", "5", "6"),
+        listOf("7", "8", "9"),
+        listOf("*", "0", "#")
+    )
+
     fun ascii(input: String): String = buildString(input.length) {
         for (char in input) append(when (char) {
             in '۰'..'۹' -> ('0'.code + (char.code - '۰'.code)).toChar()
