@@ -30,6 +30,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.ContactsContract
 import android.widget.Toast
+import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
@@ -371,6 +372,16 @@ object Notifier {
                 .setColor(color).setContentTitle("پیامیار").setContentText("پیامک جدید").build())
 
 
+
+        // Compact native heads-up card also works when Flutter is backgrounded.
+        // Android controls whether/when it appears; users can choose channel priority.
+        if (enabled(c, "notifyCompactHeadsUp", true)) {
+            val compact = RemoteViews(c.packageName, R.layout.notification_glass_compact)
+            compact.setTextViewText(R.id.glass_card_sender, name.take(45))
+            compact.setTextViewText(R.id.glass_card_text, text.take(120))
+            builder.setCustomContentView(compact)
+            builder.setCustomHeadsUpContentView(compact)
+        }
 
         if (code != null) {
             builder.addAction(NotificationCompat.Action.Builder(0, "📋 کپی کد " + code, broadcast(c, ACTION_COPY, address, code)).build())
