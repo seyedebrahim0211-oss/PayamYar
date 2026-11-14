@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:payamyar/contacts/contacts_data.dart';
-import 'package:payamyar/contacts/contact_store.dart';
 
 void main() {
   test('Jalali 30 Esfand without a birth year is preserved exactly', () {
