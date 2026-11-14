@@ -17,7 +17,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   bool denied = false;
 
   AppStore get store => widget.store;
-  bool get permissionStep => !store.permissions.canRead;
+  // Google Play requires the default SMS role *before* requesting restricted SMS access.
+  bool get permissionStep => store.permissions.isDefault && !store.permissions.canRead;
 
   Future<void> _grant() async {
     setState(() => busy = true);
@@ -39,7 +40,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     } catch (_) {
       // The user can still continue; the inbox shows a reminder card.
     }
-    await store.finishOnboarding();
+    await store.checkPermissions();
+    if (store.permissions.isDefault && store.permissions.canRead) {
+      await store.finishOnboarding();
+    }
     if (mounted) setState(() => busy = false);
   }
 
@@ -51,12 +55,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       title = denied ? 'دسترسی لازم است' : 'به پیامیار خوش آمدید';
       body = denied
           ? 'بدون دسترسی پیامک، پیامیار نمی‌تواند پیام‌های گوشی را نمایش دهد. دوباره «اجازه دادن» را بزنید یا از تنظیمات گوشی، دسترسی پیامک را برای پیامیار روشن کنید.'
-          : 'برای اینکه پیامیار پیامک‌های گوشی شما را نمایش دهد، ارسال و دریافت کند و نام مخاطبان را نشان دهد، به دسترسی پیامک، مخاطبان و اعلان‌ها نیاز دارد. پیام‌های شما فقط روی گوشی خودتان می‌ماند.';
+          : 'خواندن و ارسال پیامک برای پیام‌رسانی، دسترسی مخاطبین برای نام‌ها و دسترسی اعلان‌ها برای هشدار پیام جدید است. دسترسی مخاطبین و اعلان‌ها را می‌توانید در تنظیمات گوشی تغییر دهید. محتوای پیام‌ها برای قابلیت‌های معمول روی دستگاه تحلیل می‌شود.';
       action = denied ? 'اجازه دادن دوباره' : 'اجازه دسترسی';
     } else {
       title = 'پیامیار را فعال کنید';
-      body = 'برای اینکه پیامیار بتواند مدیریت پیامک‌های شما را به عهده بگیرد، پیام‌های جدید را دریافت کند و پیامک‌های تبلیغاتی و بانکی را جدا کند، باید پیام‌رسان پیش‌فرض گوشی شما باشد.';
-      action = 'فعال‌سازی پیامیار';
+      body = 'ابتدا به انتخاب خودتان پیامیار را پیام‌رسان پیش‌فرض گوشی کنید. تنها پس از این مرحله، دسترسی‌های حساس پیامک درخواست می‌شوند. با لغو این انتخاب، پیامیار باید استفاده از مجوزهای پیامک را متوقف کند.';
+      action = 'انتخاب پیام‌رسان پیش‌فرض';
     }
     return Scaffold(
       body: SafeArea(
@@ -89,7 +93,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             if (permissionStep && denied)
               TextButton(onPressed: SmsBridge.openAppSettings, child: const Text('باز کردن تنظیمات گوشی'))
             else if (!permissionStep)
-              TextButton(onPressed: busy ? null : store.finishOnboarding, child: const Text('بعداً'))
+              TextButton(onPressed: busy ? null : () => SmsBridge.openAppSettings(), child: const Text('تنظیمات برنامه'))
             else
               const SizedBox(height: 48),
           ]),
