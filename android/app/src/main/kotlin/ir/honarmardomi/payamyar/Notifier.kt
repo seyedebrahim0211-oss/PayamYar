@@ -30,6 +30,8 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.ContactsContract
 import android.widget.Toast
+import android.widget.RemoteViews
+import io.flutter.plugin.common.MethodChannel
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.Person
@@ -50,7 +52,7 @@ import androidx.core.graphics.drawable.IconCompat
  */
 object Notifier {
     // V2 uses fresh channels; Android never updates sound on an existing channel.
-    const val INCOMING_CHANNEL = "incoming_sms_v3"
+    const val INCOMING_CHANNEL = "incoming_sms_v4"
     const val SENT_CHANNEL = "sent_sms_v2"
     private const val CHANNEL = INCOMING_CHANNEL
     const val ACTION_REPLY = "ir.honarmardomi.payamyar.NOTIFY_REPLY"
@@ -324,12 +326,28 @@ object Notifier {
             val payload = mapOf("address" to address, "name" to name, "body" to text, "time" to time,
                 "otp" to code, "canReply" to reply)
             Handler(Looper.getMainLooper()).post {
-                try { front.invokeMethod("incomingBanner", payload) } catch (_: Exception) { }
+                try {
+                    front.invokeMethod("incomingBanner", payload, object : MethodChannel.Result {
+                        override fun success(result: Any?) { /* Glass banner owns foreground alert. */ }
+                        override fun error(code: String, message: String?, details: Any?) {
+                            systemIncoming(c, address, name, text, time, code = null, reply = reply)
+                        }
+                        override fun notImplemented() {
+                            systemIncoming(c, address, name, text, time, code = null, reply = reply)
+                        }
+                    })
+                } catch (_: Exception) {
+                    systemIncoming(c, address, name, text, time, code, reply)
+                }
             }
-            // Keep the Android notification as a reliable fallback as well.
-            // The Flutter channel can be alive while its page is not ready to show the banner.
+            // Do not show a second notification while the in-app glass card is active.
+            return
         }
+        systemIncoming(c, address, name, text, time, code, reply)
+    }
 
+    private fun systemIncoming(c: Context, address: String, name: String, text: String,
+                               time: Long, code: String?, reply: Boolean) {
         configureChannels(c)
         val manager = c.getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(c, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
@@ -371,6 +389,14 @@ object Notifier {
                 .setColor(color).setContentTitle("پیامیار").setContentText("پیامک جدید").build())
 
 
+
+        try {
+            val compact = RemoteViews(c.packageName, R.layout.payamyar_notification_glass)
+            compact.setTextViewText(R.id.glass_sender, name.take(54))
+            compact.setTextViewText(R.id.glass_preview, text.take(115))
+            builder.setCustomContentView(compact)
+            builder.setCustomHeadsUpContentView(compact)
+        } catch (_: Exception) { /* Standard Android heads-up is the accessible fallback. */ }
 
         if (code != null) {
             builder.addAction(NotificationCompat.Action.Builder(0, "📋 کپی کد " + code, broadcast(c, ACTION_COPY, address, code)).build())
