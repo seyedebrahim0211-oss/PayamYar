@@ -50,7 +50,7 @@ import androidx.core.graphics.drawable.IconCompat
  */
 object Notifier {
     // V2 uses fresh channels; Android never updates sound on an existing channel.
-    const val INCOMING_CHANNEL = "incoming_sms_v2"
+    const val INCOMING_CHANNEL = "incoming_sms_v3"
     const val SENT_CHANNEL = "sent_sms_v2"
     private const val CHANNEL = INCOMING_CHANNEL
     const val ACTION_REPLY = "ir.honarmardomi.payamyar.NOTIFY_REPLY"
@@ -236,7 +236,7 @@ object Notifier {
             vibrationPattern = longArrayOf(0, 150, 100, 160)
             setSound(sound, audio)
             lockscreenVisibility = android.app.Notification.VISIBILITY_PRIVATE
-            if (Build.VERSION.SDK_INT >= 29) setAllowBubbles(true)
+            if (Build.VERSION.SDK_INT >= 29) setAllowBubbles(false)
         })
         manager.createNotificationChannel(NotificationChannel(SENT_CHANNEL, "تأیید ارسال پیام", NotificationManager.IMPORTANCE_DEFAULT).apply {
             description = "صدای تأیید پذیرش پیامک توسط شبکه؛ قابل تغییر از تنظیمات اعلان گوشی"
