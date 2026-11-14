@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../app_settings.dart';
 import '../jalali.dart';
 import '../notify_banner.dart';
-import '../sms_bridge.dart';
 import 'glass_banner.dart';
 import 'settings_screen.dart' show SettingsGroup;
 
