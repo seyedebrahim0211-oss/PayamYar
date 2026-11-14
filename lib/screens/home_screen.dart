@@ -92,6 +92,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final unread = widget.store.unreadConversations;
     return Scaffold(
+      extendBody: true, // Let content show through the frosted navigation surface.
       // The inbox stays alive (keeps scroll and search); the other tabs are built only while open.
       body: GestureDetector(
         behavior: HitTestBehavior.translucent,
