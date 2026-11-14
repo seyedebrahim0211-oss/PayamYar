@@ -193,31 +193,34 @@ class MeliPayamak {
     }
   }
 
-  /// [location]: 1 = received, 2 = sent. [from] filters by the sender number (received box).
+  /// 1 = incoming, 2 = sent. No sender filter unless explicitly provided.
   Future<List<PanelMessage>> messages({int location = 1, String from = '', int index = 0, int count = 50}) async {
     final r = await _post('GetMessages', {
-      'Location': '$location',
-      'From': from,
-      'Index': '$index',
-      'Count': '$count',
+      'Location': '$location', 'From': from, 'Index': '$index', 'Count': '$count',
     });
     if (!_ok(r)) {
       final status = (r['RetStatus'] ?? '?').toString().replaceAll(RegExp(r'[^0-9-]'), '');
       final raw = (r['Value'] ?? '').toString().trim();
-      final code = RegExp(r'^-?[0-9]{1,5} r['Data'] ?? r['ReturnValue'] ?? r['Value'];
-    if (data is String) {
-      try {
-        data = jsonDecode(data);
-      } catch (_) {
-        data = const [];
-      }
+      final code = RegExp(r'^-?[0-9]{1,5}$').hasMatch(raw) ? raw : '';
+      final reason = (r['StrRetStatus'] ?? '').toString().replaceAll(RegExp(r'[\r\n\t]'), ' ').trim();
+      final safeReason = reason.length > 80 ? reason.substring(0, 80) : reason;
+      final description = code.isNotEmpty && code != '0'
+        ? errorText(code)
+        : 'استعلام صندوق پیام‌ها از وب‌سرویس رد شد؛ اعتبار پنل به‌تنهایی مجوز GetMessages نیست. دسترسی صندوق را از پشتیبانی بررسی کنید.';
+      throw PanelException('$description (GetMessages Location=$location, RetStatus=$status${safeReason.isEmpty ? '' : ', $safeReason'})');
     }
-    if (data is Map) data = data['MessagesBL'] ?? data['Messages'] ?? data.values.firstWhere((v) => v is List, orElse: () => const []);
+    Object? data = r['Data'] ?? r['ReturnValue'] ?? r['Value'];
+    if (data is String) {
+      try { data = jsonDecode(data); } catch (_) { data = const []; }
+    }
+    if (data is Map) {
+      data = data['MessagesBL'] ?? data['Messages'] ??
+        data.values.firstWhere((v) => v is List, orElse: () => const []);
+    }
     if (data is! List) return const [];
     return data.map(PanelMessage.fromJson).whereType<PanelMessage>().toList()
       ..sort((a, b) => (b.date ?? DateTime(0)).compareTo(a.date ?? DateTime(0)));
   }
-
   /// Delivery status of a send. Returns the raw status code text.
   Future<String> delivery(String recId) async {
     final r = await _post('GetDeliveries2', {'recID': recId});
