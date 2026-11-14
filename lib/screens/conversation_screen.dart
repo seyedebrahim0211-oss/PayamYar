@@ -274,7 +274,8 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
   /// so a sent message never appears twice ("در صف ارسال" + "در حال ارسال").
   bool _stillLocal(PendingSend p, List<MessageRecord> messages, DateTime now) {
     if (p.deadline.isAfter(now)) return true;
-    if (now.difference(p.deadline) > const Duration(seconds: 4)) return false;
+    // Keep the queued item until the native dispatch watcher resolves it.
+    // A fixed four-second timeout makes sent SMS vanish on slow OEM providers.
     final from = p.deadline.subtract(const Duration(seconds: 20));
     for (final m in messages.take(30)) {
       if (m.outgoing && m.body.trim() == p.body.trim() && m.date.isAfter(from)) return false;
