@@ -47,7 +47,25 @@ class _ReportsScreenState extends State<ReportsScreen> {
     if (!ok) store.onNotice?.call('اشتراک‌گذاری در دسترس نیست.');
   }
 
+  Future<bool> _confirmFinancialExport() async {
+    if (revealFinancialAmounts) return true;
+    final allow = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('تأیید خروجی اطلاعات مالی'),
+        content: const Text('مبالغ روی صفحه پنهان هستند، اما فایل CSV شامل ارقام واقعی می‌شود. '
+          'فقط در صورت اطمینان از محل ذخیره و اشتراک‌گذاری ادامه دهید.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('خروجی با ارقام واقعی')),
+        ],
+      ),
+    );
+    return allow == true;
+  }
+
   Future<void> _exportCsv(PeriodInsight p) async {
+    if (!await _confirmFinancialExport()) return;
     if (p.transactions.isEmpty) {
       store.onNotice?.call('در این بازه تراکنش بانکی پیدا نشد.');
       return;
@@ -60,6 +78,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Future<void> _exportMetricsCsv(PeriodInsight p) async {
+    if (!await _confirmFinancialExport()) return;
     final now = DateTime.now();
     final j = Jalali.fromGregorian(now.year, now.month, now.day);
     final ok = await ContactsBridge.saveFile(
