@@ -21,6 +21,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('ظاهر و قالب گفتگو'));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('شخصی‌سازی ظاهر و فونت'), 180, scrollable: find.byType(Scrollable).last);
     expect(find.text('شخصی‌سازی ظاهر و فونت'), findsOneWidget);
     expect(find.text('حالت نمایش'), findsOneWidget);
   });
