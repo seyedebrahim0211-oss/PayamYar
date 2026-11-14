@@ -52,30 +52,17 @@ class NotificationStyleScreen extends StatelessWidget {
               children: [
                 _PreviewStage(settings: s),
                 const SizedBox(height: 10),
-                Row(children: [
-                  Expanded(
-                    child: FilledButton.tonalIcon(
-                      onPressed: () => currentBanner.value = IncomingBanner.preview(),
-                      icon: const Icon(Icons.play_arrow_rounded),
-                      label: const Text('نمایش روی صفحه'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(54)),
-                      onPressed: SmsBridge.previewNotification,
-                      icon: const Icon(Icons.notifications_active_outlined),
-                      label: const Text('اعلان نمونه'),
-                    ),
-                  ),
-                ]),
+                SizedBox(width: double.infinity, child: FilledButton.tonalIcon(
+                  onPressed: () => currentBanner.value = IncomingBanner.preview(),
+                  icon: const Icon(Icons.web_asset_rounded),
+                  label: const Text('پیش‌نمایش اعلان شیشه‌ای یکپارچه'),
+                )),
                 const SizedBox(height: 16),
-                SettingsGroup(title: 'بنر داخل برنامه', children: [
+                SettingsGroup(title: 'اعلان شیشه‌ای یکپارچه', children: [
                   SwitchListTile(
                     secondary: Icon(Icons.web_asset_rounded, color: scheme.primary),
                     title: const Text('نمایش بنر هنگام باز بودن پیامیار'),
-                    subtitle: const Text('بنر داخلی همراه اعلان اندروید، برای اطمینان از دیده‌شدن پیام'),
+                    subtitle: const Text('فقط یک اعلان: داخل برنامه کارت شیشه‌ای، بیرون برنامه اعلان شیشه‌ای اندروید'),
                     value: s.notifyInApp,
                     onChanged: (v) => s.updateNotify(notifyInApp: v),
                   ),
