@@ -928,7 +928,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
             ),
           ),
           if (count > 1 &&
-              !MeliPayamak.compose(textField.text, bulk: false).isEmpty &&
+              MeliPayamak.compose(textField.text, bulk: false).isNotEmpty &&
               !textField.text.trimRight().endsWith('لغو11') &&
               !textField.text.trimRight().endsWith('لغو۱۱'))
             Align(
