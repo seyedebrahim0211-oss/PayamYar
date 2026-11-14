@@ -65,7 +65,7 @@ class GroupsScreen extends StatelessWidget {
                   return ListTile(
                     leading: CircleAvatar(
                       backgroundColor: Theme.of(ctx).colorScheme.primaryContainer,
-                      child: Text(saved ? name.characters.first : '؟')),
+                      child: Text(saved ? String.fromCharCode(name.runes.first) : '؟')),
                     title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontWeight: FontWeight.w700)),
                     subtitle: Text(saved ? 'باز کردن گفتگوی خصوصی' : 'شماره ذخیره نشده',
