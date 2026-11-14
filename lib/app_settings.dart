@@ -69,6 +69,8 @@ class AppSettings extends ChangeNotifier {
   double bannerOpacity = .5;
   bool bannerTop = true;
   int bannerSeconds = 6;
+  bool bannerCompact = true;
+  double bannerMaxWidth = 360;
   bool bannerBubbles = true;
   bool notifyGlassAvatar = true;
   int notifyAvatarShape = 0; // 0 = circle, 1 = soft square
@@ -118,6 +120,8 @@ class AppSettings extends ChangeNotifier {
     bannerOpacity = (p.getDouble('bannerOpacity') ?? .5).clamp(.15, .95).toDouble();
     bannerTop = true;
     bannerSeconds = (p.getInt('bannerSeconds') ?? 6).clamp(2, 15).toInt();
+    bannerCompact = p.getBool('bannerCompact') ?? true;
+    bannerMaxWidth = (p.getDouble('bannerMaxWidth') ?? 360).clamp(280, 520).toDouble();
     bannerBubbles = p.getBool('bannerBubbles') ?? true;
     notifyGlassAvatar = p.getBool('notifyGlassAvatar') ?? true;
     notifyAvatarShape = (p.getInt('notifyAvatarShape') ?? 0).clamp(0, 1).toInt();
@@ -196,7 +200,8 @@ class AppSettings extends ChangeNotifier {
 
   /// Notification look; separate from [update] to keep that signature readable.
   Future<void> updateNotify({bool? notifyInApp, BannerStyle? bannerStyle, int? bannerTint, double? bannerBlur,
-      double? bannerOpacity, bool? bannerTop, int? bannerSeconds, bool? bannerBubbles, bool? notifyGlassAvatar,
+      double? bannerOpacity, bool? bannerTop, int? bannerSeconds, bool? bannerCompact,
+      double? bannerMaxWidth, bool? bannerBubbles, bool? notifyGlassAvatar,
       int? notifyAvatarShape, bool? notifyBubbles, bool? notifyQuickReply, bool? notifyOtpCopy,
       List<String>? quickReplies}) async {
     this.notifyInApp = notifyInApp ?? this.notifyInApp;
@@ -206,6 +211,8 @@ class AppSettings extends ChangeNotifier {
     this.bannerOpacity = (bannerOpacity ?? this.bannerOpacity).clamp(.15, .95).toDouble();
     this.bannerTop = true;
     this.bannerSeconds = (bannerSeconds ?? this.bannerSeconds).clamp(2, 15).toInt();
+    this.bannerCompact = bannerCompact ?? this.bannerCompact;
+    this.bannerMaxWidth = (bannerMaxWidth ?? this.bannerMaxWidth).clamp(280, 520).toDouble();
     this.bannerBubbles = bannerBubbles ?? this.bannerBubbles;
     this.notifyGlassAvatar = notifyGlassAvatar ?? this.notifyGlassAvatar;
     this.notifyAvatarShape = (notifyAvatarShape ?? this.notifyAvatarShape).clamp(0, 1).toInt();
@@ -234,6 +241,8 @@ class AppSettings extends ChangeNotifier {
     await p.setDouble('bannerOpacity', bannerOpacity);
     await p.setBool('bannerTop', bannerTop);
     await p.setInt('bannerSeconds', bannerSeconds);
+    await p.setBool('bannerCompact', bannerCompact);
+    await p.setDouble('bannerMaxWidth', bannerMaxWidth);
     await p.setBool('bannerBubbles', bannerBubbles);
     await p.setBool('notifyGlassAvatar', notifyGlassAvatar);
     await p.setInt('notifyAvatarShape', notifyAvatarShape);
@@ -247,7 +256,8 @@ class AppSettings extends ChangeNotifier {
   Map<String, Object> notifyJson() => {
     'notifyInApp': notifyInApp, 'bannerStyle': bannerStyle.index, 'bannerTint': bannerTint,
     'bannerBlur': bannerBlur, 'bannerOpacity': bannerOpacity, 'bannerTop': bannerTop,
-    'bannerSeconds': bannerSeconds, 'bannerBubbles': bannerBubbles, 'notifyGlassAvatar': notifyGlassAvatar,
+    'bannerSeconds': bannerSeconds, 'bannerCompact': bannerCompact,
+    'bannerMaxWidth': bannerMaxWidth, 'bannerBubbles': bannerBubbles, 'notifyGlassAvatar': notifyGlassAvatar,
     'notifyAvatarShape': notifyAvatarShape, 'notifyBubbles': notifyBubbles,
     'notifyQuickReply': notifyQuickReply, 'notifyOtpCopy': notifyOtpCopy, 'quickReplies': quickReplies,
   };
@@ -262,7 +272,9 @@ class AppSettings extends ChangeNotifier {
       notifyInApp: b('notifyInApp'),
       bannerStyle: style == null ? null : BannerStyle.values[style.clamp(0, BannerStyle.values.length - 1).toInt()],
       bannerTint: i('bannerTint'), bannerBlur: d('bannerBlur'), bannerOpacity: d('bannerOpacity'),
-      bannerTop: b('bannerTop'), bannerSeconds: i('bannerSeconds'), bannerBubbles: b('bannerBubbles'),
+      bannerTop: b('bannerTop'), bannerSeconds: i('bannerSeconds'),
+      bannerCompact: b('bannerCompact'), bannerMaxWidth: d('bannerMaxWidth'),
+      bannerBubbles: b('bannerBubbles'),
       notifyGlassAvatar: b('notifyGlassAvatar'), notifyAvatarShape: i('notifyAvatarShape'),
       notifyBubbles: b('notifyBubbles'), notifyQuickReply: b('notifyQuickReply'), notifyOtpCopy: b('notifyOtpCopy'),
       quickReplies: replies is List ? [for (final r in replies) if (r is String) r] : null,
