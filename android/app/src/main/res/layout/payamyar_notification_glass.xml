@@ -22,7 +22,7 @@
             android:ellipsize="end" android:textStyle="bold" android:textSize="13sp"
             android:textColor="#FFFFFF" />
         <TextView android:id="@+id/glass_preview" android:layout_width="match_parent"
-            android:layout_height="wrap_content" android:maxLines="1"
+            android:layout_height="wrap_content" android:maxLines="3"
             android:ellipsize="end" android:textSize="12sp"
             android:textColor="#E8F0ED" />
     </LinearLayout>
