@@ -83,7 +83,7 @@ class AdminAccess {
                   refresh(() { checking = true; error = null; });
                   final client = MeliPayamak(u, p);
                   try {
-                    await client.credit();
+                    await client.verifyAccess();
                     if (dialogContext.mounted) {
                       Navigator.of(dialogContext).pop({'user': u, 'pass': p, 'line': l});
                     }
@@ -303,7 +303,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
     final test = MeliPayamak(u, pass);
     setState(() => loading = true);
     try {
-      final c = await test.credit();
+      final c = await test.verifyAccess();
       await Vault.put('mp_user', u);
       await Vault.put('mp_pass', pass);
       await Vault.put('mp_line', l);
@@ -316,7 +316,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
         credit = c;
         error = null;
       });
-      _notice('اتصال به ملی پیامک برقرار شد.');
+      _notice(c == null ? 'حساب از طریق صندوق دریافتی تأیید شد. دسترسی به موجودی نیازمند بررسی جداگانه است.' : 'حساب ملی‌پیامک تأیید شد.');
       await _refresh();
     } on PanelException catch (e) {
       test.close();
