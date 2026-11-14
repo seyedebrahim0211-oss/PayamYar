@@ -681,19 +681,19 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
 
   Future<String?> _readTxt() async {
     try {
-      final selected = await FilePicker.platform.pickFiles(
+      final file = await FilePicker.pickFile(
         type: FileType.custom, allowedExtensions: ['txt'],
-        withData: true, allowMultiple: false,
       );
-      if (selected == null || selected.files.isEmpty) return null;
-      final file = selected.files.single;
-      // Prevent accidental processing of huge or non-text files.
-      if (!file.name.toLowerCase().endsWith('.txt') || file.size > 1024 * 1024) {
+      if (file == null) return null;
+      // Check the size before reading the file into memory.
+      final length = file.lengthSync() ?? await file.length();
+      if (!file.name.toLowerCase().endsWith('.txt') ||
+          length == null || length > 1024 * 1024) {
         _notice('فقط فایل TXT تا حجم یک مگابایت پذیرفته می‌شود.');
         return null;
       }
-      final bytes = file.bytes;
-      if (bytes == null || bytes.isEmpty) {
+      final bytes = await file.readAsBytes();
+      if (bytes.isEmpty) {
         _notice('فایل خالی است یا قابل خواندن نیست.');
         return null;
       }
