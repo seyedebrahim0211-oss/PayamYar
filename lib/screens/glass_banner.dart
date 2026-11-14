@@ -384,8 +384,15 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
                   ),
               ]),
               const SizedBox(height: 8),
-              Text(b.body, maxLines: s.bannerCompact ? 2 : 3, overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: fg, fontSize: 14, height: 1.65)),
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * .3),
+                child: SingleChildScrollView(
+                  child: Text(b.body,
+                    maxLines: s.bannerCompact ? 4 : null,
+                    overflow: s.bannerCompact ? TextOverflow.ellipsis : TextOverflow.visible,
+                    style: TextStyle(color: fg, fontSize: 14, height: 1.65)),
+                ),
+              ),
               if (code != null && s.notifyOtpCopy) ...[
                 const SizedBox(height: 8),
                 Align(
