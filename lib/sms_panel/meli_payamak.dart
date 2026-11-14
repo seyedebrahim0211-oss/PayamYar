@@ -140,9 +140,9 @@ class MeliPayamak {
     }
     final raw = reply['Value']?.toString().trim() ?? '';
     if (raw.isEmpty || raw.toUpperCase() == 'NULL') return '';
-    final numbers = RegExp(r'^\\d+$');
-    if (numbers.hasMatch(raw) && int.tryParse(raw) != null && int.parse(raw) > 0) {
-      return raw;
+    if (RegExp(r'^[0-9]+$').hasMatch(raw)) {
+      final parsed = int.tryParse(raw);
+      if (parsed != null && parsed > 0) return raw;
     }
     // A successful status matters more than an absent/non-numeric receipt.
     return '';
