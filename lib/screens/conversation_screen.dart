@@ -8,6 +8,7 @@ import '../jalali.dart';
 import '../message_logic.dart';
 import '../sms_bridge.dart';
 import '../smart_assistant.dart';
+import '../conversation_insights.dart';
 import 'compose_screen.dart';
 import 'compose_tools.dart';
 import 'send_control.dart';
@@ -119,6 +120,40 @@ class _ConversationScreenState extends State<ConversationScreen> {
       ],
     ));
     if (confirmed == true && mounted) await _send(scheduledAt: at);
+  }
+
+  Future<void> _showInsights() async {
+    final messages = store.conversationFor(widget.address)?.messages ?? const <MessageRecord>[];
+    final summary = ConversationInsights.summarize(messages);
+    final tasks = ConversationInsights.actionItems(messages);
+    final warnings = ConversationInsights.securityWarnings(messages);
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context, showDragHandle: true, isScrollControlled: true,
+      builder: (ctx) => SafeArea(child: FractionallySizedBox(
+        heightFactor: .72,
+        child: ListView(padding: const EdgeInsets.all(18), children: [
+          Text('دستیار آفلاین گفتگو', style: Theme.of(ctx).textTheme.titleLarge),
+          const SizedBox(height: 8),
+          const Text('تحلیل قاعده‌محور روی همین گوشی؛ هیچ پیامکی ارسال یا به سرور منتقل نمی‌شود. این تحلیل ممکن است دقیق نباشد.'),
+          const SizedBox(height: 16),
+          Text('مرور پیام‌های اخیر', style: Theme.of(ctx).textTheme.titleMedium),
+          SelectableText(summary),
+          const SizedBox(height: 16),
+          Text('موارد قابل پیگیری', style: Theme.of(ctx).textTheme.titleMedium),
+          if (tasks.isEmpty) const Text('مورد مشخصی پیدا نشد.'),
+          for (final item in tasks) ListTile(dense: true, leading: const Icon(Icons.task_alt_rounded),
+            title: Text(item),
+            trailing: IconButton(icon: const Icon(Icons.copy_outlined),
+              onPressed: () => Clipboard.setData(ClipboardData(text: item)))),
+          const SizedBox(height: 12),
+          Text('هشدارهای امنیتی', style: Theme.of(ctx).textTheme.titleMedium),
+          if (warnings.isEmpty) const Text('الگوی مشکوک آشکاری شناسایی نشد؛ این نتیجه تأیید امنیت پیام نیست.'),
+          for (final warning in warnings) ListTile(dense: true,
+            leading: const Icon(Icons.gpp_maybe_outlined), title: Text(warning)),
+        ]),
+      )),
+    );
   }
 
   Future<void> _templates() async {
@@ -302,9 +337,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
                   color: pinned ? const Color(0xFFB8862E) : null),
                 onPressed: () => store.togglePin(widget.address)),
               PopupMenuButton<String>(
-                onSelected: (v) => v == 'style' ? _stylePicker() : _menu(v),
+                onSelected: (v) {
+                  if (v == 'style') { _stylePicker(); }
+                  else if (v == 'insights') { _showInsights(); }
+                  else { _menu(v); }
+                },
                 itemBuilder: (_) => [
                   const PopupMenuItem(value: 'style', child: Text('قالب گفتگو')),
+                  const PopupMenuItem(value: 'insights', child: Text('دستیار هوشمند آفلاین')),
                   const PopupMenuItem(value: 'copy', child: Text('کپی شماره')),
                   PopupMenuItem(value: 'archive', child: Text(store.isArchived(widget.address) ? 'خارج کردن از بایگانی' : 'بایگانی')),
                   if (SmsBridge.supported) const PopupMenuItem(value: 'block', child: Text('مسدود کردن')),
