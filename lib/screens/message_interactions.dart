@@ -80,7 +80,7 @@ class InteractiveMessageText extends StatelessWidget {
   final String text;
   final TextStyle? style;
   final String? senderName;
-  final VoidCallback? onPhoneMessage;
+  final ValueChanged<String>? onPhoneMessage;
   const InteractiveMessageText({super.key, required this.text, this.style,
     this.senderName, this.onPhoneMessage});
 
@@ -104,7 +104,8 @@ class InteractiveMessageText extends StatelessWidget {
           borderRadius: BorderRadius.circular(5),
           onTap: () async {
             if (!url) {
-              await showPhoneActions(context, value, onMessage: onPhoneMessage);
+              await showPhoneActions(context, value,
+                onMessage: onPhoneMessage == null ? null : () => onPhoneMessage!(phoneKey(value)));
               return;
             }
             final uri = Uri.tryParse(value);
