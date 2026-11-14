@@ -15,6 +15,7 @@ import 'send_control.dart';
 import 'home_screen.dart';
 import 'widgets.dart';
 import 'message_interactions.dart';
+import 'share_contact_sms.dart';
 
 class ConversationScreen extends StatefulWidget {
   final AppStore store;
@@ -329,7 +330,7 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
             titleSpacing: 0,
             title: InkWell(
               onTap: isPhone ? () => showPhoneActions(context, widget.address,
-                displayName: name, onMessage: () {}) : null,
+                displayName: name, onMessage: () => focus.requestFocus()) : null,
               child: Row(children: [
               SenderAvatar(name: name, address: widget.address, radius: 20,
                 category: store.infoFor(widget.address)?.category ?? MessageCategory.personal),
@@ -601,6 +602,9 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
                   icon: Icon(Icons.add_circle_outline_rounded, color: scheme.primary),
                   onSelected: (option) {
                     switch (option) {
+                      case 'contact': selectContactForSms(context).then((card) {
+                        if (card != null && mounted) _insert('\n$card');
+                      });
                       case 'templates': _templates();
                       case 'polish': _polish();
                       case 'schedule': _scheduleSend();
@@ -610,6 +614,8 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
                     }
                   },
                   itemBuilder: (_) => [
+                    const PopupMenuItem(value: 'contact', child: ListTile(
+                      dense: true, leading: Icon(Icons.contact_page_outlined), title: Text('افزودن مخاطب به پیام'))),
                     const PopupMenuItem(value: 'templates', child: ListTile(
                       dense: true, leading: Icon(Icons.library_books_outlined), title: Text('پیام‌های آماده'))),
                     const PopupMenuItem(value: 'polish', child: ListTile(
