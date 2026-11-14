@@ -272,8 +272,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
       } on PanelException catch (e) {
         diagnostics.add('صندوق ارسالی: ${e.message}');
       }
-      if (mounted) setState(() => error = diagnostics.isEmpty ? null :
-        'برخی خدمات پنل در دسترس نیستند:\n${diagnostics.join('\n')}');
+      if (mounted) {
+        setState(() => error = diagnostics.isEmpty ? null :
+          'برخی خدمات پنل در دسترس نیستند:\n${diagnostics.join('\n')}');
+      }
     } finally {
       _refreshing = false;
       if (mounted) setState(() => loading = false);
