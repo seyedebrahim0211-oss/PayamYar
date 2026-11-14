@@ -3,7 +3,7 @@ import 'message_logic.dart';
 /// Explainable, offline conversation tools. No network, automatic responses,
 /// or personal-message logging. This is rules-based assistance, not an LLM.
 class ConversationInsights {
-  static String _clean(String s) => s.replaceAll(RegExp(r'\\s+'), ' ').trim();
+  static String _clean(String s) => s.replaceAll(RegExp(r'\s+'), ' ').trim();
   static const _taskCues = ['لطفاً', 'لطفا', 'بفرست', 'ارسال کن', 'یادت', 'فراموش نکن',
     'پیگیری', 'انجام بده', 'تماس بگیر', 'پرداخت کن', 'قرار', 'جلسه', 'مدرک'];
   static const _moneyCues = ['رمز', 'cvv', 'شماره کارت', 'واریز کن', 'انتقال وجه',
@@ -17,8 +17,8 @@ class ConversationInsights {
     final excerpts = incoming.take(3).map((m) {
       final t = _clean(m.body);
       return '• ${t.length > 140 ? '${t.substring(0, 140)}…' : t}';
-    }).join('\\n');
-    return 'گزیده سه پیام دریافتی اخیر (خلاصه‌سازی آفلاین):\\n$excerpts';
+    }).join('\n');
+    return 'گزیده سه پیام دریافتی اخیر (خلاصه‌سازی آفلاین):\n$excerpts';
   }
 
   static List<String> actionItems(List<MessageRecord> messages) {
