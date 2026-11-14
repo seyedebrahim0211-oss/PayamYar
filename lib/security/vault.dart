@@ -12,6 +12,7 @@ class PinCheck {
   static PinCheck parse(String raw) {
     if (raw == 'ok') return const PinCheck(ok: true);
     if (raw == 'none') return const PinCheck(notSet: true);
+    if (raw == 'unavailable') return const PinCheck();
     final parts = raw.split(':');
     final n = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
     if (parts.first == 'locked') return PinCheck(lockedSeconds: n);
@@ -20,7 +21,8 @@ class PinCheck {
 
   String get message {
     if (ok) return '';
-    if (notSet) return 'رمزی تعیین نشده است.';
+    if (notSet) return 'کلید ورود یافت نشد. برای حفظ حریم خصوصی برنامه قفل می‌ماند؛ بازیابی امن لازم است.';
+    if (attemptsLeft == 0 && lockedSeconds == 0) return 'کلید امنیتی دستگاه در دسترس نیست؛ برنامه برای محافظت از پیام‌ها قفل می‌ماند.';
     if (lockedSeconds > 0) {
       final m = (lockedSeconds / 60).ceil();
       return 'به دلیل تلاش‌های نادرست، $m دقیقه دیگر دوباره امتحان کنید.';
@@ -72,6 +74,10 @@ class Vault {
       final stored = _memory['pin_$name'];
       return PinCheck.parse(stored == null ? 'none' : stored == pin ? 'ok' : 'wrong:4');
     }
-    return PinCheck.parse(await _c.invokeMethod<String>('verifyPin', {'name': name, 'pin': pin}) ?? 'none');
+    try {
+      return PinCheck.parse(await _c.invokeMethod<String>('verifyPin', {'name': name, 'pin': pin}) ?? 'unavailable');
+    } catch (_) {
+      return const PinCheck(); // Fail closed on Android Keystore errors.
+    }
   }
 }
