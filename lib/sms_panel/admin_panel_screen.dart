@@ -915,7 +915,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
               autocorrect: false,
               enableSuggestions: false,
               decoration: InputDecoration(
-                labelText: api == null ? 'کلید وب‌سرویس (API Key)' : 'کلید وب‌سرویس (خالی = بدون تغییر)',
+                labelText: api == null ? 'رمز وب‌سرویس / کلید معتبر حساب' : 'رمز وب‌سرویس (خالی = بدون تغییر)',
                 prefixIcon: const Icon(Icons.key_rounded),
               ),
             ),
@@ -937,9 +937,21 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
       ),
       const SizedBox(height: 10),
       Text(
-        'کلید وب‌سرویس را از پنل ملی پیامک › تنظیمات › وب‌سرویس بگیرید. اطلاعات با رمزنگاری Keystore فقط روی همین گوشی '
-        'ذخیره و فقط به rest.payamak-panel.com فرستاده می‌شود. اگر پنل خطای «IP مجاز» داد، محدودیت IP وب‌سرویس را در پنل بردارید.',
+        'روش اتصال REST: نام کاربری پنل و رمز وب‌سرویس یا کلید معتبر آن حساب. '
+        'رمز ورود سایت لزوماً همان رمز وب‌سرویس نیست. ملی‌پیامک SOAP هم ارائه می‌کند. '
+        'در صورت فعال بودن فهرست IP مجاز، آن را بدون بررسی امنیتی حذف نکنید؛ واسط سرور با IP ثابت ایمن‌تر است. '
+        'اطلاعات ورود در Android Keystore همین گوشی نگهداری می‌شود.',
         style: TextStyle(fontSize: 12, height: 1.8, color: scheme.onSurfaceVariant),
+      ),
+      const SizedBox(height: 10),
+      OutlinedButton.icon(
+        onPressed: loading || api == null ? null : _refresh,
+        icon: const Icon(Icons.fact_check_outlined),
+        label: const Text('آزمون مستقل اعتبار، دریافت و ارسال'),
+      ),
+      if (error != null) Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: SelectableText(error!, style: TextStyle(color: scheme.error, fontSize: 12)),
       ),
       const SizedBox(height: 20),
       if (user.isNotEmpty)
