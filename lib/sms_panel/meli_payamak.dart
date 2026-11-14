@@ -153,10 +153,10 @@ class MeliPayamak {
   /// [location]: 1 = received, 2 = sent. [from] filters by the sender number (received box).
   Future<List<PanelMessage>> messages({int location = 1, String from = '', int index = 0, int count = 50}) async {
     final r = await _post('GetMessages', {
-      'Location': '$location',
-      'From': from,
-      'Index': '$index',
-      'Count': '$count',
+      'location': '$location',
+      'from': from,
+      'index': '$index',
+      'count': '$count',
     });
     if (!_ok(r)) throw PanelException(errorText(r['Value']?.toString() ?? '0'));
     Object? data = r['Data'] ?? r['ReturnValue'] ?? r['Value'];
