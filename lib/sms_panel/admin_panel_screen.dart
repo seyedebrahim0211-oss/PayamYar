@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../jalali.dart';
@@ -678,6 +679,95 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
     toField.text = valid.join(', ');
   }
 
+  Future<String?> _readTxt() async {
+    try {
+      final selected = await FilePicker.platform.pickFiles(
+        type: FileType.custom, allowedExtensions: ['txt'],
+        withData: true, allowMultiple: false,
+      );
+      if (selected == null || selected.files.isEmpty) return null;
+      final file = selected.files.single;
+      // Prevent accidental processing of huge or non-text files.
+      if (!file.name.toLowerCase().endsWith('.txt') || file.size > 1024 * 1024) {
+        _notice('فقط فایل TXT تا حجم یک مگابایت پذیرفته می‌شود.');
+        return null;
+      }
+      final bytes = file.bytes;
+      if (bytes == null || bytes.isEmpty) {
+        _notice('فایل خالی است یا قابل خواندن نیست.');
+        return null;
+      }
+      final text = utf8.decode(bytes, allowMalformed: true).replaceFirst('\uFEFF', '');
+      if (text.contains('\u0000')) {
+        _notice('این فایل متن ساده TXT نیست.');
+        return null;
+      }
+      return text;
+    } catch (_) {
+      _notice('خواندن TXT ناموفق بود. دسترسی انتخاب فایل را بررسی کنید.');
+      return null;
+    }
+  }
+
+  Future<void> _importTxtRecipients() async {
+    final data = await _readTxt();
+    if (data == null || !mounted) return;
+    // One mobile number per line, or comma/semicolon separated.
+    final parts = data.split(RegExp(r'[\\s,،;]+')).where((v) => v.trim().isNotEmpty);
+    final normalized = parts.map(MeliPayamak.normalize).where((n) => n.isNotEmpty).toSet();
+    final current = toField.text.split(RegExp(r'[\\s,،;]+'))
+        .map(MeliPayamak.normalize).where((n) => n.isNotEmpty).toSet();
+    final numbers = {...current, ...normalized};
+    if (normalized.isEmpty) {
+      _notice('شماره موبایل معتبری در فایل پیدا نشد.');
+      return;
+    }
+    if (numbers.length > 100) {
+      _notice('در هر ارسال از پنل حداکثر ۱۰۰ گیرنده مجاز است. فایل را تقسیم کنید.');
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context, builder: (ctx) => AlertDialog(
+        title: const Text('پیش‌نمایش گیرنده‌های TXT'),
+        content: Text('${Jalali.digits(normalized.length)} شماره معتبر در فایل یافت شد. '
+          '${Jalali.digits(numbers.length)} شماره یکتا همراه گیرنده‌های قبلی ثبت می‌شود. '
+          'هیچ پیامکی در این مرحله ارسال نخواهد شد.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('افزودن گیرنده‌ها')),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) toField.text = numbers.join(', ');
+  }
+
+  Future<void> _importTxtMessage() async {
+    final data = await _readTxt();
+    if (data == null || !mounted) return;
+    final body = data.trim();
+    if (body.isEmpty) {
+      _notice('فایل متن پیام خالی است.');
+      return;
+    }
+    if (body.length > 5000) {
+      _notice('متن فایل طولانی است؛ حداکثر ۵۰۰۰ نویسه برای پیش‌نویس مجاز است.');
+      return;
+    }
+    final accepted = await showDialog<bool>(
+      context: context, builder: (ctx) => AlertDialog(
+        title: const Text('پیش‌نمایش متن TXT'),
+        content: SingleChildScrollView(child: SelectableText(body,
+          maxLines: 12)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true),
+            child: Text(textField.text.isEmpty ? 'افزودن به متن پیام' : 'جایگزینی متن قبلی')),
+        ],
+      ),
+    );
+    if (accepted == true && mounted) textField.text = body;
+  }
+
   Widget _sendTab() {
     if (api == null) return _needSetup();
     final scheme = Theme.of(context).colorScheme;
@@ -711,12 +801,28 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
               label: const Text('افزودن گیرنده از گروه‌های پیامیار'),
             ),
           ),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton.icon(
+              onPressed: _importTxtRecipients,
+              icon: const Icon(Icons.upload_file_rounded),
+              label: const Text('واردکردن شماره‌ها از فایل TXT'),
+            ),
+          ),
           const SizedBox(height: 12),
           TextField(
             controller: textField,
             minLines: 4,
             maxLines: 10,
             decoration: const InputDecoration(labelText: 'متن پیامک', alignLabelWithHint: true),
+          ),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton.icon(
+              onPressed: _importTxtMessage,
+              icon: const Icon(Icons.description_outlined),
+              label: const Text('خواندن متن پیام از فایل TXT'),
+            ),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
