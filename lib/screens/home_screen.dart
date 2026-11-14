@@ -227,14 +227,19 @@ class _ConversationsPageState extends State<ConversationsPage> {
     );
   }
 
-  void _archiveBySwipe(Conversation c) {
-    final wasArchived = store.isArchived(c.address);
-    store.toggleArchive(c.address);
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text(wasArchived ? 'از بایگانی خارج شد.' : 'گفتگو بایگانی شد.'),
-        action: SnackBarAction(label: 'بازگردانی', onPressed: () => store.toggleArchive(c.address))));
+  /// Left/right gestures cycle inbox views; archiving is an intentional
+  /// long-press action and cannot be triggered by an accidental swipe.
+  void _cycleInbox(double velocity) {
+    if (widget.archive || velocity.abs() < 460) return;
+    final current = unreadOnly ? 1 : category == null
+        ? 0 : MessageCategory.values.indexOf(category!) + 2;
+    final next = (current + (velocity < 0 ? 1 : -1))
+        .clamp(0, MessageCategory.values.length + 1);
+    if (next == current) return;
+    setState(() {
+      unreadOnly = next == 1;
+      category = next >= 2 ? MessageCategory.values[next - 2] : null;
+    });
   }
 
   @override
@@ -281,7 +286,12 @@ class _ConversationsPageState extends State<ConversationsPage> {
                   ]),
             ],
           ),
-          body: RefreshIndicator(
+          body: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onHorizontalDragEnd: (details) {
+              if (widget.settings.swipeTabs) _cycleInbox(details.primaryVelocity ?? 0);
+            },
+            child: RefreshIndicator(
             onRefresh: store.android ? store.loadAll : () async {},
             child: CustomScrollView(slivers: [
               SliverToBoxAdapter(child: Padding(
@@ -344,22 +354,18 @@ class _ConversationsPageState extends State<ConversationsPage> {
                   itemCount: list.length,
                   itemBuilder: (context, i) {
                     final c = list[i];
-                    return Dismissible(
+                    return ConversationTile(
                       key: ValueKey('conv-${store.key(c.address)}'),
-                      background: const _SwipeBackground(alignment: AlignmentDirectional.centerStart),
-                      secondaryBackground: const _SwipeBackground(alignment: AlignmentDirectional.centerEnd),
-                      onDismissed: (_) => _archiveBySwipe(c),
-                      child: ConversationTile(
-                        store: store,
-                        conversation: c,
-                        hidePreview: widget.settings.hidePreview,
-                        onLongPress: () => _actions(c),
-                      ),
+                      store: store,
+                      conversation: c,
+                      hidePreview: widget.settings.hidePreview,
+                      onLongPress: () => _actions(c),
                     );
                   },
                 ),
               ),
             ]),
+            ),
           ),
         );
       },
@@ -376,22 +382,6 @@ class _ConversationsPageState extends State<ConversationsPage> {
       shape: const StadiumBorder(),
     ),
   );
-}
-
-class _SwipeBackground extends StatelessWidget {
-  final AlignmentGeometry alignment;
-  const _SwipeBackground({required this.alignment});
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 3),
-      padding: const EdgeInsets.symmetric(horizontal: 22),
-      alignment: alignment,
-      decoration: BoxDecoration(color: scheme.secondaryContainer, borderRadius: BorderRadius.circular(20)),
-      child: Icon(Icons.archive_rounded, color: scheme.onSecondaryContainer),
-    );
-  }
 }
 
 /// "New version available" card; downloads, verifies and opens Android's installer inside the app.
