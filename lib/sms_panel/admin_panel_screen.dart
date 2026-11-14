@@ -12,6 +12,7 @@ import '../security/vault.dart';
 import '../sms_bridge.dart';
 import '../sms_groups.dart';
 import '../screens/contact_picker.dart';
+import '../screens/message_interactions.dart';
 import 'meli_payamak.dart';
 
 /// Admin/creator-only access. The entry is hidden (7 taps on the version in Settings) and
@@ -221,6 +222,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
   String? error;
   bool loading = true;
   bool _refreshing = false;
+  final Map<String, String> _contactNames = {};
   List<PanelMessage> inbox = const [];
   List<PanelMessage> sent = const [];
   int seenMax = 0;
@@ -340,6 +342,16 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
       } on PanelException catch (e) {
         diagnostics.add('صندوق ارسالی: ${e.message}');
       }
+      try {
+        final numbers = [...inbox, ...sent]
+            .expand((m) => [m.sender, m.receiver])
+            .where((n) => RegExp(r'^[+]?[0-9]{7,15}$').hasMatch(n))
+            .toSet().take(140).toList();
+        if (numbers.isNotEmpty) {
+          final names = await SmsBridge.contactNames(numbers);
+          if (mounted) setState(() => _contactNames.addAll(names));
+        }
+      } catch (_) { /* Reading contact names is optional. */ }
       if (mounted) {
         setState(() => error = diagnostics.isEmpty ? null :
           'برخی خدمات پنل در دسترس نیستند:\n${diagnostics.join('\n')}');
@@ -630,12 +642,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
       );
 
   Widget _messageTile(PanelMessage m, {bool outgoing = false}) {
+    final phone = outgoing ? m.receiver : m.sender;
+    final known = _contactNames[phone] ?? '';
     final isNew = !outgoing && m.id > seenMax;
     return ListTile(
       leading: CircleAvatar(child: Icon(outgoing ? Icons.call_made_rounded : Icons.call_received_rounded, size: 18)),
       title: Row(children: [
         Expanded(
-          child: Text(Jalali.digits(outgoing ? m.receiver : m.sender),
+          child: Text(known.isNotEmpty ? known : Jalali.digits(phone),
               textDirection: TextDirection.ltr, textAlign: TextAlign.right,
               style: TextStyle(fontWeight: isNew ? FontWeight.w900 : FontWeight.w600)),
         ),
@@ -649,10 +663,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Text(outgoing ? 'به ${m.receiver}' : 'از ${m.sender}', textDirection: TextDirection.ltr,
-                  style: const TextStyle(fontWeight: FontWeight.w800)),
+              ListTile(
+                title: Text(known.isNotEmpty ? known : phone),
+                subtitle: known.isEmpty ? null : Text(phone, textDirection: TextDirection.ltr),
+                trailing: const Icon(Icons.more_horiz_rounded),
+                onTap: () { Navigator.pop(ctx); showPhoneActions(context, phone, displayName: known); },
+              ),
               const SizedBox(height: 10),
-              SelectableText(m.body),
+              InteractiveMessageText(text: m.body),
               const SizedBox(height: 16),
               Row(children: [
                 Expanded(

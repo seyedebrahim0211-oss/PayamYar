@@ -14,6 +14,8 @@ import 'compose_tools.dart';
 import 'send_control.dart';
 import 'home_screen.dart';
 import 'widgets.dart';
+import 'message_interactions.dart';
+import 'share_contact_sms.dart';
 
 class ConversationScreen extends StatefulWidget {
   final AppStore store;
@@ -326,7 +328,10 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
         return Scaffold(
           appBar: AppBar(
             titleSpacing: 0,
-            title: Row(children: [
+            title: InkWell(
+              onTap: isPhone ? () => showPhoneActions(context, widget.address,
+                displayName: name, onMessage: () => focus.requestFocus()) : null,
+              child: Row(children: [
               SenderAvatar(name: name, address: widget.address, radius: 20,
                 category: store.infoFor(widget.address)?.category ?? MessageCategory.personal),
               const SizedBox(width: 10),
@@ -336,7 +341,7 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
                   Text(widget.address, textDirection: TextDirection.ltr,
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.w400, color: scheme.onSurfaceVariant)),
               ])),
-            ]),
+            ])),
             actions: [
               if (isPhone)
                 IconButton(tooltip: 'تماس', icon: const Icon(Icons.call_outlined),
@@ -511,6 +516,8 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
         else { _revealedAmounts.add(identity); }
       }) : null,
       sensitive: financial,
+      onPhoneMessage: (number) => Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => ConversationScreen(store: store, address: number))),
       trailing: code == null ? null : ActionChip(
         avatar: const Icon(Icons.copy_rounded, size: 16),
         label: Text('کپی کد ${Jalali.digits(code)}'),
@@ -595,6 +602,9 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
                   icon: Icon(Icons.add_circle_outline_rounded, color: scheme.primary),
                   onSelected: (option) {
                     switch (option) {
+                      case 'contact': selectContactForSms(context).then((card) {
+                        if (card != null && mounted) _insert('\n$card');
+                      });
                       case 'templates': _templates();
                       case 'polish': _polish();
                       case 'schedule': _scheduleSend();
@@ -604,6 +614,8 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
                     }
                   },
                   itemBuilder: (_) => [
+                    const PopupMenuItem(value: 'contact', child: ListTile(
+                      dense: true, leading: Icon(Icons.contact_page_outlined), title: Text('افزودن مخاطب به پیام'))),
                     const PopupMenuItem(value: 'templates', child: ListTile(
                       dense: true, leading: Icon(Icons.library_books_outlined), title: Text('پیام‌های آماده'))),
                     const PopupMenuItem(value: 'polish', child: ListTile(
@@ -679,10 +691,11 @@ class _Bubble extends StatelessWidget {
   final VoidCallback? onLongPress;
   final VoidCallback? onTap;
   final bool sensitive;
+  final ValueChanged<String>? onPhoneMessage;
   const _Bubble({required this.text, required this.outgoing, required this.time, required this.look,
     this.textSize = 15.5, this.status, this.statusIcon,
     this.failed = false, this.warning = false, this.pinned = false, this.trailing, this.onLongPress,
-    this.onTap, this.sensitive = false});
+    this.onTap, this.sensitive = false, this.onPhoneMessage});
 
   @override
   Widget build(BuildContext context) {
@@ -734,9 +747,9 @@ class _Bubble extends StatelessWidget {
               if (sensitive) Padding(padding: const EdgeInsets.only(bottom: 4),
                 child: Text('برای نمایش یا مخفی‌کردن اعداد لمس کنید',
                   style: TextStyle(color: fg.withValues(alpha: .68), fontSize: 11))),
-              Text(text.trim().isEmpty ? 'پیام بدون متن' : text.trim(),
-                maxLines: 8, overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: fg, fontSize: textSize, height: 1.7)),
+              InteractiveMessageText(text: text.trim().isEmpty ? 'پیام بدون متن' : text.trim(),
+                style: TextStyle(color: fg, fontSize: textSize, height: 1.7),
+                onPhoneMessage: onPhoneMessage),
               if (text.length > 260 || text.split('\n').length > 8)
                 TextButton(
                   style: TextButton.styleFrom(foregroundColor: fg, padding: EdgeInsets.zero),

@@ -5,6 +5,7 @@ import '../sms_bridge.dart';
 import '../recipient_suggestions.dart';
 import 'compose_tools.dart';
 import 'contact_picker.dart';
+import 'share_contact_sms.dart';
 import 'conversation_screen.dart';
 import 'send_control.dart';
 
@@ -446,6 +447,17 @@ class _ComposeScreenState extends State<ComposeScreen> {
               contentPadding: EdgeInsets.all(18),
             ),
           ),
+          Align(alignment: AlignmentDirectional.centerStart,
+            child: TextButton.icon(
+              onPressed: () async {
+                final card = await selectContactForSms(context);
+                if (card == null || !mounted) return;
+                setState(() => body.text = body.text.trim().isEmpty ? card : '${body.text}\n$card');
+                _saveDraft();
+              },
+              icon: const Icon(Icons.contact_page_outlined),
+              label: const Text('افزودن کارت مخاطب به متن پیام'),
+            )),
           const SizedBox(height: 6),
           Row(children: [
             Expanded(child: SmsCounter(text: body.text)),
