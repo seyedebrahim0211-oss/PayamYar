@@ -25,11 +25,11 @@ class GroupsScreen extends StatelessWidget {
     if (confirmed == true) await store.smsGroups.remove(group.id);
   }
 
-  void _compose(BuildContext context, {SmsGroup? group}) {
+  void _compose(BuildContext context, {SmsGroup? group, bool lockGroupRecipients = false}) {
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ComposeScreen(
       store: store, initialRecipients: group?.recipients,
       initialGroupName: group?.name, initialGroupId: group?.id,
-      createGroup: true,
+      createGroup: true, lockGroupRecipients: lockGroupRecipients,
     )));
   }
 
@@ -149,10 +149,12 @@ class GroupsScreen extends StatelessWidget {
                     tooltip: 'مدیریت گروه',
                     onSelected: (choice) {
                       if (choice == 'members') _members(context, group);
+                      if (choice == 'edit') _compose(context, group: group);
                       if (choice == 'delete') _delete(context, group);
                     },
                     itemBuilder: (_) => const [
                       PopupMenuItem(value: 'members', child: Text('فهرست اعضا و گفتگوهای خصوصی')),
+                      PopupMenuItem(value: 'edit', child: Text('مدیریت و افزودن مخاطبان')),
                       PopupMenuItem(value: 'delete', child: Text('حذف گروه')),
                     ]),
                   onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
@@ -161,7 +163,7 @@ class GroupsScreen extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(13, 0, 13, 13),
                   child: SizedBox(width: double.infinity, child: FilledButton.tonalIcon(
-                    onPressed: () => _compose(context, group: group),
+                    onPressed: () => _compose(context, group: group, lockGroupRecipients: true),
                     icon: const Icon(Icons.send_rounded),
                     label: const Text('ارسال پیام گروهی (جداگانه برای هر نفر)'),
                   )),
