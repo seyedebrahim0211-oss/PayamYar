@@ -110,7 +110,7 @@ class AppStore extends ChangeNotifier {
   Timer? _reportTimer;
 
   bool get isDefault => permissions.isDefault;
-  bool get needsOnboarding => android && (!permissions.canRead || !onboarded);
+  bool get needsOnboarding => android && (!permissions.isDefault || !permissions.canRead || !onboarded);
 
   static List<MessageRecord> _sample() {
     final now = DateTime.now();
@@ -202,8 +202,13 @@ class AppStore extends ChangeNotifier {
   }
 
   Future<SmsPermissionState> requestPermissions() async {
+    // Restricted SMS permissions are only appropriate when the app is the default handler.
+    if (!permissions.isDefault) {
+      await checkPermissions();
+      if (!permissions.isDefault) return permissions;
+    }
     permissions = await SmsBridge.request();
-    if (permissions.canRead && messages.isEmpty) unawaited(_quickThenAll());
+    if (permissions.isDefault && permissions.canRead && messages.isEmpty) unawaited(_quickThenAll());
     notifyListeners();
     return permissions;
   }
