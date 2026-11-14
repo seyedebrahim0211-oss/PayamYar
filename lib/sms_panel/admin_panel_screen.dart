@@ -171,6 +171,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
   double? credit;
   String? error;
   bool loading = true;
+  bool _refreshing = false;
   List<PanelMessage> inbox = const [];
   List<PanelMessage> sent = const [];
   int seenMax = 0;
@@ -237,7 +238,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
 
   Future<void> _refresh() async {
     final a = api;
-    if (a == null || loading) return;
+    if (a == null || _refreshing) return;
+    _refreshing = true;
     setState(() { loading = true; error = null; });
     final diagnostics = <String>[];
     try {
@@ -271,8 +273,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
         diagnostics.add('صندوق ارسالی: ${e.message}');
       }
       if (mounted) setState(() => error = diagnostics.isEmpty ? null :
-        'برخی خدمات پنل در دسترس نیستند:\\n${diagnostics.join('\\n')}');
+        'برخی خدمات پنل در دسترس نیستند:\n${diagnostics.join('\n')}');
     } finally {
+      _refreshing = false;
       if (mounted) setState(() => loading = false);
     }
   }
