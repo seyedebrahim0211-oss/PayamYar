@@ -154,7 +154,7 @@ open class MainActivity : FlutterActivity() {
                     val ok = try { Birthdays.sendNow(this, call.argument<String>("id").orEmpty()) } catch (e: Exception) { false }
                     runOnUiThread { result.success(ok) }
                 }
-                "previewNotification" -> { Notifier.preview(this); result.success(null) }
+                "previewNotification" -> { result.success(Notifier.preview(this)) }
                 "openBubbleSettings" -> {
                     Notifier.configureChannels(this)
                     try {

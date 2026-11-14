@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../app_settings.dart';
 import '../jalali.dart';
@@ -8,9 +9,55 @@ import 'settings_screen.dart' show SettingsGroup;
 
 /// Full personalisation of incoming-message alerts: the in-app glass banner, the Android
 /// notification (glass avatar, heads-up alerts) and the ready-made quick replies.
-class NotificationStyleScreen extends StatelessWidget {
+class NotificationStyleScreen extends StatefulWidget {
   final AppSettings settings;
   const NotificationStyleScreen({super.key, required this.settings});
+
+  @override
+  State<NotificationStyleScreen> createState() => _NotificationStyleScreenState();
+}
+
+class _NotificationStyleScreenState extends State<NotificationStyleScreen> {
+  Timer? _previewTimer;
+  String? _activePreview;
+
+  @override
+  void dispose() {
+    _previewTimer?.cancel();
+    super.dispose();
+  }
+
+  void _previewTimerStart(String mode) {
+    _previewTimer?.cancel();
+    setState(() => _activePreview = mode);
+    _previewTimer = Timer(const Duration(seconds: 10), () {
+      if (mounted) setState(() => _activePreview = null);
+    });
+  }
+
+  void _testInApp() {
+    _previewTimerStart('flutter');
+    currentBanner.value = IncomingBanner.preview();
+  }
+
+  Future<void> _testAndroid() async {
+    if (currentBanner.value?.sample == true) currentBanner.value = null;
+    _previewTimerStart('android');
+    try {
+      final visible = await SmsBridge.previewNotification();
+      if (!visible && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('اعلان واقعی مجاز نیست؛ دریافت پیام و مجوز اعلان اندروید را در تنظیمات فعال کنید.'),
+        ));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('اعلان واقعی نمایش داده نشد. مجوز اعلان و تنظیمات گوشی را بررسی کنید.'),
+        ));
+      }
+    }
+  }
 
   Future<void> _addReply(BuildContext context) async {
     final controller = TextEditingController();
@@ -33,17 +80,17 @@ class NotificationStyleScreen extends StatelessWidget {
     );
     controller.dispose();
     if (text == null || text.trim().isEmpty) return;
-    await settings.updateNotify(quickReplies: [...settings.quickReplies, text]);
+    await widget.settings.updateNotify(quickReplies: [...widget.settings.quickReplies, text]);
   }
 
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(title: const Text('ظاهر اعلان و پاسخ سریع')),
         body: ListenableBuilder(
-          listenable: settings,
+          listenable: widget.settings,
           builder: (context, child) {
             final scheme = Theme.of(context).colorScheme;
-            final s = settings;
+            final s = widget.settings;
             final seconds = Jalali.digits(s.bannerSeconds);
             final blur = Jalali.digits(s.bannerBlur.round());
             final opacity = Jalali.digits((s.bannerOpacity * 100).round());
@@ -52,30 +99,32 @@ class NotificationStyleScreen extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                 child: SizedBox(height: 170, width: double.infinity,
-                  child: _PreviewStage(settings: s)),
+                  child: _activePreview == null
+                      ? _PreviewStage(settings: s)
+                      : Center(child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 18),
+                          child: Text(
+                            _activePreview == 'android'
+                                ? 'در حال آزمایش اعلان واقعی اندروید. پنجره بالای گوشی را ببینید و برای خواندن متن کامل، اعلان را باز کنید.'
+                                : 'پیش‌نمایش شیشه‌ای داخل برنامه در بالای صفحه نمایش داده می‌شود.',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        ))),
               ),
               Expanded(child: ListView(
               key: const PageStorageKey('notification_settings_scroll'),
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
               children: [
                 SizedBox(width: double.infinity, child: FilledButton.tonalIcon(
-                  onPressed: () => currentBanner.value = IncomingBanner.preview(),
+                  onPressed: _testInApp,
                   icon: const Icon(Icons.web_asset_rounded),
                   label: const Text('پیش‌نمایش اعلان شیشه‌ای یکپارچه'),
                 )),
                 const SizedBox(height: 8),
                 if (SmsBridge.supported)
                   SizedBox(width: double.infinity, child: OutlinedButton.icon(
-                    onPressed: () async {
-                      try {
-                        await SmsBridge.previewNotification();
-                      } catch (_) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                            content: Text('اعلان سیستمی نمایش داده نشد؛ مجوز اعلان و تنظیمات گوشی را بررسی کنید.')));
-                        }
-                      }
-                    },
+                    onPressed: _testAndroid,
                     icon: const Icon(Icons.notifications_active_outlined),
                     label: const Text('آزمایش اعلان واقعی اندروید'),
                   )),
@@ -84,7 +133,7 @@ class NotificationStyleScreen extends StatelessWidget {
                   SwitchListTile(
                     secondary: Icon(Icons.web_asset_rounded, color: scheme.primary),
                     title: const Text('نمایش بنر هنگام باز بودن پیامیار'),
-                    subtitle: const Text('فقط یک اعلان: داخل برنامه کارت شیشه‌ای، بیرون برنامه اعلان شیشه‌ای اندروید'),
+                    subtitle: const Text('داخل برنامه کارت متحرک Flutter؛ بیرون برنامه اعلان بومی اندروید با رنگ هماهنگ، در محدوده ارتفاع مجاز گوشی.'),
                     value: s.notifyInApp,
                     onChanged: (v) => s.updateNotify(notifyInApp: v),
                   ),
@@ -139,14 +188,14 @@ class NotificationStyleScreen extends StatelessWidget {
                   SwitchListTile(
                     secondary: Icon(Icons.crop_16_9_outlined, color: scheme.primary),
                     title: const Text('کارت شیشه‌ای جمع‌وجور'),
-                    subtitle: const Text('ارتفاع کمتر؛ جزئیات و پاسخ سریع با لمس اعلان در گفتگو در دسترس است.'),
+                    subtitle: const Text('کارت داخل برنامه را کوتاه می‌کند؛ در اعلان اندروید پیام طولانی با بازکردن کشوی اعلان خوانده می‌شود.'),
                     value: s.bannerCompact,
                     onChanged: (v) => s.updateNotify(bannerCompact: v),
                   ),
                   ListTile(
                     leading: Icon(Icons.width_normal_outlined, color: scheme.primary),
                     title: const Text('عرض کارت داخلی'),
-                    subtitle: const Text('در گوشی‌های کوچک خودکار با صفحه هماهنگ می‌شود'),
+                    subtitle: const Text('عرض کارت داخل برنامه؛ عرض اعلان اندروید در اختیار سیستم‌عامل است'),
                     trailing: Text(Jalali.digits(s.bannerMaxWidth.round())),
                   ),
                   Slider(
@@ -217,7 +266,7 @@ class NotificationStyleScreen extends StatelessWidget {
                   const ListTile(
                     leading: Icon(Icons.web_asset_rounded),
                     title: Text('اعلان شیشه‌ای بالای صفحه'),
-                    subtitle: Text('حباب شناور حذف شده است. درون برنامه کارت شیشه‌ای بالا می‌آید و بیرون برنامه اعلان استاندارد اندروید نمایش داده می‌شود.'),
+                    subtitle: Text('ظاهر بومی به رنگ و سبک انتخابی نزدیک شده؛ مات‌سازی زنده و حباب متحرک فقط داخل برنامه امکان‌پذیر است. ارتفاع اعلان واقعی با Android/MagicOS کنترل می‌شود.'),
                   ),
                   SwitchListTile(
                     secondary: Icon(Icons.pin_outlined, color: scheme.primary),

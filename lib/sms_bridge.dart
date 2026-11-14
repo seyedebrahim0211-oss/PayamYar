@@ -221,8 +221,9 @@ class SmsBridge {
   }
 
   /// Posts a sample Android notification with the chosen look and quick replies.
-  static Future<void> previewNotification() async {
-    if (supported) await _channel.invokeMethod<void>('previewNotification');
+  static Future<bool> previewNotification() async {
+    if (!supported) return false;
+    return await _channel.invokeMethod<bool>('previewNotification') ?? false;
   }
 
   /// Re-arms the native birthday alarm after the list changed (see Birthdays.kt).
