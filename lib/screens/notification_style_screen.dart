@@ -75,7 +75,7 @@ class NotificationStyleScreen extends StatelessWidget {
                   SwitchListTile(
                     secondary: Icon(Icons.web_asset_rounded, color: scheme.primary),
                     title: const Text('نمایش بنر هنگام باز بودن پیامیار'),
-                    subtitle: const Text('به‌جای اعلان سیستم، با پاسخ سریع و کپی کد'),
+                    subtitle: const Text('بنر داخلی همراه اعلان اندروید، برای اطمینان از دیده‌شدن پیام'),
                     value: s.notifyInApp,
                     onChanged: (v) => s.updateNotify(notifyInApp: v),
                   ),
