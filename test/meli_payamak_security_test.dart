@@ -10,8 +10,8 @@ void main() {
       expect(request.url.scheme, 'https');
       expect(request.url.host, MeliPayamak.host);
       expect(request.url.path, '/api/SendSMS/GetCredit');
-      expect(request.bodyFields['username'], 'owner');
-      expect(request.bodyFields['password'], 'api-secret');
+      expect(request.bodyFields['UserName'], 'owner');
+      expect(request.bodyFields['PassWord'], 'api-secret');
       return http.Response(jsonEncode({'RetStatus': 1, 'Value': '57'}), 200);
     }));
     expect(await api.credit(), 57);
