@@ -75,9 +75,7 @@ class MeliPayamak {
       res = await _client
           .post(uri,
               headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8', 'Accept': 'application/json'},
-              body: method == 'SendSMS'
-                  ? {'username': username, 'password': password, ...fields}
-                  : {'UserName': username, 'PassWord': password, ...fields})
+              body: {'username': username, 'password': password, ...fields})
           .timeout(const Duration(seconds: 20));
     } catch (_) {
       throw const PanelException('اتصال به ملی پیامک برقرار نشد؛ اینترنت را بررسی کنید.');
