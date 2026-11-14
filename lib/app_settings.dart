@@ -51,6 +51,9 @@ class AppSettings extends ChangeNotifier {
   bool signatureEnabled = false;
   String signature = '';
   bool smartReplies = true;
+  /// App-side recipient selection capacity, not an operator sending allowance.
+  /// For >500, the user must explicitly opt in; all SMS remain subject to carrier policy.
+  int recipientCapacity = 500;
 
   // ── chat look ──
   ChatStyle chatStyle = ChatStyle.traditional;
@@ -98,6 +101,7 @@ class AppSettings extends ChangeNotifier {
     signatureEnabled = p.getBool('signatureEnabled') ?? false;
     signature = p.getString('signature') ?? '';
     smartReplies = p.getBool('smartReplies') ?? true;
+    recipientCapacity = _capacity(p.getInt('recipientCapacity') ?? 500);
     chatStyle = ChatStyle.values[(p.getInt('chatStyle') ?? 0).clamp(0, ChatStyle.values.length - 1).toInt()];
     bubbleText = (p.getDouble('bubbleText') ?? 15.5).clamp(13, 20).toDouble();
     quietHours = p.getBool('quietHours') ?? false;
@@ -121,10 +125,12 @@ class AppSettings extends ChangeNotifier {
     notifyListeners();
   }
 
+  static int _capacity(int value) => const [500, 1000, 2000].contains(value) ? value : 500;
+
   Future<void> update({int? palette, ThemeMode? mode, double? scale, int? fontChoice,
       bool? hidePreview, bool? notifyPreview, bool? notifyIncoming, bool? notifySent,
       bool? sendDelayEnabled, int? sendDelaySeconds, SentFeedback? sentFeedback, bool? enterToSend,
-      bool? signatureEnabled, String? signature, bool? smartReplies, ChatStyle? chatStyle,
+      bool? signatureEnabled, String? signature, bool? smartReplies, int? recipientCapacity, ChatStyle? chatStyle,
       double? bubbleText, bool? quietHours, int? quietStart, int? quietEnd}) async {
     this.palette = palette ?? this.palette;
     this.mode = mode ?? this.mode;
@@ -141,6 +147,7 @@ class AppSettings extends ChangeNotifier {
     this.signatureEnabled = signatureEnabled ?? this.signatureEnabled;
     this.signature = (signature ?? this.signature).trim();
     this.smartReplies = smartReplies ?? this.smartReplies;
+    this.recipientCapacity = _capacity(recipientCapacity ?? this.recipientCapacity);
     this.chatStyle = chatStyle ?? this.chatStyle;
     this.bubbleText = bubbleText ?? this.bubbleText;
     this.quietHours = quietHours ?? this.quietHours;
@@ -171,6 +178,7 @@ class AppSettings extends ChangeNotifier {
     await p.setBool('signatureEnabled', signatureEnabled);
     await p.setString('signature', signature);
     await p.setBool('smartReplies', smartReplies);
+    await p.setInt('recipientCapacity', recipientCapacity);
     await p.setInt('chatStyle', chatStyle.index);
     await p.setDouble('bubbleText', bubbleText);
     await _saveNotify(p);
@@ -264,7 +272,7 @@ class AppSettings extends ChangeNotifier {
     'privatePreview': hidePreview, 'notifyPreview': notifyPreview, 'notifyIncoming': notifyIncoming,
     'notifySent': notifySent, 'sentFeedback': sentFeedback.index, 'sendDelayEnabled': sendDelayEnabled,
     'sendDelaySeconds': sendDelaySeconds, 'enterToSend': enterToSend, 'signatureEnabled': signatureEnabled,
-    'signature': signature, 'smartReplies': smartReplies, 'chatStyle': chatStyle.index,
+    'signature': signature, 'smartReplies': smartReplies, 'recipientCapacity': recipientCapacity, 'chatStyle': chatStyle.index,
     'bubbleText': bubbleText, 'quietHours': quietHours, 'quietStart': quietStart, 'quietEnd': quietEnd,
     ...notifyJson(),
   };
@@ -286,6 +294,7 @@ class AppSettings extends ChangeNotifier {
       sendDelayEnabled: v<bool>('sendDelayEnabled'), sendDelaySeconds: i('sendDelaySeconds'),
       enterToSend: v<bool>('enterToSend'), signatureEnabled: v<bool>('signatureEnabled'),
       signature: v<String>('signature'), smartReplies: v<bool>('smartReplies'),
+       recipientCapacity: i('recipientCapacity'),
       chatStyle: i('chatStyle') == null ? null
           : ChatStyle.values[i('chatStyle')!.clamp(0, ChatStyle.values.length - 1).toInt()],
       bubbleText: d('bubbleText')?.clamp(13, 20).toDouble(),
