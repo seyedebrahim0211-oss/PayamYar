@@ -72,7 +72,7 @@ class AppSettings extends ChangeNotifier {
   bool bannerBubbles = true;
   bool notifyGlassAvatar = true;
   int notifyAvatarShape = 0; // 0 = circle, 1 = soft square
-  bool notifyBubbles = true;
+  bool notifyBubbles = false;
   bool notifyQuickReply = true;
   bool notifyOtpCopy = true;
   List<String> quickReplies = List.of(defaultQuickReplies);
@@ -116,12 +116,13 @@ class AppSettings extends ChangeNotifier {
     bannerTint = (p.getInt('bannerTint') ?? palette).clamp(0, palettes.length - 1).toInt();
     bannerBlur = (p.getDouble('bannerBlur') ?? 18).clamp(0, 30).toDouble();
     bannerOpacity = (p.getDouble('bannerOpacity') ?? .5).clamp(.15, .95).toDouble();
-    bannerTop = p.getBool('bannerTop') ?? true;
+    bannerTop = true;
     bannerSeconds = (p.getInt('bannerSeconds') ?? 6).clamp(2, 15).toInt();
     bannerBubbles = p.getBool('bannerBubbles') ?? true;
     notifyGlassAvatar = p.getBool('notifyGlassAvatar') ?? true;
     notifyAvatarShape = (p.getInt('notifyAvatarShape') ?? 0).clamp(0, 1).toInt();
-    notifyBubbles = p.getBool('notifyBubbles') ?? true;
+    // Floating Android bubbles are retired; ignore the old persisted switch.
+    notifyBubbles = false;
     notifyQuickReply = p.getBool('notifyQuickReply') ?? true;
     notifyOtpCopy = p.getBool('notifyOtpCopy') ?? true;
     final replies = p.getString('notifyQuickReplies');
@@ -203,12 +204,12 @@ class AppSettings extends ChangeNotifier {
     this.bannerTint = (bannerTint ?? this.bannerTint).clamp(0, palettes.length - 1).toInt();
     this.bannerBlur = (bannerBlur ?? this.bannerBlur).clamp(0, 30).toDouble();
     this.bannerOpacity = (bannerOpacity ?? this.bannerOpacity).clamp(.15, .95).toDouble();
-    this.bannerTop = bannerTop ?? this.bannerTop;
+    this.bannerTop = true;
     this.bannerSeconds = (bannerSeconds ?? this.bannerSeconds).clamp(2, 15).toInt();
     this.bannerBubbles = bannerBubbles ?? this.bannerBubbles;
     this.notifyGlassAvatar = notifyGlassAvatar ?? this.notifyGlassAvatar;
     this.notifyAvatarShape = (notifyAvatarShape ?? this.notifyAvatarShape).clamp(0, 1).toInt();
-    this.notifyBubbles = notifyBubbles ?? this.notifyBubbles;
+    this.notifyBubbles = false;
     this.notifyQuickReply = notifyQuickReply ?? this.notifyQuickReply;
     this.notifyOtpCopy = notifyOtpCopy ?? this.notifyOtpCopy;
     if (quickReplies != null) this.quickReplies = cleanReplies(quickReplies);
@@ -236,7 +237,7 @@ class AppSettings extends ChangeNotifier {
     await p.setBool('bannerBubbles', bannerBubbles);
     await p.setBool('notifyGlassAvatar', notifyGlassAvatar);
     await p.setInt('notifyAvatarShape', notifyAvatarShape);
-    await p.setBool('notifyBubbles', notifyBubbles);
+    await p.setBool('notifyBubbles', false);
     await p.setBool('notifyQuickReply', notifyQuickReply);
     await p.setBool('notifyOtpCopy', notifyOtpCopy);
     await p.setString('notifyQuickReplies', quickReplies.join('\n'));
