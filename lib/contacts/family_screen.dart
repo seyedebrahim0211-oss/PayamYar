@@ -112,7 +112,7 @@ class _FamilyScreenState extends State<FamilyScreen> {
               child: Text('افزودن دستی از تمام مخاطبین')),
             for (final c in widget.contacts.contacts.where(
                 (c) => !relations.containsKey(c.key) &&
-                  (FamilyRelations.suggest(c.name) == null || !showSuggestions)))
+                  (FamilyRelations.suggest(c.name) == null || !showSuggestions || excluded.contains(c.key))))
               ListTile(title: Text(c.displayName),
                 trailing: const Icon(Icons.add_rounded), onTap: () => _edit(c, null)),
           ]),
