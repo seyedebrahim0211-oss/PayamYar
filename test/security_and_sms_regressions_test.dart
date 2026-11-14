@@ -38,13 +38,12 @@ void main() {
   });
 
   test('bulk SMS has cancellation word LAST after signature', () {
-    final text = MeliPayamak.compose('متن پیام\\nلغو۱۱',
+    final text = MeliPayamak.compose('متن پیام' + String.fromCharCode(10) + 'لغو۱۱',
       bulk: true, signature: 'هنر مردمی');
     expect(text.endsWith('لغو11'), true);
-    expect(text, contains('هنر مردمی\\nلغو11'));
+    expect(text.endsWith('هنر مردمی' + String.fromCharCode(10) + 'لغو11'), true);
     expect(RegExp(r'لغو[۱١1][۱١1]$').allMatches(text).length, 1);
   });
-
   test('ordinary SMS does not invent cancellation marker', () {
     expect(MeliPayamak.compose('سلام', bulk: false), 'سلام');
   });
