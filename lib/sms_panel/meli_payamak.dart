@@ -162,7 +162,7 @@ class MeliPayamak {
       await messages(location: 1, count: 1);
       return null;
     } on PanelException catch (e) {
-      throw PanelException('تأیید حساب ناموفق. موجودی: ${creditFailure?.message}؛ دریافت: ${e.message}');
+      throw PanelException('تأیید حساب ناموفق. موجودی: ${creditFailure.message}؛ دریافت: ${e.message}');
     }
   }
 
