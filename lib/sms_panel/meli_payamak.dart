@@ -168,7 +168,20 @@ class MeliPayamak {
     }
   }
 
-  /// Sends at most 100 opt-in recipients using one request.
+  /// The operator requires the opt-out word to be the *last* SMS token for
+  /// multi-recipient messages. Add an optional signature BEFORE that word.
+  static String compose(String draft, {required bool bulk, String signature = ''}) {
+    var text = draft.trim();
+    for (final word in ['لغو11', 'لغو۱۱', 'لغو١١']) {
+      if (text.endsWith(word)) {
+        text = text.substring(0, text.length - word.length).trimRight();
+        break;
+      }
+    }
+    final sign = signature.trim();
+    if (sign.isNotEmpty && !text.endsWith(sign)) text = '$text\n$sign';
+    return bulk && text.isNotEmpty ? '$text\nلغو11' : text;
+  }
   /// If transport fails after POST, the result is unknown: the caller must not
   /// automatically resend because the gateway may have processed the request.
   Future<String> send({required List<String> to, required String text, String from = defaultLine, bool flash = false}) async {

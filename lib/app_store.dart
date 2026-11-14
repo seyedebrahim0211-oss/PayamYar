@@ -467,6 +467,16 @@ class AppStore extends ChangeNotifier {
     revision++;
   }
 
+  /// Exercises the production ingestion path without native Android channels.
+  /// This is the grouping logic used by the inbox; legacy ConversationLogic
+  /// grouping tests alone do not cover it.
+  @visibleForTesting
+  void ingestForTesting(List<MessageRecord> rows) {
+    messages = List.of(rows);
+    _rebuild();
+    notifyListeners();
+  }
+
   String displayName(String address) {
     final name = names[address];
     return name == null || name.isEmpty ? address : name;
@@ -704,6 +714,12 @@ class AppStore extends ChangeNotifier {
       messages = [MessageRecord(sender: target, body: text, date: DateTime.now(), outgoing: true, type: 2, id: DateTime.now().millisecondsSinceEpoch), ...messages];
       _rebuild();
       notifyListeners();
+      return null;
+    }
+    // A non-default SMS app cannot reliably write its sent row to Android's SMS provider.
+    // Refuse the send and preserve the user's draft instead of showing a ghost message.
+    if (!permissions.isDefault || !permissions.canSend) {
+      onNotice?.call('برای ثبت مطمئن پیام ارسالی، ابتدا پیامیار را برنامه پیش‌فرض پیامک کنید. متن شما حفظ شد.');
       return null;
     }
     try {

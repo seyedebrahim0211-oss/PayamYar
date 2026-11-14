@@ -52,6 +52,7 @@ class _BannerLayerState extends State<_BannerLayer> with SingleTickerProviderSta
   Timer? _timer;
   bool _typing = false;
   double _drag = 0;
+  int _bannerGeneration = 0;
 
   @override
   void initState() {
@@ -74,6 +75,7 @@ class _BannerLayerState extends State<_BannerLayer> with SingleTickerProviderSta
       return;
     }
     if (!next.sample && !widget.settings.notifyInApp) return;
+    _bannerGeneration++;
     setState(() {
       _banner = next;
       _typing = false;
@@ -93,14 +95,18 @@ class _BannerLayerState extends State<_BannerLayer> with SingleTickerProviderSta
   Future<void> _dismiss() async {
     _timer?.cancel();
     if (!mounted || _banner == null) return;
+    final generation = ++_bannerGeneration;
+    final dismissed = _banner;
     await _show.reverse();
-    if (!mounted) return;
+    if (!mounted || generation != _bannerGeneration) return;
     setState(() {
       _banner = null;
       _typing = false;
       _drag = 0;
     });
-    if (currentBanner.value != null) currentBanner.value = null;
+    // A newer SMS may arrive while the old card is animating out.
+    // Only clear the exact banner dismissed, never the new message.
+    if (identical(currentBanner.value, dismissed)) currentBanner.value = null;
   }
 
   void _open() {

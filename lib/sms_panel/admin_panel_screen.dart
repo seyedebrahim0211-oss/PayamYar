@@ -422,7 +422,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
     final a = api;
     if (a == null) return;
     final numbers = toField.text.split(RegExp(r'[\s,،;]+')).map(MeliPayamak.normalize).where((n) => n.isNotEmpty).toSet().toList();
-    final text = textField.text.trim();
+    final text = MeliPayamak.compose(textField.text, bulk: numbers.length > 1);
     if (numbers.isEmpty || text.isEmpty) {
       _notice('گیرنده معتبر و متن پیام را وارد کنید.');
       return;
@@ -432,8 +432,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('ارسال از پنل ملی پیامک'),
-        content: Text('از خط ${Jalali.digits(line)} به ${Jalali.digits(numbers.length)} گیرنده ارسال شود؟\n'
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('از خط ${Jalali.digits(line)} به ${Jalali.digits(numbers.length)} گیرنده ارسال شود؟\n'
             'هزینه تقریبی: ${Jalali.digits(parts)} پیامک از اعتبار پنل.'),
+          const SizedBox(height: 12),
+          const Text('پیش‌نمایش متن نهایی ارسالی:', style: TextStyle(fontWeight: FontWeight.w800)),
+          SelectableText(text),
+        ])),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
           FilledButton(
@@ -921,11 +927,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
               style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
             ),
           ),
-          if (count > 1 && !textField.text.contains('لغو11'))
+          if (count > 1 &&
+              MeliPayamak.compose(textField.text, bulk: false).isNotEmpty &&
+              !textField.text.trimRight().endsWith('لغو11') &&
+              !textField.text.trimRight().endsWith('لغو۱۱'))
             Align(
               alignment: AlignmentDirectional.centerStart,
               child: TextButton.icon(
-                onPressed: () => textField.text = '${textField.text.trimRight()}\nلغو11',
+                onPressed: () { textField.text = MeliPayamak.compose(textField.text, bulk: true); setState(() {}); },
                 icon: const Icon(Icons.add_rounded),
                 label: const Text('افزودن «لغو11»'),
               ),

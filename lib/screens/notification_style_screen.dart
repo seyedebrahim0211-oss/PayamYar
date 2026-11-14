@@ -46,11 +46,17 @@ class NotificationStyleScreen extends StatelessWidget {
             final seconds = Jalali.digits(s.bannerSeconds);
             final blur = Jalali.digits(s.bannerBlur.round());
             final opacity = Jalali.digits((s.bannerOpacity * 100).round());
-            return ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+            return Column(children: [
+              // Always-visible live preview while settings scroll beneath it.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                child: SizedBox(height: 170, width: double.infinity,
+                  child: _PreviewStage(settings: s)),
+              ),
+              Expanded(child: ListView(
+              key: const PageStorageKey('notification_settings_scroll'),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
               children: [
-                _PreviewStage(settings: s),
-                const SizedBox(height: 10),
                 SizedBox(width: double.infinity, child: FilledButton.tonalIcon(
                   onPressed: () => currentBanner.value = IncomingBanner.preview(),
                   icon: const Icon(Icons.web_asset_rounded),
@@ -229,7 +235,8 @@ class NotificationStyleScreen extends StatelessWidget {
                     ),
                 ]),
               ],
-            );
+              )),
+            ]);
           },
         ),
       );
@@ -258,7 +265,10 @@ class _PreviewStage extends StatelessWidget {
           const Positioned(top: -10, left: 20, child: _Blob(color: Color(0xFFDDA54A), size: 70)),
           Positioned(bottom: -14, right: 30, child: _Blob(color: tint, size: 90)),
           const Positioned(top: 30, right: -10, child: _Blob(color: Color(0xFF9F5369), size: 46)),
-          GlassBannerCard(banner: IncomingBanner.preview(), settings: settings, interactive: false),
+          Align(
+            alignment: settings.bannerTop ? Alignment.topCenter : Alignment.bottomCenter,
+            child: GlassBannerCard(banner: IncomingBanner.preview(), settings: settings, interactive: false),
+          ),
         ]),
       ),
     );

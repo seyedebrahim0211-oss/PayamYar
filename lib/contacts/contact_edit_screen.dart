@@ -65,7 +65,9 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
     final b = birthday;
     if (b == null) return '';
     if (b[0] == 0) {
-      final g = Jalali.toGregorian(1400, b[1], b[2]);
+      // 1399 is a Jalali leap year, so 30 Esfand never spills into Farvardin.
+      // The exact Jalali month/day is also retained locally in ContactStore.
+      final g = Jalali.toGregorian(1399, b[1], b[2]);
       return '--${g[1].toString().padLeft(2, '0')}-${g[2].toString().padLeft(2, '0')}';
     }
     final g = Jalali.toGregorian(b[0], b[1], b[2]);
@@ -106,7 +108,10 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
       if (photo != null || removePhoto) widget.contacts.forgetPhoto(id);
       await widget.contacts.load();
       final saved = widget.contacts.byId(id);
-      if (saved != null) await widget.contacts.setGroups(saved, groupIds);
+      if (saved != null) {
+        await widget.contacts.saveJalaliBirthday(saved, birthday);
+        await widget.contacts.setGroups(saved, groupIds);
+      }
       if (mounted) Navigator.of(context).pop(id);
     } catch (e) {
       if (mounted) setState(() => saving = false);

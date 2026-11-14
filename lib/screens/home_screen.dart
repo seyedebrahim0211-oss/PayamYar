@@ -1,4 +1,5 @@
 import 'dart:async' show unawaited;
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import '../app_settings.dart';
 import '../app_store.dart';
@@ -91,6 +92,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final unread = widget.store.unreadConversations;
     return Scaffold(
+      extendBody: true, // Let content show through the frosted navigation surface.
       // The inbox stays alive (keeps scroll and search); the other tabs are built only while open.
       body: GestureDetector(
         behavior: HitTestBehavior.translucent,
@@ -120,7 +122,23 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
               icon: const Icon(Icons.edit_rounded),
               label: const Text('پیام جدید'))
           : null,
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(
+            sigmaX: widget.settings.reduceEffects ? 0 : 14,
+            sigmaY: widget.settings.reduceEffects ? 0 : 14),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface.withValues(alpha: .78),
+              border: Border(top: BorderSide(
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: .18))),
+            ),
+            child: NavigationBar(
+        elevation: 0,
+        height: 73,
+        backgroundColor: Colors.transparent,
+        indicatorColor: Theme.of(context).colorScheme.primary.withValues(alpha: .18),
         selectedIndex: tab,
         onDestinationSelected: (v) => setState(() => tab = v),
         destinations: [
@@ -133,6 +151,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           const NavigationDestination(icon: Icon(Icons.insights_outlined), selectedIcon: Icon(Icons.insights_rounded), label: 'گزارش‌ها'),
           const NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings_rounded), label: 'تنظیمات'),
         ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -207,14 +228,19 @@ class _ConversationsPageState extends State<ConversationsPage> {
     );
   }
 
-  void _archiveBySwipe(Conversation c) {
-    final wasArchived = store.isArchived(c.address);
-    store.toggleArchive(c.address);
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text(wasArchived ? 'از بایگانی خارج شد.' : 'گفتگو بایگانی شد.'),
-        action: SnackBarAction(label: 'بازگردانی', onPressed: () => store.toggleArchive(c.address))));
+  /// Left/right gestures cycle inbox views; archiving is an intentional
+  /// long-press action and cannot be triggered by an accidental swipe.
+  void _cycleInbox(double velocity) {
+    if (widget.archive || velocity.abs() < 460) return;
+    final current = unreadOnly ? 1 : category == null
+        ? 0 : MessageCategory.values.indexOf(category!) + 2;
+    final next = (current + (velocity < 0 ? 1 : -1))
+        .clamp(0, MessageCategory.values.length + 1);
+    if (next == current) return;
+    setState(() {
+      unreadOnly = next == 1;
+      category = next >= 2 ? MessageCategory.values[next - 2] : null;
+    });
   }
 
   @override
@@ -261,7 +287,12 @@ class _ConversationsPageState extends State<ConversationsPage> {
                   ]),
             ],
           ),
-          body: RefreshIndicator(
+          body: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onHorizontalDragEnd: (details) {
+              if (widget.settings.swipeTabs) _cycleInbox(details.primaryVelocity ?? 0);
+            },
+            child: RefreshIndicator(
             onRefresh: store.android ? store.loadAll : () async {},
             child: CustomScrollView(slivers: [
               SliverToBoxAdapter(child: Padding(
@@ -324,22 +355,18 @@ class _ConversationsPageState extends State<ConversationsPage> {
                   itemCount: list.length,
                   itemBuilder: (context, i) {
                     final c = list[i];
-                    return Dismissible(
+                    return ConversationTile(
                       key: ValueKey('conv-${store.key(c.address)}'),
-                      background: const _SwipeBackground(alignment: AlignmentDirectional.centerStart),
-                      secondaryBackground: const _SwipeBackground(alignment: AlignmentDirectional.centerEnd),
-                      onDismissed: (_) => _archiveBySwipe(c),
-                      child: ConversationTile(
-                        store: store,
-                        conversation: c,
-                        hidePreview: widget.settings.hidePreview,
-                        onLongPress: () => _actions(c),
-                      ),
+                      store: store,
+                      conversation: c,
+                      hidePreview: widget.settings.hidePreview,
+                      onLongPress: () => _actions(c),
                     );
                   },
                 ),
               ),
             ]),
+            ),
           ),
         );
       },
@@ -356,22 +383,6 @@ class _ConversationsPageState extends State<ConversationsPage> {
       shape: const StadiumBorder(),
     ),
   );
-}
-
-class _SwipeBackground extends StatelessWidget {
-  final AlignmentGeometry alignment;
-  const _SwipeBackground({required this.alignment});
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 3),
-      padding: const EdgeInsets.symmetric(horizontal: 22),
-      alignment: alignment,
-      decoration: BoxDecoration(color: scheme.secondaryContainer, borderRadius: BorderRadius.circular(20)),
-      child: Icon(Icons.archive_rounded, color: scheme.onSecondaryContainer),
-    );
-  }
 }
 
 /// "New version available" card; downloads, verifies and opens Android's installer inside the app.

@@ -95,11 +95,13 @@ object SecureVault {
 
     /** "ok", "wrong:<attemptsLeft>", "locked:<seconds>" or "none". */
     @Synchronized fun verifyPin(c: Context, name: String, pin: String): String {
-        val stored = get(c, "pin_$name") ?: return "none"
+        // A persisted PIN record that cannot decrypt means key loss, NOT no PIN.
+        if (!hasPin(c, name)) return "none"
+        val stored = get(c, "pin_$name") ?: return "unavailable"
         val wait = lockedFor(c, name)
         if (wait > 0) return "locked:$wait"
         val parts = stored.split(':')
-        if (parts.size != 2) return "none"
+        if (parts.size != 2) return "unavailable"
         val salt = Base64.decode(parts[0], Base64.NO_WRAP)
         val expected = Base64.decode(parts[1], Base64.NO_WRAP)
         val ok = MessageDigest.isEqual(expected, pbkdf2(pin, salt))

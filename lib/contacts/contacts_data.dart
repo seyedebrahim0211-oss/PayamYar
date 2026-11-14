@@ -36,11 +36,19 @@ class PhoneContact {
   final String note;
   /// Android form: "YYYY-MM-DD" or "--MM-DD" (Gregorian).
   final String birthday;
+  /// App-local Jalali month/day for birthdays without year; Android only supports Gregorian --MM-DD.
+  final List<int>? jalaliBirthdayOverride;
   final int updated;
 
   const PhoneContact({required this.id, this.lookup = '', required this.name, this.starred = false,
       this.hasPhoto = false, this.phones = const [], this.emails = const [], this.org = '', this.title = '',
-      this.note = '', this.birthday = '', this.updated = 0});
+      this.note = '', this.birthday = '', this.jalaliBirthdayOverride, this.updated = 0});
+
+  PhoneContact withBirthdayOverride(List<int>? date) => PhoneContact(
+    id: id, lookup: lookup, name: name, starred: starred, hasPhoto: hasPhoto,
+    phones: phones, emails: emails, org: org, title: title, note: note,
+    birthday: birthday, jalaliBirthdayOverride: date, updated: updated,
+  );
 
   /// Stable key for app-side data (groups): lookup key when Android provides one.
   String get key => lookup.isNotEmpty ? lookup : 'id:$id';
@@ -73,6 +81,7 @@ class PhoneContact {
 
   /// Jalali [year (0 if unknown), month, day] of the birthday, or null.
   List<int>? get jalaliBirthday {
+    if (jalaliBirthdayOverride != null) return jalaliBirthdayOverride;
     final m = RegExp(r'^(\d{4}|-)-?(\d{1,2})-(\d{1,2})').firstMatch(birthday.trim());
     if (m == null) return null;
     final known = m.group(1) != '-';
