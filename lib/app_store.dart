@@ -372,7 +372,7 @@ class AppStore extends ChangeNotifier {
 
   void _onPage(Object? args) {
     if (args is! Map || args['generation'] != _generation || !loadingAll ||
-        !permissions.isDefault || !permissions.canRead) return;
+        !permissions.isDefault || !permissions.canRead) { return; }
     final page = SmsBridge.fromColumns(args);
     _buffer.addAll(page);
     loadedCount = _buffer.length;
