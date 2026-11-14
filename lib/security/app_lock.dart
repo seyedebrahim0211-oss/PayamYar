@@ -30,11 +30,14 @@ class AppLock extends ChangeNotifier {
       secureScreen = p.getBool('secureScreen') ?? false;
       relockSeconds = p.getInt('relockSeconds') ?? 30;
       if (!relockChoices.contains(relockSeconds)) relockSeconds = 30;
-      if (enabled && !await Vault.hasPin(vaultName)) enabled = false;
+      // Never disable a persisted lock when the device's Keystore key is lost.
+      // Such a state needs explicit recovery, never automatic unrestricted access.
       locked = enabled;
       await _applySecure();
     } catch (_) {
-      // Never leave the app covered because the lock state could not be read.
+      // A storage failure must not silently grant access to private SMS.
+      enabled = true;
+      locked = true;
     } finally {
       loaded = true;
       notifyListeners();
@@ -89,7 +92,7 @@ class AppLock extends ChangeNotifier {
 
   Future<PinCheck> unlock(String pin) async {
     final r = await Vault.verifyPin(vaultName, pin);
-    if (r.ok || r.notSet) {
+    if (r.ok) {
       locked = false;
       notifyListeners();
     }
