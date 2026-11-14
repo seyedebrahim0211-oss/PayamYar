@@ -60,12 +60,12 @@ Future<void> showPhoneActions(BuildContext context, String raw,
               if (access['write'] == true) {
                 await ContactsBridge.save(name: label, phones: [LabeledValue(number)]);
               } else {
-                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                  content: Text('برای ذخیره مخاطب، اجازه دسترسی مخاطبین را در تنظیمات گوشی فعال کنید.')));
+                if (context.mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text('برای ذخیره مخاطب، اجازه دسترسی مخاطبین را در تنظیمات گوشی فعال کنید.'))); }
               }
             } catch (_) {
-              if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                content: Text('ذخیره مخاطب انجام نشد. مجوز مخاطبین را بررسی کنید.')));
+              if (context.mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                content: Text('ذخیره مخاطب انجام نشد. مجوز مخاطبین را بررسی کنید.'))); }
             } finally {
               nameController.dispose();
             }
@@ -110,7 +110,7 @@ class InteractiveMessageText extends StatelessWidget {
             }
             final uri = Uri.tryParse(value);
             if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https') ||
-                uri.host.isEmpty || !context.mounted) return;
+                uri.host.isEmpty || !context.mounted) { return; }
             final proceed = await showDialog<bool>(context: context, builder: (d) => AlertDialog(
               title: const Text('باز کردن لینک'),
               content: SelectableText('آدرس مقصد:\n${uri.toString()}\n\nلینک‌های ناشناس ممکن است فیشینگ باشند.'),
