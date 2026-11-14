@@ -139,7 +139,9 @@ class ContactStore extends ChangeNotifier {
     return _cache.putIfAbsent(key, build) as T;
   }
 
-  /// Contacts that share a number or the exact same name; each list is one cluster to review.
+  /// Auto-merge candidates must share an actual phone number or email address.
+  /// Identical names are *not* proof of identity: automatically joining them can
+  /// irreversibly corrupt unrelated people's phone book records.
   List<List<PhoneContact>> get duplicates => _cached('dup', _duplicates);
 
   List<List<PhoneContact>> _duplicates() {
@@ -162,7 +164,8 @@ class ContactStore extends ChangeNotifier {
       final keys = <String>[
         for (final p in c.phones)
           if (phoneKey(p.value).length >= 7) 'p:${phoneKey(p.value)}',
-        if (c.name.trim().length >= 3) 'n:${_fold(c.name.trim())}',
+        for (final e in c.emails)
+          if (e.value.trim().contains('@')) 'e:${e.value.trim().toLowerCase()}',
       ];
       for (final k in keys) {
         final other = byKey[k];
