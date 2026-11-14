@@ -1,4 +1,5 @@
 import 'dart:async' show unawaited;
+import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import '../app_settings.dart';
 import '../app_store.dart';
@@ -120,7 +121,23 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
               icon: const Icon(Icons.edit_rounded),
               label: const Text('پیام جدید'))
           : null,
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(
+            sigmaX: widget.settings.reduceEffects ? 0 : 14,
+            sigmaY: widget.settings.reduceEffects ? 0 : 14),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface.withValues(alpha: .78),
+              border: Border(top: BorderSide(
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: .18))),
+            ),
+            child: NavigationBar(
+        elevation: 0,
+        height: 73,
+        backgroundColor: Colors.transparent,
+        indicatorColor: Theme.of(context).colorScheme.primary.withValues(alpha: .18),
         selectedIndex: tab,
         onDestinationSelected: (v) => setState(() => tab = v),
         destinations: [
@@ -133,6 +150,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           const NavigationDestination(icon: Icon(Icons.insights_outlined), selectedIcon: Icon(Icons.insights_rounded), label: 'گزارش‌ها'),
           const NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings_rounded), label: 'تنظیمات'),
         ],
+            ),
+          ),
+        ),
       ),
     );
   }
