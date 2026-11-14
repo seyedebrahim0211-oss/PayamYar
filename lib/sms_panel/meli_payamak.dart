@@ -75,7 +75,9 @@ class MeliPayamak {
       res = await _client
           .post(uri,
               headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8', 'Accept': 'application/json'},
-              body: {'username': username, 'password': password, ...fields})
+              body: method == 'SendSMS'
+                  ? {'username': username, 'password': password, ...fields}
+                  : {'UserName': username, 'PassWord': password, ...fields})
           .timeout(const Duration(seconds: 20));
     } catch (_) {
       throw const PanelException('اتصال به ملی پیامک برقرار نشد؛ اینترنت را بررسی کنید.');
@@ -140,7 +142,7 @@ class MeliPayamak {
       'to': numbers.join(','),
       'from': from,
       'text': text,
-      'isflash': flash ? 'true' : 'false',
+      'isFlash': flash ? 'true' : 'false',
     });
     final value = r['Value']?.toString() ?? '';
     // Success: a long numeric recId. Errors are short codes (0..35, 108..110).
@@ -151,10 +153,10 @@ class MeliPayamak {
   /// [location]: 1 = received, 2 = sent. [from] filters by the sender number (received box).
   Future<List<PanelMessage>> messages({int location = 1, String from = '', int index = 0, int count = 50}) async {
     final r = await _post('GetMessages', {
-      'location': '$location',
-      'from': from,
-      'index': '$index',
-      'count': '$count',
+      'Location': '$location',
+      'From': from,
+      'Index': '$index',
+      'Count': '$count',
     });
     if (!_ok(r)) throw PanelException(errorText(r['Value']?.toString() ?? '0'));
     Object? data = r['Data'] ?? r['ReturnValue'] ?? r['Value'];
@@ -173,7 +175,7 @@ class MeliPayamak {
 
   /// Delivery status of a send. Returns the raw status code text.
   Future<String> delivery(String recId) async {
-    final r = await _post('GetDeliveries2', {'recId': recId, 'recID': recId});
+    final r = await _post('GetDeliveries2', {'recID': recId});
     return r['Value']?.toString() ?? '';
   }
 
