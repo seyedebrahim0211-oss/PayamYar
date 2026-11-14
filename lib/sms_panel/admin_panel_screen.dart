@@ -237,38 +237,43 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
 
   Future<void> _refresh() async {
     final a = api;
-    if (a == null) return;
-    setState(() {
-      loading = true;
-      error = null;
-    });
+    if (a == null || loading) return;
+    setState(() { loading = true; error = null; });
+    final diagnostics = <String>[];
     try {
-      final c = await a.credit();
-      final received = await a.messages(location: 1, count: 100);
-      List<PanelMessage> out = const [];
+      // Treat the three service methods independently. One broken inbox should
+      // never erase a valid balance or make a successful send look like failure.
       try {
-        out = await a.messages(location: 2, count: 50);
-      } catch (_) {}
-      if (!mounted) return;
-      setState(() {
-        credit = c;
-        // Messages sent to this line (e.g. 90008325); keep all when the service omits the receiver.
-        inbox = received.where((m) {
-          final receiver = m.receiver.replaceAll(RegExp(r'[^0-9]'), '');
-          final wanted = line.replaceAll(RegExp(r'[^0-9]'), '');
-          return receiver.isEmpty || receiver == wanted;
-        }).toList();
-        sent = out;
-      });
-    } on PanelException catch (e) {
-      if (mounted) { setState(() {
-        error = e.message;
-        credit = null;
-        inbox = const [];
-        sent = const [];
-      }); }
+        final value = await a.credit();
+        if (mounted) setState(() => credit = value);
+      } on PanelException catch (e) {
+        diagnostics.add('اعتبار: ${e.message}');
+        if (mounted) setState(() => credit = null);
+      }
+      try {
+        final received = await a.messages(location: 1, count: 100);
+        if (mounted) {
+          setState(() {
+            inbox = received.where((m) {
+              final receiver = m.receiver.replaceAll(RegExp(r'[^0-9]'), '');
+              final wanted = line.replaceAll(RegExp(r'[^0-9]'), '');
+              return receiver.isEmpty || receiver == wanted;
+            }).toList();
+          });
+        }
+      } on PanelException catch (e) {
+        diagnostics.add('صندوق دریافتی: ${e.message}');
+      }
+      try {
+        final outgoing = await a.messages(location: 2, count: 50);
+        if (mounted) setState(() => sent = outgoing);
+      } on PanelException catch (e) {
+        diagnostics.add('صندوق ارسالی: ${e.message}');
+      }
+      if (mounted) setState(() => error = diagnostics.isEmpty ? null :
+        'برخی خدمات پنل در دسترس نیستند:\\n${diagnostics.join('\\n')}');
     } finally {
-      if (mounted) { setState(() => loading = false); }
+      if (mounted) setState(() => loading = false);
     }
   }
 
@@ -355,11 +360,11 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
     try {
       final id = await a.send(to: numbers, text: text, from: line, flash: flash);
       setState(() {
-        lastRecId = id;
+        lastRecId = id.isEmpty ? null : id;
         lastDelivery = null;
       });
       textField.clear();
-      _notice('ارسال شد. شناسه: $id');
+      _notice(id.isEmpty ? 'پنل دریافت درخواست را تأیید کرد، اما شناسه پیگیری برنگرداند؛ وضعیت تحویل را از صندوق ارسالی بررسی کنید.' : 'درخواست ارسال پذیرفته شد. شناسه: $id');
       try {
         credit = await a.credit();
       } catch (_) {}
