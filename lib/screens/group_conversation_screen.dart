@@ -81,9 +81,9 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
   }
 
   Future<void> _loadContactNames() async {
-    if (!store.permissions.contacts || widget.group.recipients.isEmpty) return;
+    if (!store.permissions.contacts || group.recipients.isEmpty) return;
     try {
-      final names = await SmsBridge.contactNames(widget.group.recipients);
+      final names = await SmsBridge.contactNames(group.recipients);
       if (!mounted) return;
       setState(() {
         for (final item in names.entries) {
@@ -187,7 +187,7 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
   }
 
   void _showMemberChats() {
-    final members = widget.group.recipients;
+    final members = group.recipients;
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -296,8 +296,8 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(widget.group.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-          Text('${Jalali.digits(widget.group.recipients.length)} عضو',
+          Text(group.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+          Text('${Jalali.digits(group.recipients.length)} عضو',
             style: Theme.of(context).textTheme.labelSmall),
         ]),
         actions: [
