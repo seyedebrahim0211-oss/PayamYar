@@ -154,6 +154,48 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
         createGroup: true)));
   }
 
+  void _showMemberChats() {
+    final members = widget.group.recipients;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheet) => SafeArea(child: SizedBox(
+        height: MediaQuery.sizeOf(sheet).height * .72,
+        child: Column(children: [
+          Padding(padding: const EdgeInsets.all(16),
+            child: Text('گفتگوهای خصوصی اعضای گروه',
+              style: Theme.of(sheet).textTheme.titleMedium)),
+          const Padding(padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Text('پیام‌های قدیمی هر عضو از همینجا قابل مشاهده‌اند؛ '
+              'اما بدون سابقه ثبت ارسال گروهی، به‌اشتباه به گروه نسبت داده نمی‌شوند.',
+              textAlign: TextAlign.center)),
+          Expanded(child: ListView.builder(
+            itemCount: members.length,
+            itemBuilder: (_, index) {
+              final number = members[index];
+              final name = _displayName(number);
+              final records = store.conversationFor(number)?.messages;
+              final latest = records == null || records.isEmpty ? null : records.first;
+              return ListTile(
+                leading: CircleAvatar(child: Text(name.isEmpty ? '؟' :
+                  String.fromCharCode(name.runes.first))),
+                title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: Text(latest?.body ?? 'هنوز پیامی ثبت نشده',
+                  maxLines: 1, overflow: TextOverflow.ellipsis),
+                trailing: const Icon(Icons.chevron_left_rounded),
+                onTap: () {
+                  Navigator.pop(sheet);
+                  _openChat(number);
+                },
+              );
+            },
+          )),
+        ]),
+      )),
+    );
+  }
+
   Widget _item(_GroupRow entry, ColorScheme scheme) {
     final name = _displayName(entry.recipient);
     final known = name != entry.recipient;
@@ -226,6 +268,8 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
             style: Theme.of(context).textTheme.labelSmall),
         ]),
         actions: [
+          IconButton(tooltip: 'گفتگوهای خصوصی اعضا',
+            icon: const Icon(Icons.people_outline_rounded), onPressed: _showMemberChats),
           IconButton(tooltip: 'ارسال به اعضای گروه',
             icon: const Icon(Icons.edit_square_rounded), onPressed: _compose),
         ],
