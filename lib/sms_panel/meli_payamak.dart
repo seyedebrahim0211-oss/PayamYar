@@ -168,6 +168,115 @@ class MeliPayamak {
     }
   }
 
+  /// The operator requires the opt-out word to be the *last* SMS token for
+  /// multi-recipient messages. Add an optional signature BEFORE that word.
+  static String compose(String draft, {required bool bulk, String signature = ''}) {
+    var text = draft.trim();
+    // Remove only a final cancellation marker; never alter the user's body.
+    text = text.replaceFirst(RegExp(r'\s*لغو[۱١1][۱١1]\s*
+  /// If transport fails after POST, the result is unknown: the caller must not
+  /// automatically resend because the gateway may have processed the request.
+  Future<String> send({required List<String> to, required String text, String from = defaultLine, bool flash = false}) async {
+    final numbers = [for (final n in to) normalize(n)].where((n) => n.isNotEmpty).toSet().toList();
+    if (numbers.isEmpty) throw PanelException(errorText('18'));
+    if (numbers.length > 100) throw const PanelException('در هر ارسال حداکثر ۱۰۰ گیرنده مجاز است.');
+    if (text.trim().isEmpty) throw PanelException(errorText('17'));
+    try {
+      final response = await _post('SendSMS', {
+        'to': numbers.join(','),
+        'from': from,
+        'text': text,
+        'isFlash': flash ? 'true' : 'false',
+      });
+      return receiptFromResponse(response);
+    } on PanelException catch (e) {
+      if (e.message.startsWith('اتصال به ملی پیامک برقرار نشد')) {
+        throw const PanelException(
+          'وضعیت ارسال نامشخص است. ممکن است پیام به پنل رسیده باشد. پیش از ارسال دوباره، صندوق ارسالی و گزارش تحویل را بررسی کنید.');
+      }
+      rethrow;
+    }
+  }
+
+  /// 1 = incoming, 2 = sent. No sender filter unless explicitly provided.
+  Future<List<PanelMessage>> messages({int location = 1, String from = '', int index = 0, int count = 50}) async {
+    final r = await _post('GetMessages', {
+      'Location': '$location', 'From': from, 'Index': '$index', 'Count': '$count',
+    });
+    if (!_ok(r)) {
+      final status = (r['RetStatus'] ?? '?').toString().replaceAll(RegExp(r'[^0-9-]'), '');
+      final raw = (r['Value'] ?? '').toString().trim();
+      final code = RegExp(r'^-?[0-9]{1,5}$').hasMatch(raw) ? raw : '';
+      final reason = (r['StrRetStatus'] ?? '').toString().replaceAll(RegExp(r'[\r\n\t]'), ' ').trim();
+      final safeReason = reason.length > 80 ? reason.substring(0, 80) : reason;
+      final description = code.isNotEmpty && code != '0'
+        ? errorText(code)
+        : 'استعلام صندوق پیام‌ها از وب‌سرویس رد شد؛ اعتبار پنل به‌تنهایی مجوز GetMessages نیست. دسترسی صندوق را از پشتیبانی بررسی کنید.';
+      throw PanelException('$description (GetMessages Location=$location, RetStatus=$status${safeReason.isEmpty ? '' : ', $safeReason'})');
+    }
+    Object? data = r['Data'] ?? r['ReturnValue'] ?? r['Value'];
+    if (data is String) {
+      try { data = jsonDecode(data); } catch (_) { data = const []; }
+    }
+    if (data is Map) {
+      data = data['MessagesBL'] ?? data['Messages'] ??
+        data.values.firstWhere((v) => v is List, orElse: () => const []);
+    }
+    if (data is! List) return const [];
+    return data.map(PanelMessage.fromJson).whereType<PanelMessage>().toList()
+      ..sort((a, b) => (b.date ?? DateTime(0)).compareTo(a.date ?? DateTime(0)));
+  }
+  /// Delivery status of a send. Returns the raw status code text.
+  Future<String> delivery(String recId) async {
+    final r = await _post('GetDeliveries2', {'recID': recId});
+    return r['Value']?.toString() ?? '';
+  }
+
+  static String deliveryText(String code) => switch (code) {
+        '0' => 'در صف ارسال',
+        '1' => 'رسیده به گوشی',
+        '2' => 'نرسیده به گوشی',
+        '3' => 'خطای مخابراتی',
+        '5' => 'خطای نامشخص',
+        '8' => 'رسیده به مخابرات',
+        '16' => 'نرسیده به مخابرات',
+        '35' => 'در فهرست سیاه',
+        '100' => 'نامشخص',
+        '200' => 'ارسال‌شده',
+        '300' => 'فیلترشده',
+        '400' => 'در لیست ارسال',
+        '500' => 'عدم پذیرش',
+        '-1' || '1-' => 'شناسه ارسال پیدا نشد',
+        _ => 'وضعیت $code',
+      };
+
+  /// 09xxxxxxxxx form; empty for invalid input.
+  static String normalize(String raw) {
+    const fa = '۰۱۲۳۴۵۶۷۸۹', ar = '٠١٢٣٤٥٦٧٨٩';
+    final b = StringBuffer();
+    for (final ch in raw.split('')) {
+      final p = fa.indexOf(ch), a = ar.indexOf(ch);
+      if (p >= 0) {
+        b.write(p);
+      } else if (a >= 0) {
+        b.write(a);
+      } else if (RegExp(r'\d').hasMatch(ch)) {
+        b.write(ch);
+      }
+    }
+    var d = b.toString();
+    if (d.startsWith('0098')) d = '0${d.substring(4)}';
+    if (d.startsWith('98') && d.length == 12) d = '0${d.substring(2)}';
+    if (d.length == 10 && d.startsWith('9')) d = '0$d';
+    return RegExp(r'^09\d{9}$').hasMatch(d) ? d : '';
+  }
+}
+), '').trimRight();
+    final sign = signature.trim();
+    if (sign.isNotEmpty && !text.endsWith(sign)) text = '$text\n$sign';
+    return bulk && text.isNotEmpty ? '$text\nلغو11' : text;
+  }
+
   /// Sends at most 100 opt-in recipients using one request.
   /// If transport fails after POST, the result is unknown: the caller must not
   /// automatically resend because the gateway may have processed the request.
