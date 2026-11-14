@@ -927,7 +927,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
               style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
             ),
           ),
-          if (count > 1 && !RegExp(r'لغو[۱١1][۱١1]\\s*
+          if (count > 1 &&
+              !MeliPayamak.compose(textField.text, bulk: false).isEmpty &&
+              !textField.text.trimRight().endsWith('لغو11') &&
+              !textField.text.trimRight().endsWith('لغو۱۱'))
             Align(
               alignment: AlignmentDirectional.centerStart,
               child: TextButton.icon(
