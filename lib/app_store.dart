@@ -467,6 +467,16 @@ class AppStore extends ChangeNotifier {
     revision++;
   }
 
+  /// Exercises the production ingestion path without native Android channels.
+  /// This is the grouping logic used by the inbox; legacy ConversationLogic
+  /// grouping tests alone do not cover it.
+  @visibleForTesting
+  void ingestForTesting(List<MessageRecord> rows) {
+    messages = List.of(rows);
+    _rebuild();
+    notifyListeners();
+  }
+
   String displayName(String address) {
     final name = names[address];
     return name == null || name.isEmpty ? address : name;
