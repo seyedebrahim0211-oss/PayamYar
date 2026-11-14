@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../app_store.dart';
 import '../jalali.dart';
-import '../message_logic.dart';
 import '../sms_groups.dart';
 import 'compose_screen.dart';
 import 'conversation_screen.dart';
