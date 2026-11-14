@@ -4,6 +4,7 @@ import '../jalali.dart';
 import '../sms_groups.dart';
 import 'compose_screen.dart';
 import 'conversation_screen.dart';
+import 'group_conversation_screen.dart';
 
 /// Local SMS broadcast lists. Replies remain in each recipient's private thread.
 class GroupsScreen extends StatelessWidget {
@@ -130,17 +131,18 @@ class GroupsScreen extends StatelessWidget {
                       if (choice == 'delete') _delete(context, group);
                     },
                     itemBuilder: (_) => const [
-                      PopupMenuItem(value: 'members', child: Text('مشاهده گفتگوهای اعضا')),
+                      PopupMenuItem(value: 'members', child: Text('فهرست اعضا و گفتگوهای خصوصی')),
                       PopupMenuItem(value: 'delete', child: Text('حذف گروه')),
                     ]),
-                  onTap: () => _members(context, group),
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                    builder: (_) => GroupConversationScreen(store: store, group: group))),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(13, 0, 13, 13),
                   child: SizedBox(width: double.infinity, child: FilledButton.tonalIcon(
                     onPressed: () => _compose(context, group: group),
                     icon: const Icon(Icons.send_rounded),
-                    label: const Text('ارسال پیام به اعضای گروه'),
+                    label: const Text('ارسال پیام گروهی (جداگانه برای هر نفر)'),
                   )),
                 ),
               ])),
