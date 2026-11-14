@@ -34,14 +34,6 @@
                 <data android:scheme="mms"/><data android:scheme="mmsto"/>
             </intent-filter>
         </activity>
-        <!-- Android 11+ conversation bubble: PayamYar's chat in a floating window. -->
-        <activity android:name=".BubbleActivity" android:exported="false"
-            android:theme="@style/LaunchTheme" android:allowEmbedded="true"
-            android:resizeableActivity="true" android:documentLaunchMode="always"
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
-            android:hardwareAccelerated="true" android:windowSoftInputMode="adjustResize">
-            <meta-data android:name="io.flutter.embedding.android.NormalTheme" android:resource="@style/NormalTheme"/>
-        </activity>
         <receiver android:name=".IncomingSmsReceiver" android:exported="true" android:permission="android.permission.BROADCAST_SMS">
             <intent-filter><action android:name="android.provider.Telephony.SMS_DELIVER"/></intent-filter>
         </receiver>

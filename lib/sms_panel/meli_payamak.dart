@@ -140,7 +140,7 @@ class MeliPayamak {
       'to': numbers.join(','),
       'from': from,
       'text': text,
-      'isflash': flash ? 'true' : 'false',
+      'isFlash': flash ? 'true' : 'false',
     });
     final value = r['Value']?.toString() ?? '';
     // Success: a long numeric recId. Errors are short codes (0..35, 108..110).
@@ -173,7 +173,7 @@ class MeliPayamak {
 
   /// Delivery status of a send. Returns the raw status code text.
   Future<String> delivery(String recId) async {
-    final r = await _post('GetDeliveries2', {'recId': recId, 'recID': recId});
+    final r = await _post('GetDeliveries2', {'recID': recId});
     return r['Value']?.toString() ?? '';
   }
 

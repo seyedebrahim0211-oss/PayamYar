@@ -36,23 +36,12 @@ class _PayamYarState extends State<PayamYar> {
           padding: EdgeInsets.zero,
           content: ClipRRect(
             borderRadius: BorderRadius.circular(18),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xE91A4246),
-                  border: Border.all(color: const Color(0x668DC7BD)),
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(Icons.info_outline_rounded, color: Color(0xFFDDC18A), size: 21),
-                  const SizedBox(width: 10),
-                  Flexible(child: Text(text, style: const TextStyle(fontFamily: 'Vazirmatn',
-                    color: Colors.white, fontSize: 13, height: 1.55))),
-                ]),
-              ),
-            ),
+            child: settings.reduceEffects
+                ? _noticeContent(text)
+                : BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                    child: _noticeContent(text),
+                  ),
           ),
         ));
     store.settings = settings;
@@ -60,6 +49,22 @@ class _PayamYarState extends State<PayamYar> {
     AppLock.instance.load();
     store.init();
   }
+
+  Widget _noticeContent(String message) => Container(
+    decoration: BoxDecoration(
+      color: const Color(0xE91A4246),
+      border: Border.all(color: const Color(0x668DC7BD)),
+      borderRadius: BorderRadius.circular(18),
+    ),
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      const Icon(Icons.info_outline_rounded, color: Color(0xFFDDC18A), size: 21),
+      const SizedBox(width: 10),
+      Flexible(child: Text(message,
+        style: const TextStyle(fontFamily: 'Vazirmatn',
+          color: Colors.white, fontSize: 13, height: 1.55))),
+    ]),
+  );
 
   @override
   void dispose() {
@@ -167,7 +172,8 @@ class _PayamYarState extends State<PayamYar> {
         builder: (context, child) => Directionality(
           textDirection: TextDirection.rtl,
           child: MediaQuery(
-            data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(settings.scale)),
+            data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(
+              settings.scale * MediaQuery.textScalerOf(context).scale(16) / 16)),
             child: LockGate(
               lock: AppLock.instance,
               child: BannerHost(store: store, settings: settings, child: child!),

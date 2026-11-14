@@ -106,9 +106,18 @@ class _BannerLayerState extends State<_BannerLayer> with SingleTickerProviderSta
   void _open() {
     final b = _banner;
     if (b == null) return;
+    if (b.sample) {
+      _dismiss();
+      return;
+    }
+    // Never dismiss a real message unless the main conversation can be opened.
+    final openConversation = widget.store.onOpenConversation;
+    if (openConversation == null) {
+      widget.store.onNotice?.call('گفتگو هنوز آماده نیست؛ پیام در صندوق پیامک‌ها باقی می‌ماند.');
+      return;
+    }
+    openConversation(b.address);
     _dismiss();
-    if (b.sample) return;
-    widget.store.onOpenConversation?.call(b.address);
     SmsBridge.clearNotifications(b.address);
   }
 
@@ -162,7 +171,7 @@ class _BannerLayerState extends State<_BannerLayer> with SingleTickerProviderSta
         child: Align(
           alignment: top ? Alignment.topCenter : Alignment.bottomCenter,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 520),
+            constraints: BoxConstraints(maxWidth: widget.settings.bannerMaxWidth),
             child: SlideTransition(
               position: slide,
               child: FadeTransition(
@@ -345,7 +354,7 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
             ),
           ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          padding: EdgeInsets.fromLTRB(14, s.bannerCompact ? 8 : 12, 14, s.bannerCompact ? 8 : 12),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -369,7 +378,7 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
                   ),
               ]),
               const SizedBox(height: 8),
-              Text(b.body, maxLines: 3, overflow: TextOverflow.ellipsis,
+              Text(b.body, maxLines: s.bannerCompact ? 2 : 3, overflow: TextOverflow.ellipsis,
                   style: TextStyle(color: fg, fontSize: 14, height: 1.65)),
               if (code != null && s.notifyOtpCopy) ...[
                 const SizedBox(height: 8),
@@ -384,7 +393,7 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
                   ),
                 ),
               ],
-              if (showReply) ...[
+              if (showReply && !s.bannerCompact) ...[
                 const SizedBox(height: 10),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -397,7 +406,7 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
                       ),
                   ]),
                 ),
-                if (widget.interactive) ...[
+                if (widget.interactive && !s.bannerCompact) ...[
                   const SizedBox(height: 8),
                   TextField(
                     controller: _reply,
@@ -431,7 +440,7 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
       ]),
     );
 
-    if (glass && s.bannerBlur > 0) {
+    if (glass && s.bannerBlur > 0 && !s.reduceEffects) {
       card = BackdropFilter(filter: ImageFilter.blur(sigmaX: s.bannerBlur, sigmaY: s.bannerBlur), child: card);
     }
 

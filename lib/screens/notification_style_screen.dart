@@ -7,7 +7,7 @@ import 'glass_banner.dart';
 import 'settings_screen.dart' show SettingsGroup;
 
 /// Full personalisation of incoming-message alerts: the in-app glass banner, the Android
-/// notification (glass avatar, conversation bubbles) and the ready-made quick replies.
+/// notification (glass avatar, heads-up alerts) and the ready-made quick replies.
 class NotificationStyleScreen extends StatelessWidget {
   final AppSettings settings;
   const NotificationStyleScreen({super.key, required this.settings});
@@ -128,6 +128,23 @@ class NotificationStyleScreen extends StatelessWidget {
                     ),
                   ],
                   SwitchListTile(
+                    secondary: Icon(Icons.crop_16_9_outlined, color: scheme.primary),
+                    title: const Text('کارت شیشه‌ای جمع‌وجور'),
+                    subtitle: const Text('ارتفاع کمتر؛ جزئیات و پاسخ سریع با لمس اعلان در گفتگو در دسترس است.'),
+                    value: s.bannerCompact,
+                    onChanged: (v) => s.updateNotify(bannerCompact: v),
+                  ),
+                  ListTile(
+                    leading: Icon(Icons.width_normal_outlined, color: scheme.primary),
+                    title: const Text('عرض کارت داخلی'),
+                    subtitle: const Text('در گوشی‌های کوچک خودکار با صفحه هماهنگ می‌شود'),
+                    trailing: Text(Jalali.digits(s.bannerMaxWidth.round())),
+                  ),
+                  Slider(
+                    value: s.bannerMaxWidth, min: 280, max: 520, divisions: 12,
+                    onChanged: (v) => s.updateNotify(bannerMaxWidth: v),
+                  ),
+                  SwitchListTile(
                     secondary: Icon(Icons.bubble_chart_outlined, color: scheme.primary),
                     title: const Text('حباب‌های متحرک'),
                     subtitle: const Text('حباب‌های شیشه‌ای ملایم پشت متن'),
@@ -181,21 +198,11 @@ class NotificationStyleScreen extends StatelessWidget {
                       onSelectionChanged: (v) => s.updateNotify(notifyAvatarShape: v.first),
                     ),
                   ),
-                  SwitchListTile(
-                    secondary: Icon(Icons.bubble_chart_rounded, color: scheme.primary),
-                    title: const Text('حباب گفتگو (اندروید ۱۱ به بالا)'),
-                    subtitle: const Text('گفتگو به‌صورت دایره شناور روی صفحه باز می‌شود'),
-                    value: s.notifyBubbles,
-                    onChanged: (v) => s.updateNotify(notifyBubbles: v),
+                  const ListTile(
+                    leading: Icon(Icons.web_asset_rounded),
+                    title: Text('اعلان شیشه‌ای بالای صفحه'),
+                    subtitle: Text('حباب شناور حذف شده است. درون برنامه کارت شیشه‌ای بالا می‌آید و بیرون برنامه اعلان استاندارد اندروید نمایش داده می‌شود.'),
                   ),
-                  if (s.notifyBubbles)
-                    ListTile(
-                      leading: Icon(Icons.settings_suggest_outlined, color: scheme.primary),
-                      title: const Text('اجازه حباب در تنظیمات اندروید'),
-                      subtitle: const Text('گزینه «همه گفتگوها» یا «گفتگوهای انتخابی» را روشن کنید'),
-                      trailing: const Icon(Icons.chevron_left_rounded),
-                      onTap: SmsBridge.openBubbleSettings,
-                    ),
                   SwitchListTile(
                     secondary: Icon(Icons.pin_outlined, color: scheme.primary),
                     title: const Text('دکمه کپی کد تأیید'),

@@ -50,7 +50,7 @@ import androidx.core.graphics.drawable.IconCompat
  */
 object Notifier {
     // V2 uses fresh channels; Android never updates sound on an existing channel.
-    const val INCOMING_CHANNEL = "incoming_sms_v2"
+    const val INCOMING_CHANNEL = "incoming_sms_v3"
     const val SENT_CHANNEL = "sent_sms_v2"
     private const val CHANNEL = INCOMING_CHANNEL
     const val ACTION_REPLY = "ir.honarmardomi.payamyar.NOTIFY_REPLY"
@@ -236,7 +236,7 @@ object Notifier {
             vibrationPattern = longArrayOf(0, 150, 100, 160)
             setSound(sound, audio)
             lockscreenVisibility = android.app.Notification.VISIBILITY_PRIVATE
-            if (Build.VERSION.SDK_INT >= 29) setAllowBubbles(true)
+            if (Build.VERSION.SDK_INT >= 29) setAllowBubbles(false)
         })
         manager.createNotificationChannel(NotificationChannel(SENT_CHANNEL, "تأیید ارسال پیام", NotificationManager.IMPORTANCE_DEFAULT).apply {
             description = "صدای تأیید پذیرش پیامک توسط شبکه؛ قابل تغییر از تنظیمات اعلان گوشی"
@@ -335,7 +335,7 @@ object Notifier {
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(c, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val id = idFor(address)
         val picture = profileBitmap(c, address, name)
-        val icon = IconCompat.createWithAdaptiveBitmap(adaptive(c, picture))
+        // Use native heads-up notification instead of floating Android bubble.
         val sender = Person.Builder().setName(name).setKey(address)
             .setIcon(IconCompat.createWithBitmap(picture)).setImportant(true).build()
 
@@ -370,10 +370,7 @@ object Notifier {
             .setPublicVersion(NotificationCompat.Builder(c, CHANNEL).setSmallIcon(R.drawable.ic_stat_payamyar)
                 .setColor(color).setContentTitle("پیامیار").setContentText("پیامک جدید").build())
 
-        conversationShortcut(c, address, name, sender, icon)?.let { shortcut ->
-            builder.setShortcutId(shortcut).setLocusId(LocusIdCompat(shortcut))
-            bubble(c, shortcut)?.let { builder.setBubbleMetadata(it) }
-        }
+
 
         if (code != null) {
             builder.addAction(NotificationCompat.Action.Builder(0, "📋 کپی کد " + code, broadcast(c, ACTION_COPY, address, code)).build())
