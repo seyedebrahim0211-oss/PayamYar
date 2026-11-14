@@ -18,6 +18,7 @@ import 'home_screen.dart';
 import 'birthdays_screen.dart';
 import 'notification_style_screen.dart';
 import 'support_pages.dart';
+import 'privacy_disclosure_screen.dart';
 
 /// Settings hub: a short, friendly list of sections; each opens its own page.
 class SettingsScreen extends StatefulWidget {
@@ -659,6 +660,13 @@ class PrivacySettingsPage extends StatelessWidget {
     children: (context) {
       final scheme = Theme.of(context).colorScheme;
       return [
+        SettingsGroup(title: 'شفافیت داده‌ها', children: [
+          SettingsTile(icon: Icons.policy_outlined, color: scheme.primary,
+            title: 'توضیح دسترسی‌ها و حریم خصوصی',
+            subtitle: 'پیامک، مخاطبین، اعلان‌ها، ملی‌پیامک و محل نگهداری داده‌ها',
+            onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+              builder: (_) => const PrivacyDisclosurePage()))),
+        ]),
         SettingsGroup(title: 'نمایش', children: [
           SwitchListTile(
             secondary: Icon(Icons.visibility_off_outlined, color: scheme.primary),
