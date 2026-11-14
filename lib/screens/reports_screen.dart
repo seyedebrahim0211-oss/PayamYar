@@ -58,6 +58,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
     if (ok) store.onNotice?.call('فایل تراکنش‌ها ذخیره شد (قابل باز کردن در اکسل).');
   }
 
+  Future<void> _exportMetricsCsv(PeriodInsight p) async {
+    final now = DateTime.now();
+    final j = Jalali.fromGregorian(now.year, now.month, now.day);
+    final ok = await ContactsBridge.saveFile(
+      'آمار-پیامیار-${j[0]}-${j[1]}-${j[2]}.csv',
+      'text/csv',
+      csvBytes(reportMetricsCsvRows(p, period)),
+    );
+    if (ok) store.onNotice?.call('گزارش آماری بدون متن پیامک یا شماره تماس ذخیره شد.');
+  }
+
   Future<void> _block(String sender) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -102,12 +113,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
               PopupMenuButton<String>(
                 onSelected: (v) {
                   if (v == 'csv' && p != null) _exportCsv(p);
+                  if (v == 'summary' && p != null) _exportMetricsCsv(p);
                   if (v == 'birthdays') {
                     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => BirthdaysScreen(store: store)));
                   }
                 },
                 itemBuilder: (_) => const [
                   PopupMenuItem(value: 'csv', child: ListTile(dense: true, leading: Icon(Icons.table_view_rounded), title: Text('خروجی اکسل تراکنش‌ها'))),
+                  PopupMenuItem(value: 'summary', child: ListTile(dense: true, leading: Icon(Icons.analytics_outlined), title: Text('خروجی کامل آمار و روندها'))),
                   PopupMenuItem(value: 'birthdays', child: ListTile(dense: true, leading: Icon(Icons.cake_outlined), title: Text('تولد مخاطبین'))),
                 ],
               ),
