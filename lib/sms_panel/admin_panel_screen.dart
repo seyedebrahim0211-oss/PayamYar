@@ -56,8 +56,11 @@ class AdminAccess {
                 refresh(() { working = true; problem = null; });
                 final error = await SiteAdminAuth.link(code.text);
                 if (!dialogContext.mounted) return;
-                if (error == null) Navigator.pop(dialogContext, true);
-                else refresh(() { working = false; problem = error; });
+                if (error == null) {
+                  Navigator.pop(dialogContext, true);
+                } else {
+                  refresh(() { working = false; problem = error; });
+                }
               }, child: Text(working ? 'در حال تأیید…' : 'اتصال امن')),
             ],
           ),
@@ -403,6 +406,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
 
   Future<void> _send() async {
     if (!await _requireSiteAccess()) return;
+    if (!mounted) return;
     final a = api;
     if (a == null) return;
     final numbers = toField.text.split(RegExp(r'[\s,،;]+')).map(MeliPayamak.normalize).where((n) => n.isNotEmpty).toSet().toList();
