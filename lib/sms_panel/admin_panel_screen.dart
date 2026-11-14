@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../jalali.dart';
+import '../site_admin_auth.dart';
 import '../security/app_lock.dart';
 import '../security/vault.dart';
 import '../sms_bridge.dart';
@@ -21,12 +22,50 @@ class AdminAccess {
   static const pinName = 'admin';
 
   static Future<bool> enabled() async {
-    // A SharedPreferences boolean is UI state, not proof of administrator identity.
-    // Never expose the panel shortcut before a verified service account and PIN exist.
-    if ((await SharedPreferences.getInstance()).getBool(_flag) != true) return false;
-    return await Vault.hasPin(pinName) &&
-        (await Vault.get('mp_user') ?? '').isNotEmpty &&
-        (await Vault.get('mp_pass') ?? '').isNotEmpty;
+    // The remote WordPress grant is authoritative; no local PIN, app preference
+    // or stored SMS provider password can enable the administrative panel.
+    return SiteAdminAuth.authorized();
+  }
+
+  static Future<bool> _pair(BuildContext context) async {
+    final code = TextEditingController();
+    String? problem;
+    bool working = false;
+    try {
+      return await showDialog<bool>(context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (dialogContext, refresh) => AlertDialog(
+            title: const Text('اتصال مدیر به هنر مردمی'),
+            content: SingleChildScrollView(child: Column(
+              mainAxisSize: MainAxisSize.min, children: [
+                const Text('مدیر سایت از پیشخوان هنر مردمی › کاربران › دسترسی پیامیار '
+                  'یک کد ۱۰ دقیقه‌ای برای حساب شما صادر می‌کند. کد را اینجا وارد کنید.'),
+                const SizedBox(height: 12),
+                TextField(controller: code, textDirection: TextDirection.ltr,
+                  enabled: !working, autocorrect: false, enableSuggestions: false,
+                  decoration: const InputDecoration(labelText: 'کد اتصال یک‌بارمصرف')),
+                if (problem != null) Padding(padding: const EdgeInsets.only(top: 8),
+                  child: Text(problem!, style: TextStyle(color: Theme.of(dialogContext).colorScheme.error))),
+              ],
+            )),
+            actions: [
+              TextButton(onPressed: working ? null : () => Navigator.pop(dialogContext, false),
+                child: const Text('انصراف')),
+              FilledButton(onPressed: working ? null : () async {
+                refresh(() { working = true; problem = null; });
+                final error = await SiteAdminAuth.link(code.text);
+                if (!dialogContext.mounted) return;
+                if (error == null) Navigator.pop(dialogContext, true);
+                else refresh(() { working = false; problem = error; });
+              }, child: Text(working ? 'در حال تأیید…' : 'اتصال امن')),
+            ],
+          ),
+        ),
+      ) ?? false;
+    } finally {
+      code.dispose();
+    }
   }
 
   static Future<void> _setEnabled(bool v) async =>
@@ -109,6 +148,11 @@ class AdminAccess {
   /// Authenticates the panel owner, then creates/verifies the local admin PIN.
   static Future<void> open(BuildContext context, {void Function(String)? onNotice}) async {
     final nav = Navigator.of(context);
+    if (!await enabled()) {
+      if (!context.mounted || !await _pair(context)) return;
+      if (!await enabled()) { onNotice?.call('مجوز مدیر از سایت تأیید نشد.'); return; }
+    }
+    if (!context.mounted) return;
     if (!await Vault.hasPin(pinName)) {
       if (!context.mounted) return;
       final credentials = await _verifyOwner(context);
@@ -142,6 +186,7 @@ class AdminAccess {
       ));
       if (!ok) return;
     }
+    if (!await enabled() || !context.mounted) return;
     await nav.push(MaterialPageRoute<void>(builder: (_) => AdminPanelScreen(onNotice: onNotice)));
   }
 
@@ -152,6 +197,7 @@ class AdminAccess {
     }
     await Vault.remove(pinName);
     await _setEnabled(false);
+    await SiteAdminAuth.unlink();
   }
 }
 
