@@ -328,7 +328,8 @@ object Notifier {
             Handler(Looper.getMainLooper()).post {
                 try { front.invokeMethod("incomingBanner", payload) } catch (_: Exception) { }
             }
-            return
+            // Keep the Android notification as a reliable fallback as well.
+            // The Flutter channel can be alive while its page is not ready to show the banner.
         }
 
         configureChannels(c)
@@ -364,7 +365,7 @@ object Notifier {
             .setGroup("payamyar_incoming_sms")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setWhen(time).setShowWhen(true)
-            .setContentIntent(open).setAutoCancel(true)
+            .setContentIntent(open).setAutoCancel(false)
             .setSilent(SentSound.quietNow(c))
             .setLights(color, 600, 2400)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
