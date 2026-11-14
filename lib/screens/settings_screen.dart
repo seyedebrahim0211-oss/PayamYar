@@ -158,6 +158,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: 'قفل برنامه', subtitle: AppLock.instance.enabled ? 'فعال • رمز هنگام ورود' : 'رمز ورود و جلوگیری از عکس صفحه',
                 onTap: () => _open(AppLockSettingsPage(lock: AppLock.instance, onNotice: store.onNotice))),
             ]),
+            if (!admin) ...[
+              const SizedBox(height: 12),
+              SettingsGroup(children: [
+                SettingsTile(icon: Icons.account_circle_outlined, color: const Color(0xFF087F81),
+                  title: 'اتصال حساب به هنر مردمی',
+                  subtitle: 'برای فعال‌سازی دسترسی مدیریتی، کد صادرشده از سایت را وارد کنید',
+                  onTap: _openAdmin),
+              ]),
+            ],
             if (admin) ...[
               const SizedBox(height: 12),
               SettingsGroup(children: [
