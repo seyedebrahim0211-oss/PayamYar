@@ -169,12 +169,20 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
   }
 
   void _compose() {
-    Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => ComposeScreen(store: store,
-        initialRecipients: group.recipients,
-        initialGroupName: group.name,
-        initialGroupId: group.id,
-        createGroup: true, lockGroupRecipients: true)));
+    // Keep the group conversation underneath the composer instead of
+    // navigating to an unrelated recipient thread.
+    showModalBottomSheet<void>(
+      context: context, isScrollControlled: true, useSafeArea: true,
+      showDragHandle: true,
+      builder: (sheet) => SizedBox(
+        height: MediaQuery.sizeOf(sheet).height * .86,
+        child: ComposeScreen(store: store,
+          initialRecipients: group.recipients,
+          initialGroupName: group.name,
+          initialGroupId: group.id,
+          createGroup: true, lockGroupRecipients: true),
+      ),
+    );
   }
 
   void _editMembers() {
