@@ -422,7 +422,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
     final a = api;
     if (a == null) return;
     final numbers = toField.text.split(RegExp(r'[\s,،;]+')).map(MeliPayamak.normalize).where((n) => n.isNotEmpty).toSet().toList();
-    final text = textField.text.trim();
+    final text = MeliPayamak.compose(textField.text, bulk: numbers.length > 1);
     if (numbers.isEmpty || text.isEmpty) {
       _notice('گیرنده معتبر و متن پیام را وارد کنید.');
       return;
@@ -432,8 +432,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('ارسال از پنل ملی پیامک'),
-        content: Text('از خط ${Jalali.digits(line)} به ${Jalali.digits(numbers.length)} گیرنده ارسال شود؟\n'
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('از خط ${Jalali.digits(line)} به ${Jalali.digits(numbers.length)} گیرنده ارسال شود؟\n'
             'هزینه تقریبی: ${Jalali.digits(parts)} پیامک از اعتبار پنل.'),
+          const SizedBox(height: 12),
+          const Text('پیش‌نمایش متن نهایی ارسالی:', style: TextStyle(fontWeight: FontWeight.w800)),
+          SelectableText(text),
+        ])),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
           FilledButton(
@@ -921,7 +927,161 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
               style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
             ),
           ),
-          if (count > 1 && !textField.text.contains('لغو11'))
+          if (count > 1 && !RegExp(r'لغو[۱١1][۱١1]\\s*
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: TextButton.icon(
+                onPressed: () { textField.text = MeliPayamak.compose(textField.text, bulk: true); setState(() {}); },
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('افزودن «لغو11»'),
+              ),
+            ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('پیامک فلش (نمایش مستقیم روی صفحه)'),
+            value: flash,
+            onChanged: (v) => setState(() => flash = v),
+          ),
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            onPressed: sending ? null : _send,
+            icon: sending
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.send_rounded),
+            label: Text('ارسال از خط ${Jalali.digits(line)}'),
+          ),
+          if (lastRecId != null)
+            Card(
+              margin: const EdgeInsets.only(top: 14),
+              child: ListTile(
+                leading: const Icon(Icons.receipt_long_rounded),
+                title: Text('آخرین ارسال: $lastRecId', textDirection: TextDirection.ltr, textAlign: TextAlign.right),
+                subtitle: Text(lastDelivery ?? 'برای دیدن وضعیت تحویل، «بررسی» را بزنید'),
+                trailing: TextButton(onPressed: _checkDelivery, child: const Text('بررسی')),
+              ),
+            ),
+          if (sent.isNotEmpty) ...[
+            const Padding(
+              padding: EdgeInsets.fromLTRB(4, 20, 4, 6),
+              child: Text('ارسال‌های اخیر پنل', style: TextStyle(fontWeight: FontWeight.w800)),
+            ),
+            Card(child: Column(children: [for (final m in sent.take(20)) _messageTile(m, outgoing: true)])),
+          ],
+        ]);
+      },
+    );
+  }
+
+  Widget _inboxTab() {
+    if (api == null) return _needSetup();
+    return RefreshIndicator(
+      onRefresh: () async {
+        await _refresh();
+        await _markSeen();
+      },
+      child: inbox.isEmpty
+          ? ListView(children: const [
+              Padding(padding: EdgeInsets.all(40), child: Center(child: Text('پیامی به این خط نرسیده است.'))),
+            ])
+          : ListView.separated(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              itemCount: inbox.length,
+              separatorBuilder: (_, __) => const Divider(height: 1, indent: 72),
+              itemBuilder: (_, i) => _messageTile(inbox[i]),
+            ),
+    );
+  }
+
+  Widget _connectionTab() {
+    final scheme = Theme.of(context).colorScheme;
+    return ListView(padding: const EdgeInsets.all(16), children: [
+      Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(children: [
+            TextField(
+              controller: userField,
+              textDirection: TextDirection.ltr,
+              autocorrect: false,
+              decoration: const InputDecoration(labelText: 'نام کاربری پنل', prefixIcon: Icon(Icons.person_outline)),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: passField,
+              obscureText: true,
+              textDirection: TextDirection.ltr,
+              autocorrect: false,
+              enableSuggestions: false,
+              decoration: InputDecoration(
+                labelText: api == null ? 'رمز وب‌سرویس / کلید معتبر حساب' : 'رمز وب‌سرویس (خالی = بدون تغییر)',
+                prefixIcon: const Icon(Icons.key_rounded),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: lineField,
+              keyboardType: TextInputType.number,
+              textDirection: TextDirection.ltr,
+              decoration: const InputDecoration(labelText: 'شماره خط', prefixIcon: Icon(Icons.sim_card_outlined)),
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: loading ? null : _saveCredentials,
+              icon: const Icon(Icons.verified_user_outlined),
+              label: const Text('ذخیره و آزمایش اتصال'),
+            ),
+          ]),
+        ),
+      ),
+      const SizedBox(height: 10),
+      Text(
+        'روش اتصال REST: نام کاربری پنل و رمز وب‌سرویس یا کلید معتبر آن حساب. '
+        'رمز ورود سایت لزوماً همان رمز وب‌سرویس نیست. ملی‌پیامک SOAP هم ارائه می‌کند. '
+        'در صورت فعال بودن فهرست IP مجاز، آن را بدون بررسی امنیتی حذف نکنید؛ واسط سرور با IP ثابت ایمن‌تر است. '
+        'اطلاعات ورود در Android Keystore همین گوشی نگهداری می‌شود.',
+        style: TextStyle(fontSize: 12, height: 1.8, color: scheme.onSurfaceVariant),
+      ),
+      const SizedBox(height: 10),
+      OutlinedButton.icon(
+        onPressed: loading || api == null ? null : _refresh,
+        icon: const Icon(Icons.fact_check_outlined),
+        label: const Text('آزمون مستقل اعتبار، دریافت و ارسال'),
+      ),
+      if (error != null) Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: SelectableText(error!, style: TextStyle(color: scheme.error, fontSize: 12)),
+      ),
+      const SizedBox(height: 20),
+      if (user.isNotEmpty)
+        Text('حساب متصل: $user', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700)),
+      const SizedBox(height: 10),
+      OutlinedButton.icon(
+        style: OutlinedButton.styleFrom(foregroundColor: scheme.error, minimumSize: const Size.fromHeight(48)),
+        onPressed: () async {
+          final ok = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('خروج از حالت مدیر'),
+              content: const Text('اطلاعات اتصال و رمز مدیر از این گوشی پاک می‌شود و ورودی پنل از تنظیمات پنهان می‌شود.'),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
+                TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('پاک کردن')),
+              ],
+            ),
+          );
+          if (ok != true) return;
+          await AdminAccess.reset();
+          if (!mounted) return;
+          _notice('حالت مدیر غیرفعال شد.');
+          Navigator.of(context).pop();
+        },
+        icon: const Icon(Icons.logout_rounded),
+        label: const Text('خروج از حالت مدیر و پاک کردن اطلاعات'),
+      ),
+    ]);
+  }
+}
+).hasMatch(textField.text.trimRight()))
             Align(
               alignment: AlignmentDirectional.centerStart,
               child: TextButton.icon(
