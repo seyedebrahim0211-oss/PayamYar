@@ -193,6 +193,18 @@ class ContactStore extends ChangeNotifier {
   /// Numbers written with Persian digits, spaces or +98 that can be tidied to 09xxxxxxxxx.
   List<PhoneContact> get untidy => _cached('untidy', () => contacts.where((c) => c.phones.any((p) => isUntidy(p.value))).toList());
 
+  /// Names matching exactly are only *suggestions* for manual review.
+  /// Two relatives or coworkers can have the same name and must not be auto-merged.
+  List<List<PhoneContact>> get similarNames => _cached('similarNames', () {
+    final byName = <String, List<PhoneContact>>{};
+    for (final c in contacts) {
+      final key = _fold(c.name.trim());
+      if (key.length < 3) continue;
+      (byName[key] ??= []).add(c);
+    }
+    return byName.values.where((group) => group.length > 1).toList();
+  });
+
   int get duplicateCount => duplicates.fold(0, (n, l) => n + l.length);
 
   // ───────────── groups ─────────────
