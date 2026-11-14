@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app_store.dart';
 import '../sms_bridge.dart';
+import '../sms_groups.dart';
 import '../recipient_suggestions.dart';
 import 'compose_tools.dart';
 import 'contact_picker.dart';
@@ -189,18 +190,19 @@ class _ComposeScreenState extends State<ComposeScreen> {
     return result.toList(growable: false);
   }
 
-  Future<bool> _saveGroup(List<String> targets) async {
+  Future<SmsGroup?> _saveGroup(List<String> targets) async {
     if (targets.length < 2) {
       store.onNotice?.call('برای ساخت گروه حداقل ۲ مخاطب انتخاب کنید.');
-      return false;
+      return null;
     }
     try {
-      await store.smsGroups.save(groupName.text, targets, id: widget.initialGroupId);
+      final saved = await store.smsGroups.save(groupName.text, targets,
+        id: widget.initialGroupId);
       store.onNotice?.call('گروه پیامکی ذخیره شد؛ پاسخ اعضا همچنان خصوصی است.');
-      return true;
+      return saved;
     } on ArgumentError catch (e) {
       store.onNotice?.call(e.message?.toString() ?? 'نام یا مخاطبان گروه معتبر نیست.');
-      return false;
+      return null;
     }
   }
 
@@ -217,7 +219,6 @@ class _ComposeScreenState extends State<ComposeScreen> {
       store.onNotice?.call('برای ارسال بیش از ۵۰۰ شماره از پنل پیامکی مجاز استفاده کنید. افزایش سقف انتخاب، محدودیت اپراتور را تغییر نمی‌دهد.');
       return;
     }
-    if (groupMode && !await _saveGroup(targets)) return;
     if (!mounted) return;
     if (targets.length > 1) {
       final confirmed = await showDialog<bool>(context: context, builder: (ctx) =>
@@ -233,6 +234,11 @@ class _ComposeScreenState extends State<ComposeScreen> {
         ));
       if (confirmed != true || !mounted) return;
     }
+    // Never create a new group merely because the confirmation dialog opened.
+    final savedGroup = groupMode ? await _saveGroup(targets) : null;
+    if (groupMode && savedGroup == null) return;
+    if (!mounted) return;
+    final acceptedAt = <String, DateTime>{};
     setState(() {
       sending = true;
       stopQueueing = false;
@@ -244,6 +250,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
     var processed = 0;
     for (final number in targets) {
       if (stopQueueing) break;
+      final queuedAt = DateTime.now();
       final pending = await store.send(number, text);
       processed++;
       if (stopQueueing && pending != null) {
@@ -253,13 +260,27 @@ class _ComposeScreenState extends State<ComposeScreen> {
       if (pending == null && store.android) {
         failed.add(number);
       } else {
-        if (pending != null) undoGroup.add(pending);
+        if (pending != null) {
+          undoGroup.add(pending);
+          acceptedAt[number] = queuedAt;
+        }
         if (mounted) {
           queuedCount++;
           if (queuedCount == 1 || queuedCount % 10 == 0 || processed == targets.length) {
             setState(() {});
           }
         }
+      }
+    }
+    // Log only messages actually accepted into the native queue.
+    // The group's original text is encrypted in Android Keystore; delivery
+    // status is reconciled against SMS rows, never fabricated as 'sent'.
+    if (savedGroup != null && acceptedAt.isNotEmpty) {
+      try {
+        await store.smsGroups.recordBatch(savedGroup.id,
+          store.settings?.withSignature(text) ?? text, acceptedAt);
+      } catch (_) {
+        store.onNotice?.call('ثبت سابقه ارسال گروه در حافظه امن ممکن نشد؛ پیام‌های صف‌شده حذف نشده‌اند.');
       }
     }
     if (!mounted) return;
