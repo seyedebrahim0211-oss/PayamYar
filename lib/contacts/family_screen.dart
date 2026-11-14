@@ -12,10 +12,10 @@ class FamilyRelations {
     for (final label in ['پدربزرگ', 'مادربزرگ', 'برادر', 'خواهر', 'پدر',
       'مادر', 'همسر', 'عمو', 'عمه', 'دایی', 'خاله', 'پسر', 'دختر']) {
       if (v == label || v.startsWith('$label ') || v.endsWith(' $label') ||
-          v.contains(' $label ')) return label;
+          v.contains(' $label ')) { return label; }
     }
-    if (v == 'بابا' || v.startsWith('بابا ')) return 'پدر';
-    if (v == 'مامان' || v.startsWith('مامان ')) return 'مادر';
+    if (v == 'بابا' || v.startsWith('بابا ')) { return 'پدر'; }
+    if (v == 'مامان' || v.startsWith('مامان ')) { return 'مادر'; }
     return null;
   }
 }
