@@ -21,8 +21,8 @@ void main() {
       suspicious: 2, otp: 1, people: 4, days: 7);
     final rows = reportMetricsCsvRows(p, ReportPeriod.week);
     expect(rows.first, hasLength(4));
-    expect(rows, contains(['روند', 'شنبه', '2', '1']));
-    expect(rows, contains(['امنیت', 'مشکوک / کد تأیید', '2', '1']));
+    expect(rows.map((r) => r.join('|')), contains('روند|شنبه|2|1'));
+    expect(rows.map((r) => r.join('|')), contains('امنیت|مشکوک / کد تأیید|2|1'));
     expect(rows.every((r) => r.length == 4), isTrue);
   });
 }
