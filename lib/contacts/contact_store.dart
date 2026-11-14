@@ -213,11 +213,19 @@ class ContactStore extends ChangeNotifier {
     final p = await SharedPreferences.getInstance();
     try {
       final raw = jsonDecode(p.getString(_familyKey) ?? '{}');
-      if (raw is Map) return {
-        for (final e in raw.entries)
-          if (e.value is String && e.value.toString().isNotEmpty)
-            e.key.toString(): e.value.toString(),
+      final saved = <String, String>{
+        if (raw is Map)
+          for (final e in raw.entries)
+            if (e.value is String && e.value.toString().isNotEmpty)
+              e.key.toString(): e.value.toString(),
       };
+      // Also display contacts previously placed in the legacy family group.
+      for (final c in contacts) {
+        if (members[c.key]?.contains('family') ?? false) {
+          saved.putIfAbsent(c.key, () => 'سایر');
+        }
+      }
+      return saved;
     } catch (_) {}
     return {};
   }
@@ -226,9 +234,14 @@ class ContactStore extends ChangeNotifier {
     final all = await familyRelations();
     if (label == null) {
       all.remove(contact.key);
+      members[contact.key]?.remove('family');
     } else {
       all[contact.key] = label;
+      if (group('family') != null) {
+        (members[contact.key] ??= <String>{}).add('family');
+      }
     }
+    await _saveGroups();
     final p = await SharedPreferences.getInstance();
     await p.setString(_familyKey, jsonEncode(all));
     notifyListeners();
