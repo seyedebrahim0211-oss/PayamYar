@@ -23,8 +23,8 @@ Future<String?> selectContactForSms(BuildContext context) async {
     // Plain text, readable in every SMS client, no attachment or background send.
     return 'مخاطب: ${name.isEmpty ? phone : name}\nشماره: $phone';
   } catch (_) {
-    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text('خواندن مخاطبین ممکن نشد. اجازه مخاطبین را بررسی کنید.')));
+    if (context.mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('خواندن مخاطبین ممکن نشد. اجازه مخاطبین را بررسی کنید.'))); }
     return null;
   }
 }
