@@ -32,13 +32,33 @@ class ReportsScreen extends StatefulWidget {
   State<ReportsScreen> createState() => _ReportsScreenState();
 }
 
-class _ReportsScreenState extends State<ReportsScreen> {
+class _ReportsScreenState extends State<ReportsScreen> with WidgetsBindingObserver {
   ReportPeriod period = ReportPeriod.month;
   bool allTransactions = false;
+  bool revealFinancialAmounts = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed && revealFinancialAmounts && mounted) {
+      setState(() => revealFinancialAmounts = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
 
   AppStore get store => widget.store;
 
-  String _money(int v) => widget.settings.hidePreview ? '••••' : Jalali.digits(FinanceLogic.formatTomans(v));
+  String _money(int v) => !revealFinancialAmounts ? '••••••' : Jalali.digits(FinanceLogic.formatTomans(v));
 
   Future<void> _share(ReportResult data, PeriodInsight p) async {
     final text = reportAsText(data, p, period, nameOf: store.displayName, money: _money);
@@ -46,7 +66,25 @@ class _ReportsScreenState extends State<ReportsScreen> {
     if (!ok) store.onNotice?.call('اشتراک‌گذاری در دسترس نیست.');
   }
 
+  Future<bool> _confirmFinancialExport() async {
+    if (revealFinancialAmounts) return true;
+    final allow = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('تأیید خروجی اطلاعات مالی'),
+        content: const Text('مبالغ روی صفحه پنهان هستند، اما فایل CSV شامل ارقام واقعی می‌شود. '
+          'فقط در صورت اطمینان از محل ذخیره و اشتراک‌گذاری ادامه دهید.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('خروجی با ارقام واقعی')),
+        ],
+      ),
+    );
+    return allow == true;
+  }
+
   Future<void> _exportCsv(PeriodInsight p) async {
+    if (!await _confirmFinancialExport()) return;
     if (p.transactions.isEmpty) {
       store.onNotice?.call('در این بازه تراکنش بانکی پیدا نشد.');
       return;
@@ -59,6 +97,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Future<void> _exportMetricsCsv(PeriodInsight p) async {
+    if (!await _confirmFinancialExport()) return;
     final now = DateTime.now();
     final j = Jalali.fromGregorian(now.year, now.month, now.day);
     final ok = await ContactsBridge.saveFile(
@@ -135,6 +174,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 period = v.first;
                 allTransactions = false;
               }),
+            ),
+            const SizedBox(height: 8),
+            Card(
+              child: SwitchListTile(
+                secondary: Icon(revealFinancialAmounts ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                    color: scheme.primary),
+                title: const Text('نمایش مبالغ و موجودی‌ها'),
+                subtitle: const Text('اعداد گزارش‌های بانکی به‌صورت پیش‌فرض پوشیده‌اند؛ با لمس نمایش داده می‌شوند.'),
+                value: revealFinancialAmounts,
+                onChanged: (v) => setState(() => revealFinancialAmounts = v),
+              ),
             ),
             const SizedBox(height: 12),
             if (store.reportPending && data.total == 0)

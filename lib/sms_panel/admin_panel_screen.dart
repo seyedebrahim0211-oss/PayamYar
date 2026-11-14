@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../jalali.dart';
+import '../site_admin_auth.dart';
 import '../security/app_lock.dart';
 import '../security/vault.dart';
 import '../sms_bridge.dart';
@@ -21,12 +22,53 @@ class AdminAccess {
   static const pinName = 'admin';
 
   static Future<bool> enabled() async {
-    // A SharedPreferences boolean is UI state, not proof of administrator identity.
-    // Never expose the panel shortcut before a verified service account and PIN exist.
-    if ((await SharedPreferences.getInstance()).getBool(_flag) != true) return false;
-    return await Vault.hasPin(pinName) &&
-        (await Vault.get('mp_user') ?? '').isNotEmpty &&
-        (await Vault.get('mp_pass') ?? '').isNotEmpty;
+    // The remote WordPress grant is authoritative; no local PIN, app preference
+    // or stored SMS provider password can enable the administrative panel.
+    return SiteAdminAuth.authorized();
+  }
+
+  static Future<bool> _pair(BuildContext context) async {
+    final code = TextEditingController();
+    String? problem;
+    bool working = false;
+    try {
+      return await showDialog<bool>(context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (dialogContext, refresh) => AlertDialog(
+            title: const Text('اتصال مدیر به هنر مردمی'),
+            content: SingleChildScrollView(child: Column(
+              mainAxisSize: MainAxisSize.min, children: [
+                const Text('مدیر سایت از پیشخوان هنر مردمی › کاربران › دسترسی پیامیار '
+                  'یک کد ۱۰ دقیقه‌ای برای حساب شما صادر می‌کند. کد را اینجا وارد کنید.'),
+                const SizedBox(height: 12),
+                TextField(controller: code, textDirection: TextDirection.ltr,
+                  enabled: !working, autocorrect: false, enableSuggestions: false,
+                  decoration: const InputDecoration(labelText: 'کد اتصال یک‌بارمصرف')),
+                if (problem != null) Padding(padding: const EdgeInsets.only(top: 8),
+                  child: Text(problem!, style: TextStyle(color: Theme.of(dialogContext).colorScheme.error))),
+              ],
+            )),
+            actions: [
+              TextButton(onPressed: working ? null : () => Navigator.pop(dialogContext, false),
+                child: const Text('انصراف')),
+              FilledButton(onPressed: working ? null : () async {
+                refresh(() { working = true; problem = null; });
+                final error = await SiteAdminAuth.link(code.text);
+                if (!dialogContext.mounted) return;
+                if (error == null) {
+                  Navigator.pop(dialogContext, true);
+                } else {
+                  refresh(() { working = false; problem = error; });
+                }
+              }, child: Text(working ? 'در حال تأیید…' : 'اتصال امن')),
+            ],
+          ),
+        ),
+      ) ?? false;
+    } finally {
+      code.dispose();
+    }
   }
 
   static Future<void> _setEnabled(bool v) async =>
@@ -83,7 +125,7 @@ class AdminAccess {
                   refresh(() { checking = true; error = null; });
                   final client = MeliPayamak(u, p);
                   try {
-                    await client.credit();
+                    await client.verifyAccess();
                     if (dialogContext.mounted) {
                       Navigator.of(dialogContext).pop({'user': u, 'pass': p, 'line': l});
                     }
@@ -109,6 +151,11 @@ class AdminAccess {
   /// Authenticates the panel owner, then creates/verifies the local admin PIN.
   static Future<void> open(BuildContext context, {void Function(String)? onNotice}) async {
     final nav = Navigator.of(context);
+    if (!await enabled()) {
+      if (!context.mounted || !await _pair(context)) return;
+      if (!await enabled()) { onNotice?.call('مجوز مدیر از سایت تأیید نشد.'); return; }
+    }
+    if (!context.mounted) return;
     if (!await Vault.hasPin(pinName)) {
       if (!context.mounted) return;
       final credentials = await _verifyOwner(context);
@@ -142,6 +189,7 @@ class AdminAccess {
       ));
       if (!ok) return;
     }
+    if (!await enabled() || !context.mounted) return;
     await nav.push(MaterialPageRoute<void>(builder: (_) => AdminPanelScreen(onNotice: onNotice)));
   }
 
@@ -152,6 +200,7 @@ class AdminAccess {
     }
     await Vault.remove(pinName);
     await _setEnabled(false);
+    await SiteAdminAuth.unlink();
   }
 }
 
@@ -169,9 +218,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
   String user = '';
   String line = MeliPayamak.defaultLine;
   double? credit;
-  bool creditVisible = false;
   String? error;
   bool loading = true;
+  bool _refreshing = false;
   List<PanelMessage> inbox = const [];
   List<PanelMessage> sent = const [];
   int seenMax = 0;
@@ -206,7 +255,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _appVisible = state == AppLifecycleState.resumed;
-    if (!_appVisible && mounted) setState(() => creditVisible = false);
+    // Panel balance is operational credit, not private banking report data.
   }
 
   @override
@@ -220,7 +269,25 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
     super.dispose();
   }
 
+  Future<bool> _requireSiteAccess() async {
+    if (await SiteAdminAuth.authorized()) return true;
+    if (mounted) {
+      api?.close();
+      setState(() {
+        api = null;
+        inbox = const [];
+        sent = const [];
+        credit = null;
+        error = 'دسترسی مدیر از سایت هنر مردمی تأیید نشد. اتصال اینترنت یا مجوز کاربری را بررسی کنید.';
+        loading = false;
+        sending = false;
+      });
+    }
+    return false;
+  }
+
   Future<void> _load() async {
+    if (!await _requireSiteAccess()) return;
     final u = await Vault.get('mp_user') ?? '';
     final p = await Vault.get('mp_pass') ?? '';
     final l = await Vault.get('mp_line') ?? MeliPayamak.defaultLine;
@@ -237,39 +304,49 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
   }
 
   Future<void> _refresh() async {
+    if (!await _requireSiteAccess()) return;
     final a = api;
-    if (a == null) return;
-    setState(() {
-      loading = true;
-      error = null;
-    });
+    if (a == null || _refreshing) return;
+    _refreshing = true;
+    setState(() { loading = true; error = null; });
+    final diagnostics = <String>[];
     try {
-      final c = await a.credit();
-      final received = await a.messages(location: 1, count: 100);
-      List<PanelMessage> out = const [];
+      // Treat the three service methods independently. One broken inbox should
+      // never erase a valid balance or make a successful send look like failure.
       try {
-        out = await a.messages(location: 2, count: 50);
-      } catch (_) {}
-      if (!mounted) return;
-      setState(() {
-        credit = c;
-        // Messages sent to this line (e.g. 90008325); keep all when the service omits the receiver.
-        inbox = received.where((m) {
-          final receiver = m.receiver.replaceAll(RegExp(r'[^0-9]'), '');
-          final wanted = line.replaceAll(RegExp(r'[^0-9]'), '');
-          return receiver.isEmpty || receiver == wanted;
-        }).toList();
-        sent = out;
-      });
-    } on PanelException catch (e) {
-      if (mounted) { setState(() {
-        error = e.message;
-        credit = null;
-        inbox = const [];
-        sent = const [];
-      }); }
+        final value = await a.credit();
+        if (mounted) setState(() => credit = value);
+      } on PanelException catch (e) {
+        diagnostics.add('اعتبار: ${e.message}');
+        if (mounted) setState(() => credit = null);
+      }
+      try {
+        final received = await a.messages(location: 1, count: 100);
+        if (mounted) {
+          setState(() {
+            inbox = received.where((m) {
+              final receiver = m.receiver.replaceAll(RegExp(r'[^0-9]'), '');
+              final wanted = line.replaceAll(RegExp(r'[^0-9]'), '');
+              return receiver.isEmpty || receiver == wanted;
+            }).toList();
+          });
+        }
+      } on PanelException catch (e) {
+        diagnostics.add('صندوق دریافتی: ${e.message}');
+      }
+      try {
+        final outgoing = await a.messages(location: 2, count: 50);
+        if (mounted) setState(() => sent = outgoing);
+      } on PanelException catch (e) {
+        diagnostics.add('صندوق ارسالی: ${e.message}');
+      }
+      if (mounted) {
+        setState(() => error = diagnostics.isEmpty ? null :
+          'برخی خدمات پنل در دسترس نیستند:\n${diagnostics.join('\n')}');
+      }
     } finally {
-      if (mounted) { setState(() => loading = false); }
+      _refreshing = false;
+      if (mounted) setState(() => loading = false);
     }
   }
 
@@ -285,6 +362,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
   }
 
   Future<void> _saveCredentials() async {
+    if (!await _requireSiteAccess()) return;
     final u = userField.text.trim();
     final p = passField.text.trim();
     final l = lineField.text.replaceAll(RegExp(r'[^0-9+]'), '');
@@ -296,7 +374,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
     final test = MeliPayamak(u, pass);
     setState(() => loading = true);
     try {
-      final c = await test.credit();
+      final c = await test.verifyAccess();
       await Vault.put('mp_user', u);
       await Vault.put('mp_pass', pass);
       await Vault.put('mp_line', l);
@@ -309,7 +387,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
         credit = c;
         error = null;
       });
-      _notice('اتصال به ملی پیامک برقرار شد.');
+      _notice(c == null ? 'حساب از طریق صندوق دریافتی تأیید شد. دسترسی به موجودی نیازمند بررسی جداگانه است.' : 'حساب ملی‌پیامک تأیید شد.');
       await _refresh();
     } on PanelException catch (e) {
       test.close();
@@ -327,6 +405,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
   }
 
   Future<void> _send() async {
+    if (!await _requireSiteAccess()) return;
+    if (!mounted) return;
     final a = api;
     if (a == null) return;
     final numbers = toField.text.split(RegExp(r'[\s,،;]+')).map(MeliPayamak.normalize).where((n) => n.isNotEmpty).toSet().toList();
@@ -356,11 +436,11 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
     try {
       final id = await a.send(to: numbers, text: text, from: line, flash: flash);
       setState(() {
-        lastRecId = id;
+        lastRecId = id.isEmpty ? null : id;
         lastDelivery = null;
       });
       textField.clear();
-      _notice('ارسال شد. شناسه: $id');
+      _notice(id.isEmpty ? 'پنل دریافت درخواست را تأیید کرد، اما شناسه پیگیری برنگرداند؛ وضعیت تحویل را از صندوق ارسالی بررسی کنید.' : 'درخواست ارسال پذیرفته شد. شناسه: $id');
       try {
         credit = await a.credit();
       } catch (_) {}
@@ -372,6 +452,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
   }
 
   Future<void> _checkDelivery() async {
+    if (!await _requireSiteAccess()) return;
     final a = api, id = lastRecId;
     if (a == null || id == null) return;
     try {
@@ -464,18 +545,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
               Text('خط ${Jalali.digits(line)}', style: const TextStyle(color: Colors.white60, fontSize: 12)),
             ]),
             const SizedBox(height: 8),
-            Text(!creditVisible ? '•••••• پیامک' : credit == null ? '—' : '${Jalali.digits(credit!.toStringAsFixed(credit! % 1 == 0 ? 0 : 1))} پیامک',
+            Text(credit == null ? '—' : '${Jalali.digits(credit!.toStringAsFixed(credit! % 1 == 0 ? 0 : 1))} پیامک',
                 style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900)),
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: TextButton.icon(
-                onPressed: () => setState(() => creditVisible = !creditVisible),
-                icon: Icon(creditVisible ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                  color: Colors.white),
-                label: Text(creditVisible ? 'پنهان کردن موجودی' : 'نمایش موقت موجودی',
-                  style: const TextStyle(color: Colors.white)),
-              ),
-            ),
             if (error != null)
               const Padding(
                 padding: EdgeInsets.only(top: 4),
@@ -918,7 +989,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
               autocorrect: false,
               enableSuggestions: false,
               decoration: InputDecoration(
-                labelText: api == null ? 'کلید وب‌سرویس (API Key)' : 'کلید وب‌سرویس (خالی = بدون تغییر)',
+                labelText: api == null ? 'رمز وب‌سرویس / کلید معتبر حساب' : 'رمز وب‌سرویس (خالی = بدون تغییر)',
                 prefixIcon: const Icon(Icons.key_rounded),
               ),
             ),
@@ -940,9 +1011,21 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
       ),
       const SizedBox(height: 10),
       Text(
-        'کلید وب‌سرویس را از پنل ملی پیامک › تنظیمات › وب‌سرویس بگیرید. اطلاعات با رمزنگاری Keystore فقط روی همین گوشی '
-        'ذخیره و فقط به rest.payamak-panel.com فرستاده می‌شود. اگر پنل خطای «IP مجاز» داد، محدودیت IP وب‌سرویس را در پنل بردارید.',
+        'روش اتصال REST: نام کاربری پنل و رمز وب‌سرویس یا کلید معتبر آن حساب. '
+        'رمز ورود سایت لزوماً همان رمز وب‌سرویس نیست. ملی‌پیامک SOAP هم ارائه می‌کند. '
+        'در صورت فعال بودن فهرست IP مجاز، آن را بدون بررسی امنیتی حذف نکنید؛ واسط سرور با IP ثابت ایمن‌تر است. '
+        'اطلاعات ورود در Android Keystore همین گوشی نگهداری می‌شود.',
         style: TextStyle(fontSize: 12, height: 1.8, color: scheme.onSurfaceVariant),
+      ),
+      const SizedBox(height: 10),
+      OutlinedButton.icon(
+        onPressed: loading || api == null ? null : _refresh,
+        icon: const Icon(Icons.fact_check_outlined),
+        label: const Text('آزمون مستقل اعتبار، دریافت و ارسال'),
+      ),
+      if (error != null) Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: SelectableText(error!, style: TextStyle(color: scheme.error, fontSize: 12)),
       ),
       const SizedBox(height: 20),
       if (user.isNotEmpty)

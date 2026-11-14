@@ -158,6 +158,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: 'قفل برنامه', subtitle: AppLock.instance.enabled ? 'فعال • رمز هنگام ورود' : 'رمز ورود و جلوگیری از عکس صفحه',
                 onTap: () => _open(AppLockSettingsPage(lock: AppLock.instance, onNotice: store.onNotice))),
             ]),
+            if (!admin) ...[
+              const SizedBox(height: 12),
+              SettingsGroup(children: [
+                SettingsTile(icon: Icons.account_circle_outlined, color: const Color(0xFF087F81),
+                  title: 'اتصال حساب به هنر مردمی',
+                  subtitle: 'برای فعال‌سازی دسترسی مدیریتی، کد صادرشده از سایت را وارد کنید',
+                  onTap: _openAdmin),
+              ]),
+            ],
             if (admin) ...[
               const SizedBox(height: 12),
               SettingsGroup(children: [
@@ -630,8 +639,8 @@ class NotificationSettingsPage extends StatelessWidget {
             title: const Text('صدا و لرزش پیام دریافتی'), subtitle: const Text('انتخاب آهنگ دلخواه در تنظیمات اندروید'),
             trailing: const Icon(Icons.chevron_left_rounded), onTap: () => SmsBridge.openNotificationChannel('incoming')),
           ListTile(leading: Icon(Icons.auto_awesome_outlined, color: scheme.primary),
-            title: const Text('ظاهر اعلان، حباب و پاسخ سریع'),
-            subtitle: const Text('شیشه‌ای، رنگ، حباب گفتگو و پاسخ‌های آماده'),
+            title: const Text('ظاهر اعلان شیشه‌ای و پاسخ سریع'),
+            subtitle: const Text('کارت بالای صفحه، رنگ و پاسخ‌های آماده'),
             trailing: const Icon(Icons.chevron_left_rounded),
             onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
               builder: (_) => NotificationStyleScreen(settings: settings)))),
@@ -655,6 +664,26 @@ class NotificationSettingsPage extends StatelessWidget {
           ListTile(leading: Icon(Icons.settings_applications_outlined, color: scheme.primary),
             title: const Text('تنظیمات اعلان اندروید'), trailing: const Icon(Icons.chevron_left_rounded),
             onTap: SmsBridge.openNotificationSettings),
+           ListTile(
+             leading: Icon(Icons.phone_android_outlined, color: scheme.primary),
+             title: const Text('راهنمای اعلان در هانر و سایر گوشی‌ها'),
+             subtitle: const Text('اجازه اعلان، اجرای پس‌زمینه و مدیریت باتری'),
+             onTap: () => showDialog<void>(context: context, builder: (ctx) => AlertDialog(
+               title: const Text('راهنمای اعلان در گوشی هانر'),
+               content: const SingleChildScrollView(child: Text(
+                 'اگر در HONOR/MagicOS دریافت اعلان با تأخیر انجام می‌شود:\\n'
+                 '۱. اجازه اعلان‌های پیامیار را فعال کنید.\\n'
+                 '۲. در Optimizer › App launch، در صورت نیاز مدیریت خودکار را خاموش کنید و Auto-launch، Secondary launch و Run in background را فعال کنید.\\n'
+                 '۳. تنظیمات بهینه‌سازی باتری و پیام‌رسان پیش‌فرض را بررسی کنید.\\n'
+                 'محدودیت سازنده گوشی را نمی‌توان بدون اجازه کاربر دور زد.',
+                 style: TextStyle(height: 1.8))),
+               actions: [
+                 TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('بستن')),
+                 FilledButton(onPressed: () { Navigator.pop(ctx); SmsBridge.openNotificationSettings(); },
+                   child: const Text('تنظیمات اعلان')),
+               ],
+             )),
+           ),
         ]),
       ];
     },

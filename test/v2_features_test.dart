@@ -22,8 +22,8 @@ void main() {
       });
       expect(await api.credit(), 1250.5);
       expect(seen.url.toString(), 'https://rest.payamak-panel.com/api/SendSMS/GetCredit');
-      expect(seen.bodyFields['username'], 'user');
-      expect(seen.bodyFields['password'], 'key');
+      expect(seen.bodyFields['UserName'], 'user');
+      expect(seen.bodyFields['PassWord'], 'key');
     });
 
     test('maps error codes to Persian messages', () async {
@@ -46,7 +46,7 @@ void main() {
 
     test('parses received messages from Data', () async {
       final api = client((r) {
-        expect(r.bodyFields['location'], '1');
+        expect(r.bodyFields['Location'], '1');
         return {
           'Value': '', 'RetStatus': 1, 'StrRetStatus': 'Ok',
           'Data': [

@@ -33,10 +33,11 @@ class _Entry {
   const _Entry({this.message, this.pending, this.header});
 }
 
-class _ConversationScreenState extends State<ConversationScreen> {
+class _ConversationScreenState extends State<ConversationScreen> with WidgetsBindingObserver {
   late final input = TextEditingController(text: widget.initialText);
   final focus = FocusNode();
   bool sending = false;
+  final Set<String> _revealedAmounts = {};
   AppStore get store => widget.store;
   static final _fallbackSettings = AppSettings();
   AppSettings get settings => store.settings ?? _fallbackSettings;
@@ -48,6 +49,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _markRead());
     store.addListener(_onStoreChanged);
   }
@@ -64,7 +66,15 @@ class _ConversationScreenState extends State<ConversationScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed && _revealedAmounts.isNotEmpty && mounted) {
+      setState(_revealedAmounts.clear);
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     store.removeListener(_onStoreChanged);
     input.dispose();
     focus.dispose();
@@ -478,8 +488,14 @@ class _ConversationScreenState extends State<ConversationScreen> {
       }
     }
     final code = m.outgoing ? null : MessageLogic.otp(m.body);
+    final financial = MessageLogic.category(m) == MessageCategory.banking;
+    final identity = '${m.id ?? m.date.millisecondsSinceEpoch}|${m.sender}';
+    final reveal = _revealedAmounts.contains(identity);
+    final masked = financial && !reveal
+      ? m.body.replaceAll(RegExp(r'[0-9۰-۹٠-٩]{3,}'), '••••')
+      : m.body;
     return _Bubble(
-      text: m.body,
+      text: masked,
       outgoing: m.outgoing,
       look: look,
       textSize: settings.bubbleText,
@@ -490,6 +506,11 @@ class _ConversationScreenState extends State<ConversationScreen> {
       status: status,
       statusIcon: icon,
       onLongPress: () => _messageActions(m),
+      onTap: financial ? () => setState(() {
+        if (reveal) { _revealedAmounts.remove(identity); }
+        else { _revealedAmounts.add(identity); }
+      }) : null,
+      sensitive: financial,
       trailing: code == null ? null : ActionChip(
         avatar: const Icon(Icons.copy_rounded, size: 16),
         label: Text('کپی کد ${Jalali.digits(code)}'),
@@ -656,9 +677,12 @@ class _Bubble extends StatelessWidget {
   final double textSize;
   final Widget? trailing;
   final VoidCallback? onLongPress;
+  final VoidCallback? onTap;
+  final bool sensitive;
   const _Bubble({required this.text, required this.outgoing, required this.time, required this.look,
     this.textSize = 15.5, this.status, this.statusIcon,
-    this.failed = false, this.warning = false, this.pinned = false, this.trailing, this.onLongPress});
+    this.failed = false, this.warning = false, this.pinned = false, this.trailing, this.onLongPress,
+    this.onTap, this.sensitive = false});
 
   @override
   Widget build(BuildContext context) {
@@ -672,6 +696,7 @@ class _Bubble extends StatelessWidget {
         constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .8),
         child: GestureDetector(
           onLongPress: onLongPress,
+          onTap: onTap,
           child: Container(
             margin: const EdgeInsets.symmetric(vertical: 3.5),
             padding: const EdgeInsets.fromLTRB(14, 9, 14, 7),
@@ -706,6 +731,9 @@ class _Bubble extends StatelessWidget {
                     Flexible(child: Text('احتمال کلاهبرداری؛ روی لینک نزنید (جزئیات)', style: TextStyle(fontSize: 12, color: Colors.orange))),
                   ])),
                 ),
+              if (sensitive) Padding(padding: const EdgeInsets.only(bottom: 4),
+                child: Text('برای نمایش یا مخفی‌کردن اعداد لمس کنید',
+                  style: TextStyle(color: fg.withValues(alpha: .68), fontSize: 11))),
               Text(text.trim().isEmpty ? 'پیام بدون متن' : text.trim(),
                 maxLines: 8, overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: fg, fontSize: textSize, height: 1.7)),
