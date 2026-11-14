@@ -127,7 +127,7 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
         // Show only those following a logged broadcast, clearly distinguished.
         for (final m in records) {
           if (m.outgoing || m.date.isBefore(at) ||
-              m.date.isAfter(at.add(const Duration(hours: 24)))) continue;
+              m.date.isAfter(at.add(const Duration(hours: 24)))) { continue; }
           final key = '${_key(m.sender)}|${m.id ?? m.date.millisecondsSinceEpoch}';
           if (shownIncoming.add(key)) {
             output.add(_GroupRow(sent.key, m.body, m.date,
@@ -271,7 +271,7 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
           IconButton(tooltip: 'گفتگوهای خصوصی اعضا',
             icon: const Icon(Icons.people_outline_rounded), onPressed: _showMemberChats),
           IconButton(tooltip: 'ارسال به اعضای گروه',
-            icon: const Icon(Icons.edit_square_rounded), onPressed: _compose),
+            icon: const Icon(Icons.edit_square), onPressed: _compose),
         ],
       ),
       body: Column(children: [
