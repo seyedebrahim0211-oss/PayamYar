@@ -362,9 +362,12 @@ class ContactStore extends ChangeNotifier {
   }
 
   /// Merges every duplicate cluster. [progress] gets (done, total). Returns clusters merged.
+  /// Merges duplicate clusters while migrating local group membership onto
+  /// the NEW contact key. Android may choose a different raw-contact ID/key.
   Future<int> mergeAll({void Function(int done, int total)? progress}) async {
     if (!await ensureWrite()) return 0;
-    final clusters = List.of(duplicates);
+    final clusters = List<List<PhoneContact>>.of(duplicates);
+    final migrations = <({List<PhoneContact> source, Set<String> groupIds})>[];
     var merged = 0;
     for (var i = 0; i < clusters.length; i++) {
       final group = clusters[i];
@@ -372,39 +375,75 @@ class ContactStore extends ChangeNotifier {
       try {
         if (await ContactsBridge.join([for (final c in group) c.id])) {
           merged++;
-          if (union.isNotEmpty) members[group.first.key] = union;
+          migrations.add((source: group, groupIds: union));
         }
       } catch (_) {
-        // Skip a cluster the phone book refused; continue with the rest.
+        // A denied merge does not change memberships.
       }
       progress?.call(i + 1, clusters.length);
     }
-    await _saveGroups();
+    // Reload ONCE after native merges; never keep memberships under stale keys.
     await load();
+    for (final migration in migrations) {
+      PhoneContact? survivor;
+      for (final c in migration.source) {
+        survivor ??= byId(c.id);
+        for (final p in c.phones) {
+          survivor ??= byPhone(p.value);
+        }
+      }
+      if (survivor == null) continue; // Preserve old groups if Android cannot verify the survivor.
+      final union = {...?members[survivor.key], ...migration.groupIds};
+      if (union.isNotEmpty) members[survivor.key] = union;
+      for (final old in migration.source) {
+        if (old.key != survivor.key && !contacts.any((c) => c.key == old.key)) {
+          members.remove(old.key);
+        }
+      }
+    }
+    await _saveGroups();
     return merged;
   }
 
   Future<int> remove(List<PhoneContact> list) async {
     if (!await ensureWrite()) return 0;
     final n = await ContactsBridge.delete([for (final c in list) c.id]);
+    // The OS can reject individual deletions: preserve group membership for
+    // contacts that still exist after the operation.
+    await load();
     for (final c in list) {
-      members.remove(c.key);
+      if (!contacts.any((current) => current.id == c.id || current.key == c.key)) {
+        members.remove(c.key);
+      }
     }
     await _saveGroups();
-    await load();
     return n;
   }
 
   Future<bool> merge(List<PhoneContact> list) async {
-    if (!await ensureWrite()) return false;
+    if (!await ensureWrite() || list.length < 2) return false;
     final keep = list.first;
     final union = <String>{for (final c in list) ...?members[c.key]};
     final ok = await ContactsBridge.join([for (final c in list) c.id]);
+    if (!ok) return false;
     await load();
-    // The merged person keeps the first contact's id when possible; carry the groups over.
-    final merged = byId(keep.id) ?? (contacts.isEmpty ? null : byPhone(keep.primaryPhone));
-    if (merged != null && union.isNotEmpty) await setGroups(merged, union);
-    return ok;
+    PhoneContact? survivor = byId(keep.id);
+    for (final c in list) {
+      for (final p in c.phones) {
+        survivor ??= byPhone(p.value);
+      }
+    }
+    if (survivor != null) {
+      final migrated = {...?members[survivor.key], ...union};
+      if (migrated.isNotEmpty) members[survivor.key] = migrated;
+      for (final old in list) {
+        if (old.key != survivor.key && !contacts.any((c) => c.key == old.key)) {
+          members.remove(old.key);
+        }
+      }
+      await _saveGroups();
+    }
+    return true;
   }
 
   /// Rewrites every untidy number of [c] as 09xxxxxxxxx (other fields untouched).
