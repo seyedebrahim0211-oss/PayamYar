@@ -57,7 +57,7 @@ class SmsBridge {
     // Native IPC payloads are untrusted: never allocate from a claimed count
     // unless all column lengths agree and the page has a reasonable bound.
     if (count < 0 || count > 5000 ||
-        lists.values.any((values) => values.length < count)) return const [];
+        lists.values.any((values) => values.length < count)) { return const []; }
     final out = <MessageRecord>[];
     for (var i = 0; i < count; i++) {
       final id = lists['ids']![i];
@@ -66,7 +66,7 @@ class SmsBridge {
       final read = lists['reads']![i];
       final status = lists['status']![i];
       if (id is! num || date is! num || type is! num ||
-          read is! num || status is! num) continue;
+          read is! num || status is! num) { continue; }
       try {
         out.add(MessageRecord(
           id: id.toInt(),
