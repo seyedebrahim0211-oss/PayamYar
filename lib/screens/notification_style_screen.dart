@@ -171,6 +171,13 @@ class NotificationStyleScreen extends StatelessWidget {
                 ]),
                 SettingsGroup(title: 'اعلان اندروید', children: [
                   SwitchListTile(
+                    secondary: Icon(Icons.visibility_outlined, color: scheme.primary),
+                    title: const Text('نمایش متن پیام در اعلان واقعی'),
+                    subtitle: const Text('برای دیدن پیام کامل در اعلان اندروید فعال کنید؛ در حالت خاموش، متن برای حفظ حریم خصوصی مخفی می‌ماند.'),
+                    value: s.notifyPreview,
+                    onChanged: (v) => s.update(notifyPreview: v),
+                  ),
+                  SwitchListTile(
                     secondary: Icon(Icons.auto_awesome_outlined, color: scheme.primary),
                     title: const Text('تصویر شیشه‌ای فرستنده'),
                     subtitle: const Text('درخشش، حلقه رنگی و حباب روی عکس مخاطب'),
