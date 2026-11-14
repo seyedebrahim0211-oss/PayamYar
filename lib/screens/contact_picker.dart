@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../sms_bridge.dart';
 import '../recipient_suggestions.dart';
 
 /// In-app contact list, without launching Android's external contact picker.
