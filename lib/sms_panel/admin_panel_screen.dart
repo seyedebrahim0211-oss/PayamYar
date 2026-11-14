@@ -15,20 +15,108 @@ class AdminAccess {
   static const _flag = 'adminMode';
   static const pinName = 'admin';
 
-  static Future<bool> enabled() async => (await SharedPreferences.getInstance()).getBool(_flag) ?? false;
+  static Future<bool> enabled() async {
+    // A SharedPreferences boolean is UI state, not proof of administrator identity.
+    // Never expose the panel shortcut before a verified service account and PIN exist.
+    if ((await SharedPreferences.getInstance()).getBool(_flag) != true) return false;
+    return await Vault.hasPin(pinName) &&
+        (await Vault.get('mp_user') ?? '').isNotEmpty &&
+        (await Vault.get('mp_pass') ?? '').isNotEmpty;
+  }
 
-  static Future<void> _setEnabled(bool v) async => (await SharedPreferences.getInstance()).setBool(_flag, v);
+  static Future<void> _setEnabled(bool v) async =>
+      (await SharedPreferences.getInstance()).setBool(_flag, v);
 
-  /// Asks for (or creates) the admin PIN, then opens the panel.
+  /// Provisioning requires a *working* Meli Payamak account before the admin PIN
+  /// can be created. A new PIN by itself never grants access to a panel.
+  static Future<Map<String, String>?> _verifyOwner(BuildContext context) async {
+    final username = TextEditingController();
+    final password = TextEditingController();
+    final sender = TextEditingController(text: MeliPayamak.defaultLine);
+    bool checking = false;
+    String? error;
+    try {
+      return await showDialog<Map<String, String>>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (dialogContext, refresh) => AlertDialog(
+            title: const Text('تأیید مالک پنل ملی پیامک'),
+            content: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const Text('برای فعال‌سازی دسترسی مدیر ابتدا حساب وب‌سرویس را تأیید کنید. '
+                    'بدون حساب معتبر، فقط ساختن رمز مدیر کافی نیست.'),
+                const SizedBox(height: 12),
+                TextField(controller: username, enabled: !checking,
+                    decoration: const InputDecoration(labelText: 'نام کاربری پنل')),
+                const SizedBox(height: 8),
+                TextField(controller: password, enabled: !checking, obscureText: true,
+                    enableSuggestions: false, autocorrect: false,
+                    decoration: const InputDecoration(labelText: 'کلید وب‌سرویس')),
+                const SizedBox(height: 8),
+                TextField(controller: sender, enabled: !checking,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'شماره خط پیامکی')),
+                if (error != null) ...[
+                  const SizedBox(height: 8),
+                  Text(error!, style: TextStyle(color: Theme.of(dialogContext).colorScheme.error)),
+                ],
+              ]),
+            ),
+            actions: [
+              TextButton(
+                onPressed: checking ? null : () => Navigator.of(dialogContext).pop(),
+                child: const Text('انصراف')),
+              FilledButton(
+                onPressed: checking ? null : () async {
+                  final u = username.text.trim(), p = password.text.trim();
+                  final l = sender.text.replaceAll(RegExp(r'[^0-9]'), '');
+                  if (u.isEmpty || p.isEmpty || l.isEmpty) {
+                    refresh(() => error = 'اطلاعات حساب و شماره خط را کامل کنید.');
+                    return;
+                  }
+                  refresh(() { checking = true; error = null; });
+                  final client = MeliPayamak(u, p);
+                  try {
+                    await client.credit();
+                    if (dialogContext.mounted) {
+                      Navigator.of(dialogContext).pop({'user': u, 'pass': p, 'line': l});
+                    }
+                  } on PanelException catch (e) {
+                    if (dialogContext.mounted) refresh(() => error = e.message);
+                  } finally {
+                    client.close();
+                    if (dialogContext.mounted) refresh(() => checking = false);
+                  }
+                },
+                child: Text(checking ? 'در حال بررسی…' : 'تأیید حساب')),
+            ],
+          ),
+        ),
+      );
+    } finally {
+      username.dispose();
+      password.dispose();
+      sender.dispose();
+    }
+  }
+
+  /// Authenticates the panel owner, then creates/verifies the local admin PIN.
   static Future<void> open(BuildContext context, {void Function(String)? onNotice}) async {
     final nav = Navigator.of(context);
     if (!await Vault.hasPin(pinName)) {
       if (!context.mounted) return;
+      final credentials = await _verifyOwner(context);
+      if (credentials == null || !context.mounted) return;
       final pin = await askNewPin(context, title: 'رمز مدیر پنل پیامکی', minLength: 6);
       if (pin == null) return;
+      // Persist credentials encrypted by Android Keystore; never in settings or source code.
+      await Vault.put('mp_user', credentials['user']!);
+      await Vault.put('mp_pass', credentials['pass']!);
+      await Vault.put('mp_line', credentials['line']!);
       await Vault.setPin(pinName, pin);
       await _setEnabled(true);
-      onNotice?.call('حالت مدیر فعال شد.');
+      onNotice?.call('حالت مدیر با تأیید حساب فعال شد.');
     } else {
       var ok = false;
       await nav.push(MaterialPageRoute<void>(
