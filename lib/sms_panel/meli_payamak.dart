@@ -148,6 +148,24 @@ class MeliPayamak {
     return '';
   }
 
+  /// Read-only connection check. A provider may enable one feature without
+  /// granting balance access; at least one service must authenticate successfully.
+  /// Returns credit when available, null when inbox access is the verified path.
+  Future<double?> verifyAccess() async {
+    PanelException? creditFailure;
+    try {
+      return await credit();
+    } on PanelException catch (e) {
+      creditFailure = e;
+    }
+    try {
+      await messages(location: 1, count: 1);
+      return null;
+    } on PanelException catch (e) {
+      throw PanelException('تأیید حساب ناموفق. موجودی: ${creditFailure?.message}؛ دریافت: ${e.message}');
+    }
+  }
+
   /// Sends at most 100 opt-in recipients using one request.
   /// If transport fails after POST, the result is unknown: the caller must not
   /// automatically resend because the gateway may have processed the request.
