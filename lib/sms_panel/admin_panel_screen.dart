@@ -344,8 +344,16 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
       }
       try {
         final numbers = [...inbox, ...sent]
-          .expand((m) => [m.sender, m.receiver])
-          .where((n) => RegExp(r'^[+]?[0-9]{7,15}
+            .expand((m) => [m.sender, m.receiver])
+            .where((n) => RegExp(r'^[+]?[0-9]{7,15}$').hasMatch(n))
+            .toSet().take(140).toList();
+        if (numbers.isNotEmpty) {
+          final names = await SmsBridge.contactNames(numbers);
+          if (mounted) setState(() => _contactNames.addAll(names));
+        }
+      } catch (_) { /* Reading contact names is optional. */ }
+      if (mounted) {
+        setState(() => error = diagnostics.isEmpty ? null :
           'برخی خدمات پنل در دسترس نیستند:\n${diagnostics.join('\n')}');
       }
     } finally {
