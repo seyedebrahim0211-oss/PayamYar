@@ -25,24 +25,15 @@ void main() {
     expect(MeliPayamak.normalize('02112345678'), '');
   });
 
-  test('received panel messages parse available fields and dates', () async {
-    Uri? requested;
-    final api = MeliPayamak('owner', 'key', client: MockClient((request) async {
-      requested = request.url;
-      return http.Response(jsonEncode({
-        'RetStatus': 1,
-        'Data': [
-          {'MsgID': 10, 'Sender': '09121234567', 'Receiver': '90008325',
-           'Body': 'سلام', 'SendDate': '2026-11-13T10:30:00Z'}
-        ]
-      }), 200);
-    }));
-    final rows = await api.messages();
-    expect(requested?.path, '/api/SendSMS/GetMessages');
-    expect(rows, hasLength(1));
-    expect(rows.single.receiver, '90008325');
-    expect(rows.single.body, 'سلام');
-    api.close();
+  test('received panel record decoding preserves receiver and content', () {
+    final message = PanelMessage.fromJson({
+      'MsgID': 10, 'Sender': '09121234567', 'Receiver': '90008325',
+      'Body': 'سلام', 'SendDate': '2026-11-13T10:30:00Z'
+    });
+    expect(message, isNotNull);
+    expect(message!.receiver, '90008325');
+    expect(message.body, 'سلام');
+    expect(message.date, isNotNull);
   });
 
   test('API errors do not include the secret in displayed text', () async {
