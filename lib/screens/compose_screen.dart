@@ -23,7 +23,7 @@ class ComposeScreen extends StatefulWidget {
 }
 
 class _ComposeScreenState extends State<ComposeScreen> {
-  static const maxRecipients = 500;
+  int get maxRecipients => store.settings?.recipientCapacity ?? 500;
   static const quickTexts = <String>[
     'در جلسه هستم، بعداً تماس می‌گیرم.',
     'رسیدم.',
@@ -94,7 +94,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
       return;
     }
     if ({...recipients, ...incoming}.length > maxRecipients) {
-      store.onNotice?.call('در هر نوبت حداکثر ۵۰۰ گیرنده انتخاب کنید.');
+      store.onNotice?.call('حداکثر $maxRecipients گیرنده برای انتخاب مجاز است.');
       return;
     }
     setState(() {
@@ -151,7 +151,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
       result.add(number);
     }
     if (result.length > maxRecipients) {
-      store.onNotice?.call('برای جلوگیری از ارسال ناخواسته، حداکثر ۵۰۰ گیرنده مجاز است.');
+      store.onNotice?.call('حداکثر $maxRecipients گیرنده برای انتخاب مجاز است.');
       return null;
     }
     return result.toList(growable: false);
@@ -179,6 +179,10 @@ class _ComposeScreenState extends State<ComposeScreen> {
     final text = body.text.trim();
     if (targets.isEmpty || text.isEmpty) {
       store.onNotice?.call('حداقل یک گیرنده و متن پیام را وارد کنید.');
+      return;
+    }
+    if (targets.length > 500) {
+      store.onNotice?.call('برای ارسال بیش از ۵۰۰ شماره از پنل پیامکی مجاز استفاده کنید. افزایش سقف انتخاب، محدودیت اپراتور را تغییر نمی‌دهد.');
       return;
     }
     if (groupMode && !await _saveGroup(targets)) return;
