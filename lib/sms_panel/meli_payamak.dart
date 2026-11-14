@@ -130,22 +130,47 @@ class MeliPayamak {
     return n;
   }
 
-  /// Sends [text] to up to 100 numbers from [from]; returns the send id (recId).
+  /// Return the provider's confirmed receipt ID when present. Some accounts
+  /// return RetStatus=1 with a missing/short Value; that is an accepted request
+  /// without a usable tracking ID, NOT a failed send. Never retry automatically.
+  static String receiptFromResponse(Map<String, dynamic> reply) {
+    if (!_ok(reply)) {
+      final raw = reply['Value']?.toString() ?? '';
+      throw PanelException(errorText(raw.isEmpty ? '0' : raw));
+    }
+    final raw = reply['Value']?.toString().trim() ?? '';
+    if (raw.isEmpty || raw.toUpperCase() == 'NULL') return '';
+    final numbers = RegExp(r'^\\d+$');
+    if (numbers.hasMatch(raw) && int.tryParse(raw) != null && int.parse(raw) > 0) {
+      return raw;
+    }
+    // A successful status matters more than an absent/non-numeric receipt.
+    return '';
+  }
+
+  /// Sends at most 100 opt-in recipients using one request.
+  /// If transport fails after POST, the result is unknown: the caller must not
+  /// automatically resend because the gateway may have processed the request.
   Future<String> send({required List<String> to, required String text, String from = defaultLine, bool flash = false}) async {
     final numbers = [for (final n in to) normalize(n)].where((n) => n.isNotEmpty).toSet().toList();
     if (numbers.isEmpty) throw PanelException(errorText('18'));
     if (numbers.length > 100) throw const PanelException('در هر ارسال حداکثر ۱۰۰ گیرنده مجاز است.');
     if (text.trim().isEmpty) throw PanelException(errorText('17'));
-    final r = await _post('SendSMS', {
-      'to': numbers.join(','),
-      'from': from,
-      'text': text,
-      'isFlash': flash ? 'true' : 'false',
-    });
-    final value = r['Value']?.toString() ?? '';
-    // Success: a long numeric recId. Errors are short codes (0..35, 108..110).
-    if (_ok(r) && value.length > 3 && int.tryParse(value) != null) return value;
-    throw PanelException(errorText(value));
+    try {
+      final response = await _post('SendSMS', {
+        'to': numbers.join(','),
+        'from': from,
+        'text': text,
+        'isFlash': flash ? 'true' : 'false',
+      });
+      return receiptFromResponse(response);
+    } on PanelException catch (e) {
+      if (e.message.startsWith('اتصال به ملی پیامک برقرار نشد')) {
+        throw const PanelException(
+          'وضعیت ارسال نامشخص است. ممکن است پیام به پنل رسیده باشد. پیش از ارسال دوباره، صندوق ارسالی و گزارش تحویل را بررسی کنید.');
+      }
+      rethrow;
+    }
   }
 
   /// [location]: 1 = received, 2 = sent. [from] filters by the sender number (received box).
