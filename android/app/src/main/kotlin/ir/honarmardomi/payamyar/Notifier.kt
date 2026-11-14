@@ -393,9 +393,15 @@ object Notifier {
         try {
             val compact = RemoteViews(c.packageName, R.layout.payamyar_notification_glass)
             compact.setTextViewText(R.id.glass_sender, name.take(54))
-            compact.setTextViewText(R.id.glass_preview, text.take(115))
+            compact.setTextViewText(R.id.glass_preview, text)
+            val expanded = RemoteViews(c.packageName, R.layout.payamyar_notification_expanded)
+            expanded.setTextViewText(R.id.glass_sender, name.take(54))
+            expanded.setTextViewText(R.id.glass_preview, text)
             builder.setCustomContentView(compact)
-            builder.setCustomHeadsUpContentView(compact)
+            // Android controls the heads-up height, but do not hard-truncate the
+            // message ourselves. Expanded shade view provides additional lines.
+            builder.setCustomHeadsUpContentView(expanded)
+            builder.setCustomBigContentView(expanded)
         } catch (_: Exception) { /* Standard Android heads-up is the accessible fallback. */ }
 
         if (code != null) {
