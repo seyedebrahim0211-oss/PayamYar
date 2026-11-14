@@ -26,8 +26,9 @@ void main() {
   });
 
   test('received panel messages parse available fields and dates', () async {
+    Uri? requested;
     final api = MeliPayamak('owner', 'key', client: MockClient((request) async {
-      expect(request.url.path, '/api/SendSMS/GetMessages');
+      requested = request.url;
       return http.Response(jsonEncode({
         'RetStatus': 1,
         'Data': [
@@ -37,6 +38,7 @@ void main() {
       }), 200);
     }));
     final rows = await api.messages();
+    expect(requested?.path, '/api/SendSMS/GetMessages');
     expect(rows, hasLength(1));
     expect(rows.single.receiver, '90008325');
     expect(rows.single.body, 'سلام');
