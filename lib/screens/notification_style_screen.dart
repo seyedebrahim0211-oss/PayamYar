@@ -128,6 +128,23 @@ class NotificationStyleScreen extends StatelessWidget {
                     ),
                   ],
                   SwitchListTile(
+                    secondary: Icon(Icons.crop_16_9_outlined, color: scheme.primary),
+                    title: const Text('کارت شیشه‌ای جمع‌وجور'),
+                    subtitle: const Text('ارتفاع کمتر؛ جزئیات و پاسخ سریع با لمس اعلان در گفتگو در دسترس است.'),
+                    value: s.bannerCompact,
+                    onChanged: (v) => s.updateNotify(bannerCompact: v),
+                  ),
+                  ListTile(
+                    leading: Icon(Icons.width_normal_outlined, color: scheme.primary),
+                    title: const Text('عرض کارت داخلی'),
+                    subtitle: const Text('در گوشی‌های کوچک خودکار با صفحه هماهنگ می‌شود'),
+                    trailing: Text('${Jalali.digits(s.bannerMaxWidth.round())}'),
+                  ),
+                  Slider(
+                    value: s.bannerMaxWidth, min: 280, max: 520, divisions: 12,
+                    onChanged: (v) => s.updateNotify(bannerMaxWidth: v),
+                  ),
+                  SwitchListTile(
                     secondary: Icon(Icons.bubble_chart_outlined, color: scheme.primary),
                     title: const Text('حباب‌های متحرک'),
                     subtitle: const Text('حباب‌های شیشه‌ای ملایم پشت متن'),
