@@ -27,8 +27,9 @@ class _GroupRow {
   final DateTime date;
   final bool confirmed;
   final bool incoming;
+  final bool privateMessage;
   const _GroupRow(this.recipient, this.body, this.date,
-      {required this.confirmed, this.incoming = false});
+      {required this.confirmed, this.incoming = false, this.privateMessage = false});
 }
 
 class _BatchBody {
@@ -40,13 +41,21 @@ class _BatchBody {
 class _GroupConversationScreenState extends State<GroupConversationScreen> {
   final Map<String, String> _names = {};
   late Future<List<_BatchBody>> _batchBodies;
+  bool _showMemberHistory = false;
 
   AppStore get store => widget.store;
+  SmsGroup get group {
+    for (final item in store.smsGroups.groups) {
+      if (item.id == widget.group.id) return item;
+    }
+    return widget.group;
+  }
   String _key(String address) => SmsGroupStore.normalize(address);
 
   @override
   void initState() {
     super.initState();
+    _showMemberHistory = store.smsGroups.batchesFor(widget.group.id).isEmpty;
     _loadHistory();
     store.smsGroups.addListener(_onGroupsChanged);
     _loadContactNames();
@@ -61,6 +70,7 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
   void _onGroupsChanged() {
     if (!mounted) return;
     setState(_loadHistory);
+    _loadContactNames();
   }
 
   void _loadHistory() {
@@ -71,9 +81,9 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
   }
 
   Future<void> _loadContactNames() async {
-    if (!store.permissions.contacts || widget.group.recipients.isEmpty) return;
+    if (!store.permissions.contacts || group.recipients.isEmpty) return;
     try {
-      final names = await SmsBridge.contactNames(widget.group.recipients);
+      final names = await SmsBridge.contactNames(group.recipients);
       if (!mounted) return;
       setState(() {
         for (final item in names.entries) {
@@ -140,22 +150,52 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
     return output;
   }
 
+  /// Personal messages stay labelled as private; historical SMS cannot be
+  /// retroactively attributed to a group broadcast without a batch record.
+  List<_GroupRow> _memberTimeline() {
+    final members = group.recipients.map(_key).toSet();
+    final rows = <_GroupRow>[
+      for (final m in store.messages)
+        if (members.contains(_key(m.sender)))
+          _GroupRow(m.sender, m.body, m.date,
+            confirmed: true, incoming: !m.outgoing, privateMessage: true),
+    ]..sort((a, b) => b.date.compareTo(a.date));
+    return rows.take(300).toList(growable: false);
+  }
+
   void _openChat(String number) {
     Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => ConversationScreen(store: store, address: number)));
   }
 
   void _compose() {
+    // Keep the group conversation underneath the composer instead of
+    // navigating to an unrelated recipient thread.
+    showModalBottomSheet<void>(
+      context: context, isScrollControlled: true, useSafeArea: true,
+      showDragHandle: true,
+      builder: (sheet) => SizedBox(
+        height: MediaQuery.sizeOf(sheet).height * .86,
+        child: ComposeScreen(store: store,
+          initialRecipients: group.recipients,
+          initialGroupName: group.name,
+          initialGroupId: group.id,
+          createGroup: true, lockGroupRecipients: true),
+      ),
+    );
+  }
+
+  void _editMembers() {
     Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => ComposeScreen(store: store,
-        initialRecipients: widget.group.recipients,
-        initialGroupName: widget.group.name,
-        initialGroupId: widget.group.id,
+        initialRecipients: group.recipients,
+        initialGroupName: group.name,
+        initialGroupId: group.id,
         createGroup: true)));
   }
 
   void _showMemberChats() {
-    final members = widget.group.recipients;
+    final members = group.recipients;
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -242,6 +282,7 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
                     Row(children: [
                       Expanded(child: Text(
                         entry.incoming ? 'پیام خصوصی دریافتی' :
+                          entry.privateMessage ? 'پیام خصوصی ارسالی' :
                           entry.confirmed ? 'ثبت‌شده در پیامک‌های گوشی' :
                           'در صف قرار گرفت؛ ثبت نهایی در گوشی تأیید نشد',
                         style: Theme.of(context).textTheme.labelSmall)),
@@ -263,13 +304,15 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(widget.group.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-          Text('${Jalali.digits(widget.group.recipients.length)} عضو',
+          Text(group.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+          Text('${Jalali.digits(group.recipients.length)} عضو',
             style: Theme.of(context).textTheme.labelSmall),
         ]),
         actions: [
           IconButton(tooltip: 'گفتگوهای خصوصی اعضا',
             icon: const Icon(Icons.people_outline_rounded), onPressed: _showMemberChats),
+          IconButton(tooltip: 'مدیریت و افزودن مخاطب گروه',
+            icon: const Icon(Icons.group_add_outlined), onPressed: _editMembers),
           IconButton(tooltip: 'ارسال به اعضای گروه',
             icon: const Icon(Icons.edit_square), onPressed: _compose),
         ],
@@ -295,25 +338,43 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
             ]),
           ),
         ),
-        Expanded(child: FutureBuilder<List<_BatchBody>>(
-          future: _batchBodies,
-          builder: (context, snap) {
-            if (snap.connectionState != ConnectionState.done) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            final rows = _timeline(snap.data ?? const <_BatchBody>[]);
-            if (rows.isEmpty) {
-              return const Center(child: Padding(padding: EdgeInsets.all(24),
-                child: Text('هنوز سابقه ارسال قابل تأیید از این گروه ثبت نشده است. '
-                  'پیام‌های قدیمی بدون شناسه گروه به اینجا نسبت داده نمی‌شوند.',
-                  textAlign: TextAlign.center)));
-            }
-            return ListView.builder(
-              reverse: true, itemCount: rows.length,
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
-              itemBuilder: (context, i) => _item(rows[i], scheme),
-            );
-          },
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: SizedBox(width: double.infinity,
+            child: SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(value: false, label: Text('ارسال‌های گروه')),
+                ButtonSegment(value: true, label: Text('پیام‌های اعضا')),
+              ],
+              selected: {_showMemberHistory},
+              onSelectionChanged: (selected) =>
+                setState(() => _showMemberHistory = selected.first),
+            )),
+        ),
+        Expanded(child: ListenableBuilder(
+          listenable: store,
+          builder: (context, _) => FutureBuilder<List<_BatchBody>>(
+            future: _batchBodies,
+            builder: (context, snap) {
+              if (!_showMemberHistory && snap.connectionState != ConnectionState.done) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final rows = _showMemberHistory
+                  ? _memberTimeline() : _timeline(snap.data ?? const <_BatchBody>[]);
+              if (rows.isEmpty) {
+                return Center(child: Padding(padding: const EdgeInsets.all(24),
+                  child: Text(_showMemberHistory
+                    ? 'هنوز پیامک شخصی قابل نمایش برای اعضای این گروه در صندوق گوشی ثبت نشده است.'
+                    : 'هنوز ارسال ثبت‌شده از این گروه وجود ندارد. پیام‌های شخصی را از تب پیام‌های اعضا ببینید.',
+                    textAlign: TextAlign.center)));
+              }
+              return ListView.builder(
+                reverse: true, itemCount: rows.length,
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
+                itemBuilder: (context, i) => _item(rows[i], scheme),
+              );
+            },
+          ),
         )),
         SafeArea(top: false, child: Padding(
           padding: const EdgeInsets.all(12),
