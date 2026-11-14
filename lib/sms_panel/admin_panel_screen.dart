@@ -622,7 +622,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
     try {
       final contacts = await SmsBridge.listContacts();
       if (!mounted) return;
-      final current = toField.text.split(RegExp(r'[\\s,،;]+'))
+      final current = toField.text.split(RegExp(r'[\s,،;]+'))
           .map(MeliPayamak.normalize).where((n) => n.isNotEmpty).toSet();
       final picked = await showContactPicker(context, contacts: contacts,
           selected: current, maxSelection: 100);
@@ -669,7 +669,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
       )),
     );
     if (chosen == null) return;
-    final previous = toField.text.split(RegExp(r'[\\s,،;]+'));
+    final previous = toField.text.split(RegExp(r'[\s,،;]+'));
     final valid = {...previous, ...chosen.recipients}
         .map(MeliPayamak.normalize).where((n) => n.isNotEmpty).toSet();
     if (valid.length > 100) {
@@ -713,9 +713,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
     final data = await _readTxt();
     if (data == null || !mounted) return;
     // One mobile number per line, or comma/semicolon separated.
-    final parts = data.split(RegExp(r'[\\s,،;]+')).where((v) => v.trim().isNotEmpty);
+    final parts = data.split(RegExp(r'[\s,،;]+')).where((v) => v.trim().isNotEmpty);
     final normalized = parts.map(MeliPayamak.normalize).where((n) => n.isNotEmpty).toSet();
-    final current = toField.text.split(RegExp(r'[\\s,،;]+'))
+    final current = toField.text.split(RegExp(r'[\s,،;]+'))
         .map(MeliPayamak.normalize).where((n) => n.isNotEmpty).toSet();
     final numbers = {...current, ...normalized};
     if (normalized.isEmpty) {
