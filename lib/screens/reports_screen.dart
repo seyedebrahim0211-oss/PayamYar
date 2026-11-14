@@ -35,10 +35,11 @@ class ReportsScreen extends StatefulWidget {
 class _ReportsScreenState extends State<ReportsScreen> {
   ReportPeriod period = ReportPeriod.month;
   bool allTransactions = false;
+  bool revealFinancialAmounts = false;
 
   AppStore get store => widget.store;
 
-  String _money(int v) => widget.settings.hidePreview ? '••••' : Jalali.digits(FinanceLogic.formatTomans(v));
+  String _money(int v) => !revealFinancialAmounts ? '••••••' : Jalali.digits(FinanceLogic.formatTomans(v));
 
   Future<void> _share(ReportResult data, PeriodInsight p) async {
     final text = reportAsText(data, p, period, nameOf: store.displayName, money: _money);
@@ -135,6 +136,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 period = v.first;
                 allTransactions = false;
               }),
+            ),
+            const SizedBox(height: 8),
+            Card(
+              child: SwitchListTile(
+                secondary: Icon(revealFinancialAmounts ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                    color: scheme.primary),
+                title: const Text('نمایش مبالغ و موجودی‌ها'),
+                subtitle: const Text('اعداد گزارش‌های بانکی به‌صورت پیش‌فرض پوشیده‌اند؛ با لمس نمایش داده می‌شوند.'),
+                value: revealFinancialAmounts,
+                onChanged: (v) => setState(() => revealFinancialAmounts = v),
+              ),
             ),
             const SizedBox(height: 12),
             if (store.reportPending && data.total == 0)
