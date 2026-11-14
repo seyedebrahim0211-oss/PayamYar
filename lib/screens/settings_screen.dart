@@ -539,6 +539,20 @@ class AppearanceSettingsPage extends StatelessWidget {
               onChanged: (v) => settings.update(bubbleText: v)),
           ])),
       ]),
+      SettingsGroup(title: 'پیمایش و عملکرد', children: [
+        SwitchListTile(
+          secondary: const Icon(Icons.swipe_outlined),
+          title: const Text('کشیدن بین صفحه‌ها'),
+          subtitle: const Text('با کشیدن سریع افقی بین گفتگوها، مخاطبین، گروه‌ها، گزارش‌ها و تنظیمات بروید.'),
+          value: settings.swipeTabs,
+          onChanged: (value) => settings.update(swipeTabs: value)),
+        SwitchListTile(
+          secondary: const Icon(Icons.speed_outlined),
+          title: const Text('حالت سبک برای گوشی‌های ضعیف‌تر'),
+          subtitle: const Text('افکت تاری اعلان‌های داخل برنامه را کاهش می‌دهد و مصرف گرافیکی را کم می‌کند.'),
+          value: settings.reduceEffects,
+          onChanged: (value) => settings.update(reduceEffects: value)),
+      ]),
       SettingsGroup(title: 'شخصی‌سازی ظاهر و فونت', children: [
         Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const Text('رنگ برنامه'),
