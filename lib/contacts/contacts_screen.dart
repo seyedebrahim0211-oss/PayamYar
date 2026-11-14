@@ -89,7 +89,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
     final people = Jalali.digits(contacts.duplicateCount);
     final groups = Jalali.digits(clusters.length);
     if (!await confirm(context, 'ادغام همه تکراری‌ها',
-        '$people مخاطب در $groups دسته تکراری‌اند. هر دسته به یک مخاطب با همه شماره‌ها و ایمیل‌ها تبدیل می‌شود.')) {
+        '$people مخاطب در $groups دسته با شماره یا ایمیل مشترک پیدا شدند. قبل از ادغام، از مخاطبین خروجی پشتیبان بگیرید؛ این عمل ممکن است قابل بازگشت نباشد.')) {
       return;
     }
     if (!mounted) return;

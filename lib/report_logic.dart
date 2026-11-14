@@ -530,3 +530,23 @@ List<List<String>> transactionsAsRows(List<FinanceEntry> entries) => [
           ];
         }(),
     ];
+
+/// Privacy-preserving export for the professional SMS dashboard.
+/// Never includes message text, phone numbers, sender names or bank account IDs.
+List<List<String>> reportMetricsCsvRows(PeriodInsight p, ReportPeriod period) {
+  final rows = <List<String>>[
+    ['بخش', 'عنوان', 'دریافتی / مقدار اول', 'ارسالی / مقدار دوم'],
+    ['دوره', reportPeriodNames[period] ?? period.name, '', ''],
+    ['پیام', 'تعداد', '${p.received}', '${p.sent}'],
+    ['پیام', 'دوره قبل', '${p.prevReceived}', '${p.prevSent}'],
+    ['امنیت', 'مشکوک / کد تأیید', '${p.suspicious}', '${p.otp}'],
+    ['فعالیت', 'تعداد مخاطبان / روزها', '${p.people}', '${p.days}'],
+    ['مالی (تومان)', 'واریزی / برداشتی', '${p.deposits}', '${p.withdrawals}'],
+    ['مالی (تومان)', 'دوره قبل', '${p.prevDeposits}', '${p.prevWithdrawals}'],
+    for (var i = 0; i < p.trendLabels.length && i < p.trendIn.length && i < p.trendOut.length; i++)
+      ['روند', p.trendLabels[i], '${p.trendIn[i]}', '${p.trendOut[i]}'],
+    for (final e in p.categories.entries)
+      ['دسته‌بندی', e.key.name, '${e.value}', ''],
+  ];
+  return rows;
+}

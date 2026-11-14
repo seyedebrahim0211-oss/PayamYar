@@ -288,21 +288,19 @@ object Notifier {
             .setPerson(sender)
             .setIcon(icon)
             .setLocusId(LocusIdCompat(id))
-            .setIntent(Intent(c, MainActivity::class.java).setAction(Intent.ACTION_VIEW)
+            .setIntent(Intent(c, BubbleActivity::class.java).setAction(Intent.ACTION_VIEW)
+                .setData(Uri.parse("payamyar:bubble/" + Uri.encode(address)))
                 .putExtra("open_address", address).putExtra("open_token", MainActivity.launchToken(c)))
             .build()
         ShortcutManagerCompat.pushDynamicShortcut(c, shortcut)
         id
     } catch (_: Exception) { null }
 
-    private fun bubble(c: Context, address: String, icon: IconCompat): NotificationCompat.BubbleMetadata? {
+    private fun bubble(c: Context, shortcutId: String): NotificationCompat.BubbleMetadata? {
         if (Build.VERSION.SDK_INT < 30 || !enabled(c, "notifyBubbles")) return null
-        val target = Intent(c, BubbleActivity::class.java).setAction(Intent.ACTION_VIEW)
-            .setData(Uri.parse("payamyar:bubble/" + Uri.encode(address)))
-            .putExtra("open_address", address).putExtra("open_token", MainActivity.launchToken(c))
-        val pending = PendingIntent.getActivity(c, 1, target,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE)
-        return NotificationCompat.BubbleMetadata.Builder(pending, icon)
+        // Android 11+ expects the *same* long-lived shortcut for both conversation
+        // notification and bubble. The shortcut targets an embeddable BubbleActivity.
+        return NotificationCompat.BubbleMetadata.Builder(shortcutId)
             .setDesiredHeight(640)
             .setAutoExpandBubble(false)
             .setSuppressNotification(false)
@@ -328,7 +326,8 @@ object Notifier {
             Handler(Looper.getMainLooper()).post {
                 try { front.invokeMethod("incomingBanner", payload) } catch (_: Exception) { }
             }
-            return
+            // Keep the Android notification as a reliable fallback as well.
+            // The Flutter channel can be alive while its page is not ready to show the banner.
         }
 
         configureChannels(c)
@@ -364,7 +363,7 @@ object Notifier {
             .setGroup("payamyar_incoming_sms")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setWhen(time).setShowWhen(true)
-            .setContentIntent(open).setAutoCancel(true)
+            .setContentIntent(open).setAutoCancel(false)
             .setSilent(SentSound.quietNow(c))
             .setLights(color, 600, 2400)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
@@ -373,7 +372,7 @@ object Notifier {
 
         conversationShortcut(c, address, name, sender, icon)?.let { shortcut ->
             builder.setShortcutId(shortcut).setLocusId(LocusIdCompat(shortcut))
-            bubble(c, address, icon)?.let { builder.setBubbleMetadata(it) }
+            bubble(c, shortcut)?.let { builder.setBubbleMetadata(it) }
         }
 
         if (code != null) {

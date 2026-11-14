@@ -150,13 +150,33 @@ open class MainActivity : FlutterActivity() {
                 }
                 "previewNotification" -> { Notifier.preview(this); result.success(null) }
                 "openBubbleSettings" -> {
+                    Notifier.configureChannels(this)
                     try {
-                        Notifier.configureChannels(this)
-                        if (Build.VERSION.SDK_INT >= 29) startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_BUBBLE_SETTINGS)
-                            .putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
-                        else startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)))
+                        if (Build.VERSION.SDK_INT >= 29) {
+                            startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_BUBBLE_SETTINGS)
+                                .putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
+                        } else {
+                            startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                .putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
+                        }
                         result.success(true)
-                    } catch (_: Exception) { result.success(false) }
+                    } catch (_: Exception) {
+                        // Not all Android OEMs expose the bubble preferences activity.
+                        // Open the app's notification settings instead of leaving a dead control.
+                        try {
+                            startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                .putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
+                            result.success(true)
+                        } catch (_: Exception) {
+                            try {
+                                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    Uri.fromParts("package", packageName, null)))
+                                result.success(true)
+                            } catch (_: Exception) {
+                                result.success(false)
+                            }
+                        }
+                    }
                 }
                 "previewSentSound" -> { SentSound.play(this); result.success(null) }
                 "setSecureScreen" -> {
