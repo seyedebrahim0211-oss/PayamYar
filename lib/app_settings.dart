@@ -75,6 +75,7 @@ class AppSettings extends ChangeNotifier {
   bool notifyGlassAvatar = true;
   int notifyAvatarShape = 0; // 0 = circle, 1 = soft square
   bool notifyBubbles = false;
+  bool notifyCompactHeadsUp = true;
   bool notifyQuickReply = true;
   bool notifyOtpCopy = true;
   List<String> quickReplies = List.of(defaultQuickReplies);
@@ -127,6 +128,7 @@ class AppSettings extends ChangeNotifier {
     notifyAvatarShape = (p.getInt('notifyAvatarShape') ?? 0).clamp(0, 1).toInt();
     // Floating Android bubbles are retired; ignore the old persisted switch.
     notifyBubbles = false;
+    notifyCompactHeadsUp = p.getBool('notifyCompactHeadsUp') ?? true;
     notifyQuickReply = p.getBool('notifyQuickReply') ?? true;
     notifyOtpCopy = p.getBool('notifyOtpCopy') ?? true;
     final replies = p.getString('notifyQuickReplies');
@@ -202,7 +204,8 @@ class AppSettings extends ChangeNotifier {
   Future<void> updateNotify({bool? notifyInApp, BannerStyle? bannerStyle, int? bannerTint, double? bannerBlur,
       double? bannerOpacity, bool? bannerTop, int? bannerSeconds, bool? bannerCompact,
       double? bannerMaxWidth, bool? bannerBubbles, bool? notifyGlassAvatar,
-      int? notifyAvatarShape, bool? notifyBubbles, bool? notifyQuickReply, bool? notifyOtpCopy,
+      int? notifyAvatarShape, bool? notifyBubbles, bool? notifyCompactHeadsUp,
+      bool? notifyQuickReply, bool? notifyOtpCopy,
       List<String>? quickReplies}) async {
     this.notifyInApp = notifyInApp ?? this.notifyInApp;
     this.bannerStyle = bannerStyle ?? this.bannerStyle;
@@ -217,6 +220,7 @@ class AppSettings extends ChangeNotifier {
     this.notifyGlassAvatar = notifyGlassAvatar ?? this.notifyGlassAvatar;
     this.notifyAvatarShape = (notifyAvatarShape ?? this.notifyAvatarShape).clamp(0, 1).toInt();
     this.notifyBubbles = false;
+    this.notifyCompactHeadsUp = notifyCompactHeadsUp ?? this.notifyCompactHeadsUp;
     this.notifyQuickReply = notifyQuickReply ?? this.notifyQuickReply;
     this.notifyOtpCopy = notifyOtpCopy ?? this.notifyOtpCopy;
     if (quickReplies != null) this.quickReplies = cleanReplies(quickReplies);
@@ -247,6 +251,7 @@ class AppSettings extends ChangeNotifier {
     await p.setBool('notifyGlassAvatar', notifyGlassAvatar);
     await p.setInt('notifyAvatarShape', notifyAvatarShape);
     await p.setBool('notifyBubbles', false);
+    await p.setBool('notifyCompactHeadsUp', notifyCompactHeadsUp);
     await p.setBool('notifyQuickReply', notifyQuickReply);
     await p.setBool('notifyOtpCopy', notifyOtpCopy);
     await p.setString('notifyQuickReplies', quickReplies.join('\n'));
@@ -259,6 +264,7 @@ class AppSettings extends ChangeNotifier {
     'bannerSeconds': bannerSeconds, 'bannerCompact': bannerCompact,
     'bannerMaxWidth': bannerMaxWidth, 'bannerBubbles': bannerBubbles, 'notifyGlassAvatar': notifyGlassAvatar,
     'notifyAvatarShape': notifyAvatarShape, 'notifyBubbles': notifyBubbles,
+    'notifyCompactHeadsUp': notifyCompactHeadsUp,
     'notifyQuickReply': notifyQuickReply, 'notifyOtpCopy': notifyOtpCopy, 'quickReplies': quickReplies,
   };
 
@@ -276,7 +282,8 @@ class AppSettings extends ChangeNotifier {
       bannerCompact: b('bannerCompact'), bannerMaxWidth: d('bannerMaxWidth'),
       bannerBubbles: b('bannerBubbles'),
       notifyGlassAvatar: b('notifyGlassAvatar'), notifyAvatarShape: i('notifyAvatarShape'),
-      notifyBubbles: b('notifyBubbles'), notifyQuickReply: b('notifyQuickReply'), notifyOtpCopy: b('notifyOtpCopy'),
+      notifyBubbles: b('notifyBubbles'), notifyCompactHeadsUp: b('notifyCompactHeadsUp'),
+      notifyQuickReply: b('notifyQuickReply'), notifyOtpCopy: b('notifyOtpCopy'),
       quickReplies: replies is List ? [for (final r in replies) if (r is String) r] : null,
     );
   }
