@@ -260,7 +260,7 @@ object Notifier {
         }
         if (enabled(c, "bannerBubbles") && style != 2) {
             val bubble = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                style = Paint.Style.STROKE
+                this.style = Paint.Style.STROKE
                 strokeWidth = 1.5f
                 color = 0x55FFFFFF.toInt()
             }
