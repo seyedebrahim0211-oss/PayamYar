@@ -12,7 +12,7 @@
     android:background="@drawable/payamyar_notification_glass">
     <ImageView android:layout_width="28dp" android:layout_height="28dp"
         android:src="@drawable/ic_stat_payamyar"
-        android:contentDescription="@string/app_name"
+        android:contentDescription="پیامیار"
         android:tint="#EACD91" />
     <LinearLayout android:layout_marginStart="12dp" android:layout_width="0dp"
         android:layout_weight="1" android:layout_height="wrap_content"
