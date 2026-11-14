@@ -393,6 +393,38 @@ class SendingSettingsPage extends StatelessWidget {
                         onTap: () { store.selectSim(sim['id'] as int); Navigator.pop(ctx); }),
                   ])))),
           ]),
+        SettingsGroup(title: 'ظرفیت فهرست گیرندگان', children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+            child: Text('تعداد مجاز برای انتخاب یا ساخت فهرست: ظرفیت بیشتر مجوز ارسال انبوه از سیم‌کارت نیست.',
+              style: Theme.of(context).textTheme.bodySmall),
+          ),
+          for (final size in const [500, 1000, 2000])
+            RadioListTile<int>(
+              value: size,
+              groupValue: settings.recipientCapacity,
+              title: Text('${Jalali.digits(size)} مخاطب'),
+              subtitle: Text(size == 500 ? 'پیش‌فرض محافظه‌کارانه' : 'فقط افزایش ظرفیت فهرست؛ ارسال انبوه تابع محدودیت اپراتور'),
+              onChanged: (v) async {
+                if (v == null) return;
+                if (v > 500) {
+                  final ok = await showDialog<bool>(context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('تأیید افزایش ظرفیت انتخاب'),
+                      content: const Text('این تغییر فقط ظرفیت انتخاب مخاطب را افزایش می‌دهد. '
+                        'برای ارسال انبوه بیش از ۵۰۰ شماره باید از سرویس پیامکی مجاز با رضایت گیرندگان استفاده شود. '
+                        'اپراتورها سقف یکسان و تضمین‌شده ندارند.'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
+                        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('متوجه شدم')),
+                      ],
+                    ));
+                  if (ok != true) return;
+                }
+                await settings.update(recipientCapacity: v);
+              },
+            ),
+        ]),
         SettingsGroup(title: 'تأخیر در ارسال (فرصت لغو)', children: [
           SwitchListTile(
             secondary: Icon(Icons.timer_outlined, color: scheme.primary),
