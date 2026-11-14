@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../app_store.dart';
 import '../jalali.dart';
 import '../sms_groups.dart';
+import '../sms_bridge.dart';
 import 'compose_screen.dart';
 import 'conversation_screen.dart';
 import 'group_conversation_screen.dart';
@@ -33,6 +34,7 @@ class GroupsScreen extends StatelessWidget {
   }
 
   void _members(BuildContext context, SmsGroup group) {
+    final lookup = SmsBridge.contactNames(group.recipients);
     showModalBottomSheet<void>(
       context: context, showDragHandle: true, isScrollControlled: true,
       builder: (ctx) => SafeArea(child: SizedBox(
@@ -44,19 +46,37 @@ class GroupsScreen extends StatelessWidget {
           const Padding(padding: EdgeInsets.symmetric(horizontal: 18),
             child: Text('پاسخ هر نفر فقط در گفتگوی خصوصی همان مخاطب نمایش داده می‌شود.',
               textAlign: TextAlign.center)),
-          Expanded(child: ListView.builder(
-            itemCount: group.recipients.length,
-            itemBuilder: (_, index) {
-              final number = group.recipients[index];
-              return ListTile(
-                leading: const CircleAvatar(child: Icon(Icons.person_outline_rounded)),
-                title: Text(store.displayName(number)),
-                subtitle: Text(number, textDirection: TextDirection.ltr),
-                trailing: const Icon(Icons.chevron_left_rounded),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  Navigator.push(context, MaterialPageRoute<void>(
-                    builder: (_) => ConversationScreen(store: store, address: number)));
+          Expanded(child: FutureBuilder<Map<String, String>>(
+            future: lookup,
+            builder: (_, snapshot) {
+              final data = snapshot.data ?? const <String, String>{};
+              final mapped = {
+                for (final e in data.entries)
+                  if (e.value.trim().isNotEmpty)
+                    SmsGroupStore.normalize(e.key): e.value.trim(),
+              };
+              return ListView.builder(
+                itemCount: group.recipients.length,
+                itemBuilder: (_, index) {
+                  final number = group.recipients[index];
+                  final fallback = store.displayName(number);
+                  final name = mapped[SmsGroupStore.normalize(number)] ?? fallback;
+                  final saved = name != number && name.trim().isNotEmpty;
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: Theme.of(ctx).colorScheme.primaryContainer,
+                      child: Text(saved ? name.characters.first : '؟')),
+                    title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: Text(saved ? 'باز کردن گفتگوی خصوصی' : 'شماره ذخیره نشده',
+                      style: Theme.of(ctx).textTheme.labelSmall),
+                    trailing: const Icon(Icons.chevron_left_rounded),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      Navigator.push(context, MaterialPageRoute<void>(
+                        builder: (_) => ConversationScreen(store: store, address: number)));
+                    },
+                  );
                 },
               );
             },
@@ -74,6 +94,7 @@ class GroupsScreen extends StatelessWidget {
       builder: (context, _) => Scaffold(
         appBar: AppBar(
           title: const Text('گروه‌های پیامکی'),
+          centerTitle: true,
           actions: [
             IconButton(tooltip: 'ساخت گروه', icon: const Icon(Icons.group_add_rounded),
               onPressed: () => _compose(context)),
@@ -87,7 +108,7 @@ class GroupsScreen extends StatelessWidget {
                 scheme.primaryContainer,
                 scheme.primaryContainer.withValues(alpha: .3),
               ]),
-              borderRadius: BorderRadius.circular(22),
+              borderRadius: BorderRadius.circular(26),
               border: Border.all(color: scheme.primary.withValues(alpha: .15)),
             ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -123,7 +144,7 @@ class GroupsScreen extends StatelessWidget {
                   leading: CircleAvatar(backgroundColor: scheme.primaryContainer,
                     child: Icon(Icons.groups_rounded, color: scheme.primary)),
                   title: Text(group.name, style: const TextStyle(fontWeight: FontWeight.w800)),
-                  subtitle: Text('${Jalali.digits(group.recipients.length)} عضو · ارسال خصوصی برای هر شماره'),
+                  subtitle: Text('${Jalali.digits(group.recipients.length)} عضو · ${store.smsGroups.batchesFor(group.id).isEmpty ? "هنوز ارسال گروهی ثبت نشده" : "سابقه ارسال گروهی موجود است"}'),
                   trailing: PopupMenuButton<String>(
                     tooltip: 'مدیریت گروه',
                     onSelected: (choice) {
