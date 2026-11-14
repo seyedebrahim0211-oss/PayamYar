@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app_store.dart';
 import '../sms_bridge.dart';
+import '../recipient_suggestions.dart';
 import 'compose_tools.dart';
 import 'contact_picker.dart';
 import 'conversation_screen.dart';
@@ -36,6 +37,8 @@ class _ComposeScreenState extends State<ComposeScreen> {
   bool groupMode = false;
   final Set<String> recipients = {};
   final Map<String, String> contactNames = {};
+  List<Map<String, String>> _contacts = const [];
+  Map<String, int> _frequency = const {};
   final List<PendingSend> undoGroup = [];
   String lastSentBody = '';
   bool sending = false;
@@ -50,6 +53,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
     groupMode = widget.createGroup;
     groupName.text = widget.initialGroupName ?? '';
     _restore();
+    _loadSuggestions();
   }
 
   Future<void> _restore() async {
@@ -63,6 +67,32 @@ class _ComposeScreenState extends State<ComposeScreen> {
       if (!hasInitial) recipients.addAll(prefs.getStringList('draft_recipients') ?? []);
       if (widget.initialRecipients != null) recipients.addAll(widget.initialRecipients!);
     });
+  }
+
+  Future<void> _loadSuggestions() async {
+    if (!store.permissions.contacts) return;
+    try {
+      final contacts = await SmsBridge.listContacts();
+      if (!mounted) return;
+      final valid = contacts.where((c) =>
+        _isNumber(_normalize(c['number'] ?? ''))).map((c) =>
+          <String, String>{'name': c['name'] ?? '', 'number': RecipientSuggestions.key(c['number'] ?? '')}).toList();
+      setState(() {
+        _contacts = valid;
+        _frequency = RecipientSuggestions.frequency(store.messages);
+        contactNames.addAll({for (final c in valid) c['number']!: c['name']!});
+      });
+    } catch (_) { /* Manual number entry remains available. */ }
+  }
+
+  void _chooseSuggestion(Map<String, String> item) {
+    final number = RecipientSuggestions.key(item['number'] ?? '');
+    if (recipients.length >= maxRecipients || !_isNumber(number)) return;
+    setState(() {
+      recipients.add(number);
+      to.clear();
+    });
+    _saveDraft();
   }
 
   Future<void> _saveDraft() async {
@@ -122,6 +152,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
         if (_isNumber(number)) contactNames[number] = item['name'] ?? number;
       }
       final selected = await showContactPicker(context,
+        frequency: RecipientSuggestions.frequency(store.messages),
         contacts: contacts.where((c) => _isNumber(_normalize(c['number'] ?? '')))
           .map((c) => <String,String>{'name': c['name'] ?? '', 'number': _normalize(c['number'] ?? '')}).toList(),
         selected: {...recipients}, maxSelection: maxRecipients);
@@ -313,6 +344,22 @@ class _ComposeScreenState extends State<ComposeScreen> {
                   icon: const Icon(Icons.add_rounded),
                 ),
               ]),
+              if (_contacts.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(to.text.trim().isEmpty ? 'مخاطبین پرکاربرد' : 'پیشنهاد بر اساس نام و شماره',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(color: scheme.primary)),
+                for (final item in RecipientSuggestions.rank(_contacts, _frequency, to.text,
+                    excluded: recipients.map(RecipientSuggestions.key).toSet(), limit: 5))
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.person_add_alt_1_outlined),
+                    title: Text(item['name']?.isNotEmpty == true ? item['name']! : item['number']!),
+                    subtitle: Text(item['number'] ?? '', textDirection: TextDirection.ltr),
+                    trailing: const Icon(Icons.add_circle_outline),
+                    onTap: () => _chooseSuggestion(item),
+                  ),
+              ],
               if (recipients.isNotEmpty) ...[
                 const SizedBox(height: 4),
                 Wrap(spacing: 6, runSpacing: 4, children: [
