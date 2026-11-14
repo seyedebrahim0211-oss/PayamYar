@@ -138,7 +138,7 @@ class NotificationStyleScreen extends StatelessWidget {
                     leading: Icon(Icons.width_normal_outlined, color: scheme.primary),
                     title: const Text('عرض کارت داخلی'),
                     subtitle: const Text('در گوشی‌های کوچک خودکار با صفحه هماهنگ می‌شود'),
-                    trailing: Text('${Jalali.digits(s.bannerMaxWidth.round())}'),
+                    trailing: Text(Jalali.digits(s.bannerMaxWidth.round())),
                   ),
                   Slider(
                     value: s.bannerMaxWidth, min: 280, max: 520, divisions: 12,
