@@ -262,12 +262,12 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
         sent = out;
       });
     } on PanelException catch (e) {
-      if (mounted) setState(() {
+      if (mounted) { setState(() {
         error = e.message;
         credit = null;
         inbox = const [];
         sent = const [];
-      });
+      }); }
     } finally {
       if (mounted) { setState(() => loading = false); }
     }
