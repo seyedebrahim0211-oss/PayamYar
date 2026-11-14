@@ -19,8 +19,11 @@ class ComposeScreen extends StatefulWidget {
   final String? initialGroupName;
   final String? initialGroupId;
   final bool createGroup;
+  /// Sending from a saved group must use exactly its current membership.
+  final bool lockGroupRecipients;
   const ComposeScreen({super.key, required this.store, this.initialTo, this.initialBody,
-    this.initialRecipients, this.initialGroupName, this.initialGroupId, this.createGroup = false});
+    this.initialRecipients, this.initialGroupName, this.initialGroupId,
+    this.createGroup = false, this.lockGroupRecipients = false});
   @override
   State<ComposeScreen> createState() => _ComposeScreenState();
 }
@@ -52,7 +55,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
   @override
   void initState() {
     super.initState();
-    groupMode = widget.createGroup;
+    groupMode = widget.createGroup || widget.lockGroupRecipients;
     groupName.text = widget.initialGroupName ?? '';
     _restore();
     _loadSuggestions();
@@ -173,6 +176,15 @@ class _ComposeScreenState extends State<ComposeScreen> {
   }
 
   List<String>? _targets() {
+    if (widget.lockGroupRecipients) {
+      for (final group in store.smsGroups.groups) {
+        if (group.id == widget.initialGroupId) {
+          return List<String>.of(group.recipients);
+        }
+      }
+      store.onNotice?.call('این گروه حذف شده است؛ ارسال انجام نشد.');
+      return null;
+    }
     final result = <String>{...recipients};
     for (final raw in to.text.split(RegExp(r'[,;\n،]+'))) {
       if (raw.trim().isEmpty) continue;
@@ -191,6 +203,13 @@ class _ComposeScreenState extends State<ComposeScreen> {
   }
 
   Future<SmsGroup?> _saveGroup(List<String> targets) async {
+    if (widget.lockGroupRecipients) {
+      for (final group in store.smsGroups.groups) {
+        if (group.id == widget.initialGroupId) return group;
+      }
+      store.onNotice?.call('گروه دیگر وجود ندارد؛ هیچ پیامکی ارسال نشد.');
+      return null;
+    }
     if (targets.length < 2) {
       store.onNotice?.call('برای ساخت گروه حداقل ۲ مخاطب انتخاب کنید.');
       return null;
@@ -340,6 +359,16 @@ class _ComposeScreenState extends State<ComposeScreen> {
             Text('$count از $maxRecipients', style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
           ]),
           const SizedBox(height: 10),
+          if (widget.lockGroupRecipients)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.lock_outline_rounded),
+                title: Text(groupName.text),
+                subtitle: Text('گیرندگان این ارسال فقط اعضای ذخیره‌شده گروه هستند؛ '
+                  'برای افزودن یا حذف مخاطب از بخش مدیریت گروه استفاده کنید.'),
+              ),
+            )
+          else
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(color: scheme.surface, borderRadius: BorderRadius.circular(20)),
@@ -406,7 +435,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
               ),
             ]),
           ),
-          if (count > 1 || groupMode) ...[
+          if (!widget.lockGroupRecipients && (count > 1 || groupMode)) ...[
             const SizedBox(height: 12),
             Card(
               child: Padding(
@@ -575,6 +604,12 @@ class _ComposeScreenState extends State<ComposeScreen> {
   }
 
   int _targetsPreviewCount() {
+    if (widget.lockGroupRecipients) {
+      for (final group in store.smsGroups.groups) {
+        if (group.id == widget.initialGroupId) return group.recipients.length;
+      }
+      return 0;
+    }
     final numbers = <String>{...recipients};
     for (final number in to.text.split(RegExp(r'[,;\n،]+'))) {
       if (_normalize(number).isNotEmpty) numbers.add(_normalize(number.trim()));
