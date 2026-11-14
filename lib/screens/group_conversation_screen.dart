@@ -166,7 +166,7 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
           CircleAvatar(
             radius: 19,
             backgroundColor: scheme.primary.withValues(alpha: .1),
-            child: Text(name.isEmpty ? '؟' : name.characters.first,
+            child: Text(name.isEmpty ? '؟' : String.fromCharCode(name.runes.first),
               style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w800)),
           ),
           const SizedBox(width: 8),
