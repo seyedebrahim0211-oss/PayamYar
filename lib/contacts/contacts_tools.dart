@@ -359,11 +359,12 @@ class ContactToolsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: ListenableBuilder(
         listenable: contacts,
         builder: (context, child) {
           final dups = contacts.duplicates;
+          final names = contacts.similarNames;
           final incomplete = contacts.incomplete;
           final untidy = contacts.untidy;
           final forgotten = _forgotten();
@@ -372,6 +373,7 @@ class ContactToolsScreen extends StatelessWidget {
               title: const Text('پاک‌سازی مخاطبین'),
               bottom: TabBar(isScrollable: true, tabs: [
                 Tab(text: 'تکراری ${Jalali.digits(dups.length)}'),
+                Tab(text: 'هم‌نام ${Jalali.digits(names.length)}'),
                 Tab(text: 'ناقص ${Jalali.digits(incomplete.length)}'),
                 Tab(text: 'شماره نامرتب ${Jalali.digits(untidy.length)}'),
                 Tab(text: 'فراموش‌شده ${Jalali.digits(forgotten.length)}'),
@@ -379,6 +381,7 @@ class ContactToolsScreen extends StatelessWidget {
             ),
             body: TabBarView(children: [
               _dupList(context, dups),
+              _nameReviewList(context, names),
               _simpleList(context, incomplete, 'همه مخاطبین کامل‌اند.', _problem),
               _untidyList(context, untidy),
               _simpleList(context, forgotten, 'با همه مخاطبین پرکار در ۶ ماه اخیر پیامک داشته‌اید.', (c) => 'بیش از ۶ ماه بدون پیامک'),
@@ -468,6 +471,29 @@ class ContactToolsScreen extends StatelessWidget {
           },
         ),
       ),
+    ]);
+  }
+
+  Widget _nameReviewList(BuildContext context, List<List<PhoneContact>> groups) {
+    if (groups.isEmpty) return _empty('نام تکراری نیازمند بررسی پیدا نشد.');
+    return ListView(padding: const EdgeInsets.all(12), children: [
+      const Card(child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Text('این افراد فقط نام یکسان دارند. ادغام خودکار آن‌ها غیرفعال است؛ '
+            'ابتدا شماره و هویت هر مخاطب را بررسی کنید و فقط در صورت اطمینان از '
+            'بخش انتخاب چندتایی، ادغام دستی انجام دهید.'),
+      )),
+      for (final group in groups)
+        Card(child: Column(children: [
+          for (final c in group)
+            ListTile(
+              leading: ContactAvatar(contacts: contacts, contact: c, radius: 18),
+              title: Text(c.displayName),
+              subtitle: Text(c.phones.map((p) => p.value).join(' • '),
+                  textDirection: TextDirection.ltr, textAlign: TextAlign.right),
+              onTap: () => _open(context, c),
+            ),
+        ])),
     ]);
   }
 
