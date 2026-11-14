@@ -59,11 +59,33 @@ class _FamilyScreenState extends State<FamilyScreen> {
             ListTile(title: Text(label),
               leading: Icon(label == (relations[c.key] ?? proposed) ? Icons.check_circle : Icons.person_outline),
               onTap: () => Navigator.pop(ctx, label)),
+          ListTile(title: const Text('نوشتن نسبت دلخواه'),
+            leading: const Icon(Icons.edit_note_rounded),
+            onTap: () => Navigator.pop(ctx, '_custom_')),
           ListTile(title: const Text('حذف از خانواده'),
             leading: const Icon(Icons.person_remove_outlined),
             onTap: () => Navigator.pop(ctx, 'حذف از خانواده')),
         ])),
     );
+    if (selected == '_custom_' && mounted) {
+      final controller = TextEditingController(text: relations[c.key] ?? '');
+      final custom = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('عنوان نسبت خانوادگی'),
+          content: TextField(controller: controller, maxLength: 30,
+            decoration: const InputDecoration(hintText: 'مثلاً پسرعمو، عروس، پدرخوانده')),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('انصراف')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+              child: const Text('ثبت')),
+          ],
+        ),
+      );
+      controller.dispose();
+      if (custom != null && custom.isNotEmpty) await _set(c, custom);
+      return;
+    }
     await _set(c, selected);
   }
 
@@ -91,11 +113,20 @@ class _FamilyScreenState extends State<FamilyScreen> {
             Padding(padding: const EdgeInsets.all(12),
               child: Text('اعضای تأییدشده (${confirmed.length})',
                 style: Theme.of(context).textTheme.titleMedium)),
-            for (final c in confirmed) ListTile(
-              leading: const CircleAvatar(child: Icon(Icons.favorite_outline)),
-              title: Text(c.displayName), subtitle: Text(relations[c.key]!),
-              trailing: const Icon(Icons.edit_outlined),
-              onTap: () => _edit(c, null)),
+            for (final relation in [
+              ...FamilyRelations.labels.where((label) => confirmed.any((c) => relations[c.key] == label)),
+              ...relations.values.where((r) => !FamilyRelations.labels.contains(r)).toSet(),
+            ]) ...[
+              Padding(padding: const EdgeInsets.fromLTRB(10, 14, 10, 4),
+                child: Text(relation, style: Theme.of(context).textTheme.titleSmall)),
+              for (final c in confirmed.where((c) => relations[c.key] == relation))
+                ListTile(
+                  leading: const CircleAvatar(child: Icon(Icons.favorite_outline)),
+                  title: Text(c.displayName),
+                  subtitle: Text(c.primaryPhone.isEmpty ? 'شماره ثبت نشده' : c.primaryPhone),
+                  trailing: const Icon(Icons.edit_outlined),
+                  onTap: () => _edit(c, null)),
+            ],
             if (confirmed.isEmpty) const ListTile(title: Text('هنوز عضوی تأیید نشده است.')),
             if (showSuggestions) ...[
               Padding(padding: const EdgeInsets.all(12),
