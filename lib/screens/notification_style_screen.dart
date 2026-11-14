@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../app_settings.dart';
 import '../jalali.dart';
 import '../notify_banner.dart';
+import '../sms_bridge.dart';
 import 'glass_banner.dart';
 import 'settings_screen.dart' show SettingsGroup;
 
@@ -62,6 +63,22 @@ class NotificationStyleScreen extends StatelessWidget {
                   icon: const Icon(Icons.web_asset_rounded),
                   label: const Text('پیش‌نمایش اعلان شیشه‌ای یکپارچه'),
                 )),
+                const SizedBox(height: 8),
+                if (SmsBridge.supported)
+                  SizedBox(width: double.infinity, child: OutlinedButton.icon(
+                    onPressed: () async {
+                      try {
+                        await SmsBridge.previewNotification();
+                      } catch (_) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                            content: Text('اعلان سیستمی نمایش داده نشد؛ مجوز اعلان و تنظیمات گوشی را بررسی کنید.')));
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.notifications_active_outlined),
+                    label: const Text('آزمایش اعلان واقعی اندروید'),
+                  )),
                 const SizedBox(height: 16),
                 SettingsGroup(title: 'اعلان شیشه‌ای یکپارچه', children: [
                   SwitchListTile(
