@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../app_store.dart';
 import '../brand_mark.dart';
 import '../sms_bridge.dart';
+import 'privacy_disclosure_screen.dart';
 
 /// First-run pages: (1) grant SMS, contacts and notification access, (2) make PayamYar the default SMS app.
 class OnboardingScreen extends StatefulWidget {
@@ -88,6 +89,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               child: busy
                   ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5))
                   : Text(action),
+            ),
+            TextButton.icon(
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                builder: (_) => const PrivacyDisclosurePage())),
+              icon: const Icon(Icons.privacy_tip_outlined),
+              label: const Text('دسترسی‌ها و حریم خصوصی چگونه کار می‌کنند؟'),
             ),
             const SizedBox(height: 6),
             if (permissionStep && denied)
