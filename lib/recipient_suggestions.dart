@@ -34,7 +34,7 @@ class RecipientSuggestions {
       if (excluded.contains(number)) return false;
       if (term.isEmpty) return true;
       return (contact['name'] ?? '').toLowerCase().contains(term) ||
-        number.contains(normalizedTerm);
+        (normalizedTerm.isNotEmpty && number.contains(normalizedTerm));
     }).toList();
     matched.sort((a, b) {
       final an = key(a['number'] ?? '');
