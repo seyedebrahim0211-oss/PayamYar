@@ -269,7 +269,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
         sent = const [];
       });
     } finally {
-      if (mounted) setState(() => loading = false);
+      if (mounted) { setState(() => loading = false); }
     }
   }
 
