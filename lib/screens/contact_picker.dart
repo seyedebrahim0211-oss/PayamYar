@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../sms_bridge.dart';
+import '../recipient_suggestions.dart';
 
 /// In-app contact list, without launching Android's external contact picker.
 Future<Set<String>?> showContactPicker(
@@ -7,6 +8,7 @@ Future<Set<String>?> showContactPicker(
   required List<Map<String, String>> contacts,
   required Set<String> selected,
   int maxSelection = 500,
+  Map<String, int> frequency = const {},
 }) {
   return showModalBottomSheet<Set<String>>(
     context: context,
@@ -17,6 +19,7 @@ Future<Set<String>?> showContactPicker(
       contacts: contacts,
       initial: selected,
       limit: maxSelection,
+      frequency: frequency,
     ),
   );
 }
@@ -25,10 +28,12 @@ class _ContactPicker extends StatefulWidget {
   final List<Map<String, String>> contacts;
   final Set<String> initial;
   final int limit;
+  final Map<String, int> frequency;
   const _ContactPicker({
     required this.contacts,
     required this.initial,
     required this.limit,
+    required this.frequency,
   });
 
   @override
@@ -45,13 +50,10 @@ class _ContactPickerState extends State<_ContactPicker> {
     super.dispose();
   }
 
-  List<Map<String, String>> get filtered {
-    final query = SmsBridge.normalizeNumber(search.text.trim()).toLowerCase();
-    if (query.isEmpty) return widget.contacts;
-    return widget.contacts.where((c) =>
-      (c['name'] ?? '').toLowerCase().contains(query) ||
-      SmsBridge.normalizeNumber(c['number'] ?? '').contains(query)).toList();
-  }
+  List<Map<String, String>> get filtered =>
+      RecipientSuggestions.rank(widget.contacts, widget.frequency, search.text,
+        limit: widget.contacts.length);
+
 
   void _toggle(String number) {
     if (selected.contains(number)) {
@@ -135,6 +137,10 @@ class _ContactPickerState extends State<_ContactPicker> {
               style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant)),
           ]),
         ),
+        if (search.text.trim().isEmpty)
+          const Padding(padding: EdgeInsets.fromLTRB(16, 0, 16, 7),
+            child: Align(alignment: AlignmentDirectional.centerStart,
+              child: Text('بر اساس بیشترین پیام ارسالی، سپس نام مخاطب'))),
         const Divider(height: 1),
         Expanded(child: visible.isEmpty
           ? const Center(child: Text('مخاطبی پیدا نشد.'))
