@@ -400,14 +400,12 @@ class SendingSettingsPage extends StatelessWidget {
               style: Theme.of(context).textTheme.bodySmall),
           ),
           for (final size in const [500, 1000, 2000])
-            RadioListTile<int>(
-              value: size,
-              groupValue: settings.recipientCapacity,
+            ListTile(
+              leading: Icon(settings.recipientCapacity == size ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded),
               title: Text('${Jalali.digits(size)} مخاطب'),
               subtitle: Text(size == 500 ? 'پیش‌فرض محافظه‌کارانه' : 'فقط افزایش ظرفیت فهرست؛ ارسال انبوه تابع محدودیت اپراتور'),
-              onChanged: (v) async {
-                if (v == null) return;
-                if (v > 500) {
+              onTap: () async {
+                if (size > 500) {
                   final ok = await showDialog<bool>(context: context,
                     builder: (ctx) => AlertDialog(
                       title: const Text('تأیید افزایش ظرفیت انتخاب'),
@@ -421,7 +419,7 @@ class SendingSettingsPage extends StatelessWidget {
                     ));
                   if (ok != true) return;
                 }
-                await settings.update(recipientCapacity: v);
+                await settings.update(recipientCapacity: size);
               },
             ),
         ]),
