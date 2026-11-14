@@ -706,6 +706,12 @@ class AppStore extends ChangeNotifier {
       notifyListeners();
       return null;
     }
+    // A non-default SMS app cannot reliably write its sent row to Android's SMS provider.
+    // Refuse the send and preserve the user's draft instead of showing a ghost message.
+    if (!permissions.isDefault || !permissions.canSend) {
+      onNotice?.call('برای ثبت مطمئن پیام ارسالی، ابتدا پیامیار را برنامه پیش‌فرض پیامک کنید. متن شما حفظ شد.');
+      return null;
+    }
     try {
       final now = DateTime.now();
       final delay = scheduledAt == null
