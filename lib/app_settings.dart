@@ -37,8 +37,8 @@ class AppSettings extends ChangeNotifier {
   ThemeMode mode = ThemeMode.system;
   double scale = 1;
   int fontChoice = 0; // 0 = Vazirmatn, 1 = Android default, 2 = Android serif / Naskh fallback
-  bool hidePreview = false;
-  bool notifyPreview = true;
+  bool hidePreview = true;
+  bool notifyPreview = false;
   bool notifyIncoming = true;
   bool notifySent = true;
 
@@ -92,8 +92,8 @@ class AppSettings extends ChangeNotifier {
     mode = ThemeMode.values[(p.getInt('theme') ?? 0).clamp(0, 2).toInt()];
     scale = (p.getDouble('scale') ?? 1).clamp(.9, 1.5).toDouble();
     fontChoice = (p.getInt('fontChoice') ?? 0).clamp(0, 2).toInt();
-    hidePreview = p.getBool('privatePreview') ?? false;
-    notifyPreview = p.getBool('notifyPreview') ?? true;
+    hidePreview = p.getBool('privatePreview') ?? true;
+    notifyPreview = p.getBool('notifyPreview') ?? false;
     notifyIncoming = p.getBool('notifyIncoming') ?? true;
     notifySent = p.getBool('notifySent') ?? true;
     sendDelayEnabled = p.getBool('sendDelayEnabled') ?? true;
