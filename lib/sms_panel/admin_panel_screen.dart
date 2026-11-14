@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -157,7 +158,9 @@ class AdminPanelScreen extends StatefulWidget {
   State<AdminPanelScreen> createState() => _AdminPanelScreenState();
 }
 
-class _AdminPanelScreenState extends State<AdminPanelScreen> {
+class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBindingObserver {
+  Timer? _inboxRefreshTimer;
+  bool _appVisible = true;
   MeliPayamak? api;
   String user = '';
   String line = MeliPayamak.defaultLine;
@@ -187,11 +190,23 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
+    // Only poll while this private panel is actually foregrounded.
+    _inboxRefreshTimer = Timer.periodic(const Duration(seconds: 90), (_) {
+      if (mounted && _appVisible && api != null && !loading) _refresh();
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appVisible = state == AppLifecycleState.resumed;
   }
 
   @override
   void dispose() {
+    _inboxRefreshTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     api?.close();
     for (final c in [userField, passField, lineField, toField, textField]) {
       c.dispose();
@@ -233,7 +248,11 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
       setState(() {
         credit = c;
         // Messages sent to this line (e.g. 90008325); keep all when the service omits the receiver.
-        inbox = received.where((m) => m.receiver.isEmpty || m.receiver.endsWith(line) || line.endsWith(m.receiver)).toList();
+        inbox = received.where((m) {
+          final receiver = m.receiver.replaceAll(RegExp(r'[^0-9]'), '');
+          final wanted = line.replaceAll(RegExp(r'[^0-9]'), '');
+          return receiver.isEmpty || receiver == wanted;
+        }).toList();
         sent = out;
       });
     } on PanelException catch (e) {
