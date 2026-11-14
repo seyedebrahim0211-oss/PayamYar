@@ -266,7 +266,25 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
     super.dispose();
   }
 
+  Future<bool> _requireSiteAccess() async {
+    if (await SiteAdminAuth.authorized()) return true;
+    if (mounted) {
+      api?.close();
+      setState(() {
+        api = null;
+        inbox = const [];
+        sent = const [];
+        credit = null;
+        error = 'دسترسی مدیر از سایت هنر مردمی تأیید نشد. اتصال اینترنت یا مجوز کاربری را بررسی کنید.';
+        loading = false;
+        sending = false;
+      });
+    }
+    return false;
+  }
+
   Future<void> _load() async {
+    if (!await _requireSiteAccess()) return;
     final u = await Vault.get('mp_user') ?? '';
     final p = await Vault.get('mp_pass') ?? '';
     final l = await Vault.get('mp_line') ?? MeliPayamak.defaultLine;
@@ -283,6 +301,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
   }
 
   Future<void> _refresh() async {
+    if (!await _requireSiteAccess()) return;
     final a = api;
     if (a == null || _refreshing) return;
     _refreshing = true;
@@ -340,6 +359,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
   }
 
   Future<void> _saveCredentials() async {
+    if (!await _requireSiteAccess()) return;
     final u = userField.text.trim();
     final p = passField.text.trim();
     final l = lineField.text.replaceAll(RegExp(r'[^0-9+]'), '');
@@ -382,6 +402,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
   }
 
   Future<void> _send() async {
+    if (!await _requireSiteAccess()) return;
     final a = api;
     if (a == null) return;
     final numbers = toField.text.split(RegExp(r'[\s,،;]+')).map(MeliPayamak.normalize).where((n) => n.isNotEmpty).toSet().toList();
@@ -427,6 +448,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
   }
 
   Future<void> _checkDelivery() async {
+    if (!await _requireSiteAccess()) return;
     final a = api, id = lastRecId;
     if (a == null || id == null) return;
     try {
