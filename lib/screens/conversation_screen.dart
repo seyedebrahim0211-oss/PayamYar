@@ -33,7 +33,7 @@ class _Entry {
   const _Entry({this.message, this.pending, this.header});
 }
 
-class _ConversationScreenState extends State<ConversationScreen> {
+class _ConversationScreenState extends State<ConversationScreen> with WidgetsBindingObserver {
   late final input = TextEditingController(text: widget.initialText);
   final focus = FocusNode();
   bool sending = false;
@@ -49,6 +49,7 @@ class _ConversationScreenState extends State<ConversationScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _markRead());
     store.addListener(_onStoreChanged);
   }
@@ -65,7 +66,15 @@ class _ConversationScreenState extends State<ConversationScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed && _revealedAmounts.isNotEmpty && mounted) {
+      setState(_revealedAmounts.clear);
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     store.removeListener(_onStoreChanged);
     input.dispose();
     focus.dispose();
