@@ -54,6 +54,8 @@ class AppSettings extends ChangeNotifier {
   /// App-side recipient selection capacity, not an operator sending allowance.
   /// For >500, the user must explicitly opt in; all SMS remain subject to carrier policy.
   int recipientCapacity = 500;
+  bool swipeTabs = true;
+  bool reduceEffects = false;
 
   // ── chat look ──
   ChatStyle chatStyle = ChatStyle.traditional;
@@ -102,6 +104,8 @@ class AppSettings extends ChangeNotifier {
     signature = p.getString('signature') ?? '';
     smartReplies = p.getBool('smartReplies') ?? true;
     recipientCapacity = _capacity(p.getInt('recipientCapacity') ?? 500);
+    swipeTabs = p.getBool('swipeTabs') ?? true;
+    reduceEffects = p.getBool('reduceEffects') ?? false;
     chatStyle = ChatStyle.values[(p.getInt('chatStyle') ?? 0).clamp(0, ChatStyle.values.length - 1).toInt()];
     bubbleText = (p.getDouble('bubbleText') ?? 15.5).clamp(13, 20).toDouble();
     quietHours = p.getBool('quietHours') ?? false;
@@ -130,7 +134,8 @@ class AppSettings extends ChangeNotifier {
   Future<void> update({int? palette, ThemeMode? mode, double? scale, int? fontChoice,
       bool? hidePreview, bool? notifyPreview, bool? notifyIncoming, bool? notifySent,
       bool? sendDelayEnabled, int? sendDelaySeconds, SentFeedback? sentFeedback, bool? enterToSend,
-      bool? signatureEnabled, String? signature, bool? smartReplies, int? recipientCapacity, ChatStyle? chatStyle,
+      bool? signatureEnabled, String? signature, bool? smartReplies, int? recipientCapacity,
+       bool? swipeTabs, bool? reduceEffects, ChatStyle? chatStyle,
       double? bubbleText, bool? quietHours, int? quietStart, int? quietEnd}) async {
     this.palette = palette ?? this.palette;
     this.mode = mode ?? this.mode;
@@ -148,6 +153,8 @@ class AppSettings extends ChangeNotifier {
     this.signature = (signature ?? this.signature).trim();
     this.smartReplies = smartReplies ?? this.smartReplies;
     this.recipientCapacity = _capacity(recipientCapacity ?? this.recipientCapacity);
+    this.swipeTabs = swipeTabs ?? this.swipeTabs;
+    this.reduceEffects = reduceEffects ?? this.reduceEffects;
     this.chatStyle = chatStyle ?? this.chatStyle;
     this.bubbleText = bubbleText ?? this.bubbleText;
     this.quietHours = quietHours ?? this.quietHours;
@@ -179,6 +186,8 @@ class AppSettings extends ChangeNotifier {
     await p.setString('signature', signature);
     await p.setBool('smartReplies', smartReplies);
     await p.setInt('recipientCapacity', recipientCapacity);
+    await p.setBool('swipeTabs', swipeTabs);
+    await p.setBool('reduceEffects', reduceEffects);
     await p.setInt('chatStyle', chatStyle.index);
     await p.setDouble('bubbleText', bubbleText);
     await _saveNotify(p);
@@ -272,7 +281,8 @@ class AppSettings extends ChangeNotifier {
     'privatePreview': hidePreview, 'notifyPreview': notifyPreview, 'notifyIncoming': notifyIncoming,
     'notifySent': notifySent, 'sentFeedback': sentFeedback.index, 'sendDelayEnabled': sendDelayEnabled,
     'sendDelaySeconds': sendDelaySeconds, 'enterToSend': enterToSend, 'signatureEnabled': signatureEnabled,
-    'signature': signature, 'smartReplies': smartReplies, 'recipientCapacity': recipientCapacity, 'chatStyle': chatStyle.index,
+    'signature': signature, 'smartReplies': smartReplies, 'recipientCapacity': recipientCapacity, 'swipeTabs': swipeTabs,
+     'reduceEffects': reduceEffects, 'chatStyle': chatStyle.index,
     'bubbleText': bubbleText, 'quietHours': quietHours, 'quietStart': quietStart, 'quietEnd': quietEnd,
     ...notifyJson(),
   };
@@ -294,7 +304,8 @@ class AppSettings extends ChangeNotifier {
       sendDelayEnabled: v<bool>('sendDelayEnabled'), sendDelaySeconds: i('sendDelaySeconds'),
       enterToSend: v<bool>('enterToSend'), signatureEnabled: v<bool>('signatureEnabled'),
       signature: v<String>('signature'), smartReplies: v<bool>('smartReplies'),
-       recipientCapacity: i('recipientCapacity'),
+       recipientCapacity: i('recipientCapacity'), swipeTabs: v<bool>('swipeTabs'),
+       reduceEffects: v<bool>('reduceEffects'),
       chatStyle: i('chatStyle') == null ? null
           : ChatStyle.values[i('chatStyle')!.clamp(0, ChatStyle.values.length - 1).toInt()],
       bubbleText: d('bubbleText')?.clamp(13, 20).toDouble(),
