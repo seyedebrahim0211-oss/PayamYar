@@ -7,6 +7,7 @@ import '../sms_bridge.dart';
 import 'contact_detail_screen.dart';
 import 'contact_edit_screen.dart';
 import 'contact_store.dart';
+import 'family_screen.dart';
 import 'contacts_data.dart';
 import 'contacts_tools.dart';
 
@@ -261,6 +262,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
                           case 'tools':
                             await Navigator.of(context).push(MaterialPageRoute<void>(
                                 builder: (_) => ContactToolsScreen(store: widget.store, contacts: contacts)));
+                          case 'family':
+                            await Navigator.of(context).push(MaterialPageRoute<void>(
+                              builder: (_) => FamilyScreen(contacts: contacts)));
                           case 'groups':
                             await Navigator.of(context).push(MaterialPageRoute<void>(
                                 builder: (_) => GroupsManagerScreen(contacts: contacts)));
@@ -295,6 +299,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                         PopupMenuItem(value: 'export', child: ListTile(dense: true, leading: Icon(Icons.download_rounded), title: Text('خروجی اکسل یا VCF'))),
                         PopupMenuItem(value: 'sample', child: ListTile(dense: true, leading: Icon(Icons.table_view_rounded), title: Text('فایل نمونه اکسل'))),
                         PopupMenuItem(value: 'groups', child: ListTile(dense: true, leading: Icon(Icons.folder_shared_outlined), title: Text('مدیریت گروه‌ها'))),
+                        PopupMenuItem(value: 'family', child: ListTile(dense: true, leading: Icon(Icons.family_restroom_rounded), title: Text('خانواده (شخصی‌سازی رابطه‌ها)'))),
                         PopupMenuItem(value: 'tools', child: ListTile(dense: true, leading: Icon(Icons.cleaning_services_outlined), title: Text('تکراری‌ها و پاک‌سازی'))),
                         PopupMenuItem(value: 'reload', child: ListTile(dense: true, leading: Icon(Icons.refresh_rounded), title: Text('بارگذاری دوباره'))),
                       ],
@@ -325,6 +330,17 @@ class _ContactsScreenState extends State<ContactsScreen> {
                                       query = '';
                                     })),
                           ),
+                        ),
+                      ),
+                    ),
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                        child: OutlinedButton.icon(
+                          onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                            builder: (_) => FamilyScreen(contacts: contacts))),
+                          icon: const Icon(Icons.family_restroom_rounded),
+                          label: const Text('خانواده • شناسایی پیشنهادی و تعیین نسبت‌ها'),
                         ),
                       ),
                     ),
