@@ -68,6 +68,12 @@ open class MainActivity : FlutterActivity() {
                     }
                 }
                 "requestPermissions" -> {
+                    // Google Play: never ask for restricted SMS permissions until the user
+                    // has deliberately chosen PayamYar as their default SMS handler.
+                    if (!SmsCore.isDefault(this)) {
+                        result.success(permissionMap())
+                        return@setMethodCallHandler
+                    }
                     // Completes after the user answers the Android dialog, with the new permission state.
                     permissionResult?.success(permissionMap())
                     permissionResult = null

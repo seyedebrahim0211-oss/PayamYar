@@ -7,6 +7,8 @@
 android {
     defaultConfig {
         minSdk = 24
+        // Google Play submissions after Aug 2026 require Android API 36+.
+        targetSdk = 36
     }
 }
 

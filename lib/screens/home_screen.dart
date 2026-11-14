@@ -92,15 +92,27 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final unread = widget.store.unreadConversations;
     return Scaffold(
       // The inbox stays alive (keeps scroll and search); the other tabs are built only while open.
-      body: Stack(children: [
-        Offstage(
-          offstage: tab != 0,
-          child: TickerMode(enabled: tab == 0, child: ConversationsPage(store: widget.store, settings: widget.settings))),
-        if (tab == 1) ContactsScreen(store: widget.store),
-        if (tab == 2) GroupsScreen(store: widget.store),
-        if (tab == 3) ReportsScreen(store: widget.store, settings: widget.settings),
-        if (tab == 4) SettingsScreen(store: widget.store, settings: widget.settings),
-      ]),
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        // A fast, intentional horizontal swipe changes the section. Short
+        // gestures and vertical list scrolling keep their native behavior.
+        onHorizontalDragEnd: widget.settings.swipeTabs ? (details) {
+          final speed = details.primaryVelocity ?? 0;
+          if (speed.abs() < 500) return;
+          final direction = speed < 0 ? 1 : -1;
+          final next = (tab + direction).clamp(0, 4);
+          if (next != tab && mounted) setState(() => tab = next);
+        } : null,
+        child: Stack(children: [
+          Offstage(
+            offstage: tab != 0,
+            child: TickerMode(enabled: tab == 0, child: ConversationsPage(store: widget.store, settings: widget.settings))),
+          if (tab == 1) ContactsScreen(store: widget.store),
+          if (tab == 2) GroupsScreen(store: widget.store),
+          if (tab == 3) ReportsScreen(store: widget.store, settings: widget.settings),
+          if (tab == 4) SettingsScreen(store: widget.store, settings: widget.settings),
+        ]),
+      ),
       floatingActionButton: tab == 0
           ? FloatingActionButton.extended(
               onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(

@@ -1,12 +1,16 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../jalali.dart';
 import '../security/app_lock.dart';
 import '../security/vault.dart';
 import '../sms_bridge.dart';
+import '../sms_groups.dart';
+import '../screens/contact_picker.dart';
 import 'meli_payamak.dart';
 
 /// Admin/creator-only access. The entry is hidden (7 taps on the version in Settings) and
@@ -165,6 +169,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
   String user = '';
   String line = MeliPayamak.defaultLine;
   double? credit;
+  bool creditVisible = false;
   String? error;
   bool loading = true;
   List<PanelMessage> inbox = const [];
@@ -201,6 +206,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _appVisible = state == AppLifecycleState.resumed;
+    if (!_appVisible && mounted) setState(() => creditVisible = false);
   }
 
   @override
@@ -256,9 +262,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
         sent = out;
       });
     } on PanelException catch (e) {
-      if (mounted) setState(() => error = e.message);
+      if (mounted) { setState(() {
+        error = e.message;
+        credit = null;
+        inbox = const [];
+        sent = const [];
+      }); }
     } finally {
-      if (mounted) setState(() => loading = false);
+      if (mounted) { setState(() => loading = false); }
     }
   }
 
@@ -453,8 +464,23 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
               Text('خط ${Jalali.digits(line)}', style: const TextStyle(color: Colors.white60, fontSize: 12)),
             ]),
             const SizedBox(height: 8),
-            Text(credit == null ? '—' : '${Jalali.digits(credit!.toStringAsFixed(credit! % 1 == 0 ? 0 : 1))} پیامک',
+            Text(!creditVisible ? '•••••• پیامک' : credit == null ? '—' : '${Jalali.digits(credit!.toStringAsFixed(credit! % 1 == 0 ? 0 : 1))} پیامک',
                 style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900)),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: TextButton.icon(
+                onPressed: () => setState(() => creditVisible = !creditVisible),
+                icon: Icon(creditVisible ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                  color: Colors.white),
+                label: Text(creditVisible ? 'پنهان کردن موجودی' : 'نمایش موقت موجودی',
+                  style: const TextStyle(color: Colors.white)),
+              ),
+            ),
+            if (error != null)
+              const Padding(
+                padding: EdgeInsets.only(top: 4),
+                child: Text('اعتبار فعلی تأیید نشده است.', style: TextStyle(color: Colors.white70)),
+              ),
             if (credit != null && credit! < 50)
               const Padding(
                 padding: EdgeInsets.only(top: 4),
@@ -592,6 +618,156 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
     );
   }
 
+  Future<void> _pickRecipients() async {
+    try {
+      final contacts = await SmsBridge.listContacts();
+      if (!mounted) return;
+      final current = toField.text.split(RegExp(r'[\s,،;]+'))
+          .map(MeliPayamak.normalize).where((n) => n.isNotEmpty).toSet();
+      final picked = await showContactPicker(context, contacts: contacts,
+          selected: current, maxSelection: 100);
+      if (picked == null || !mounted) return;
+      final valid = picked.map(MeliPayamak.normalize).where((n) => n.isNotEmpty).toSet();
+      toField.text = valid.join(', ');
+      if (valid.length != picked.length) {
+        _notice('فقط شماره‌های معتبر تلفن همراه برای پنل انتخاب شدند.');
+      }
+    } catch (_) {
+      _notice('دسترسی مخاطبین پیامیار را از تنظیمات اندروید فعال کنید.');
+    }
+  }
+
+  Future<void> _pickGroupRecipients() async {
+    // Groups are local broadcast lists. Never auto-send as part of selection.
+    final groups = (await SharedPreferences.getInstance()).getStringList(
+      SmsGroupStore.storageKey) ?? const <String>[];
+    final available = <SmsGroup>[];
+    for (final json in groups) {
+      try {
+        final g = SmsGroup.fromJson(jsonDecode(json) as Map<String, dynamic>);
+        if (g.recipients.isNotEmpty) available.add(g);
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    if (available.isEmpty) {
+      _notice('هنوز گروهی ندارید؛ از بخش «گروه‌ها» یک گروه بسازید.');
+      return;
+    }
+    final chosen = await showModalBottomSheet<SmsGroup>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(child: ListView(
+        shrinkWrap: true,
+        children: [
+          const ListTile(title: Text('انتخاب گروه پیامکی پیامیار')),
+          for (final g in available)
+            ListTile(title: Text(g.name),
+              subtitle: Text('${g.recipients.length} عضو'),
+              leading: const Icon(Icons.groups_rounded),
+              onTap: () => Navigator.pop(ctx, g)),
+        ],
+      )),
+    );
+    if (chosen == null) return;
+    final previous = toField.text.split(RegExp(r'[\s,،;]+'));
+    final valid = {...previous, ...chosen.recipients}
+        .map(MeliPayamak.normalize).where((n) => n.isNotEmpty).toSet();
+    if (valid.length > 100) {
+      _notice('پنل ملی پیامک در هر درخواست حداکثر ۱۰۰ گیرنده می‌پذیرد.');
+      return;
+    }
+    toField.text = valid.join(', ');
+  }
+
+  Future<String?> _readTxt() async {
+    try {
+      final selected = await FilePicker.platform.pickFiles(
+        type: FileType.custom, allowedExtensions: ['txt'],
+        withData: true, allowMultiple: false,
+      );
+      if (selected == null || selected.files.isEmpty) return null;
+      final file = selected.files.single;
+      // Prevent accidental processing of huge or non-text files.
+      if (!file.name.toLowerCase().endsWith('.txt') || file.size > 1024 * 1024) {
+        _notice('فقط فایل TXT تا حجم یک مگابایت پذیرفته می‌شود.');
+        return null;
+      }
+      final bytes = file.bytes;
+      if (bytes == null || bytes.isEmpty) {
+        _notice('فایل خالی است یا قابل خواندن نیست.');
+        return null;
+      }
+      final text = utf8.decode(bytes, allowMalformed: true).replaceFirst('\uFEFF', '');
+      if (text.contains('\u0000')) {
+        _notice('این فایل متن ساده TXT نیست.');
+        return null;
+      }
+      return text;
+    } catch (_) {
+      _notice('خواندن TXT ناموفق بود. دسترسی انتخاب فایل را بررسی کنید.');
+      return null;
+    }
+  }
+
+  Future<void> _importTxtRecipients() async {
+    final data = await _readTxt();
+    if (data == null || !mounted) return;
+    // One mobile number per line, or comma/semicolon separated.
+    final parts = data.split(RegExp(r'[\s,،;]+')).where((v) => v.trim().isNotEmpty);
+    final normalized = parts.map(MeliPayamak.normalize).where((n) => n.isNotEmpty).toSet();
+    final current = toField.text.split(RegExp(r'[\s,،;]+'))
+        .map(MeliPayamak.normalize).where((n) => n.isNotEmpty).toSet();
+    final numbers = {...current, ...normalized};
+    if (normalized.isEmpty) {
+      _notice('شماره موبایل معتبری در فایل پیدا نشد.');
+      return;
+    }
+    if (numbers.length > 100) {
+      _notice('در هر ارسال از پنل حداکثر ۱۰۰ گیرنده مجاز است. فایل را تقسیم کنید.');
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context, builder: (ctx) => AlertDialog(
+        title: const Text('پیش‌نمایش گیرنده‌های TXT'),
+        content: Text('${Jalali.digits(normalized.length)} شماره معتبر در فایل یافت شد. '
+          '${Jalali.digits(numbers.length)} شماره یکتا همراه گیرنده‌های قبلی ثبت می‌شود. '
+          'هیچ پیامکی در این مرحله ارسال نخواهد شد.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('افزودن گیرنده‌ها')),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) toField.text = numbers.join(', ');
+  }
+
+  Future<void> _importTxtMessage() async {
+    final data = await _readTxt();
+    if (data == null || !mounted) return;
+    final body = data.trim();
+    if (body.isEmpty) {
+      _notice('فایل متن پیام خالی است.');
+      return;
+    }
+    if (body.length > 5000) {
+      _notice('متن فایل طولانی است؛ حداکثر ۵۰۰۰ نویسه برای پیش‌نویس مجاز است.');
+      return;
+    }
+    final accepted = await showDialog<bool>(
+      context: context, builder: (ctx) => AlertDialog(
+        title: const Text('پیش‌نمایش متن TXT'),
+        content: SingleChildScrollView(child: SelectableText(body,
+          maxLines: 12)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true),
+            child: Text(textField.text.isEmpty ? 'افزودن به متن پیام' : 'جایگزینی متن قبلی')),
+        ],
+      ),
+    );
+    if (accepted == true && mounted) textField.text = body;
+  }
+
   Widget _sendTab() {
     if (api == null) return _needSetup();
     final scheme = Theme.of(context).colorScheme;
@@ -610,18 +786,27 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
             decoration: InputDecoration(
               labelText: 'گیرنده‌ها (با ویرگول یا خط جدید جدا کنید)',
               prefixIcon: const Icon(Icons.people_alt_outlined),
-              suffixIcon: SmsBridge.supported
-                  ? IconButton(
-                      tooltip: 'از مخاطبین',
-                      icon: const Icon(Icons.contacts_rounded),
-                      onPressed: () async {
-                        final n = await SmsBridge.pickContact();
-                        if (n != null && n.isNotEmpty) {
-                          toField.text = toField.text.trim().isEmpty ? n : '${toField.text.trim()}, $n';
-                        }
-                      },
-                    )
-                  : null,
+              suffixIcon: IconButton(
+                tooltip: 'انتخاب از مخاطبین خود پیامیار',
+                icon: const Icon(Icons.contacts_rounded),
+                onPressed: _pickRecipients,
+              ),
+            ),
+          ),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: OutlinedButton.icon(
+              onPressed: _pickGroupRecipients,
+              icon: const Icon(Icons.groups_rounded),
+              label: const Text('افزودن گیرنده از گروه‌های پیامیار'),
+            ),
+          ),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton.icon(
+              onPressed: _importTxtRecipients,
+              icon: const Icon(Icons.upload_file_rounded),
+              label: const Text('واردکردن شماره‌ها از فایل TXT'),
             ),
           ),
           const SizedBox(height: 12),
@@ -630,6 +815,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
             minLines: 4,
             maxLines: 10,
             decoration: const InputDecoration(labelText: 'متن پیامک', alignLabelWithHint: true),
+          ),
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton.icon(
+              onPressed: _importTxtMessage,
+              icon: const Icon(Icons.description_outlined),
+              label: const Text('خواندن متن پیام از فایل TXT'),
+            ),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),

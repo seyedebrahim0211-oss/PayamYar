@@ -110,7 +110,7 @@ class AppStore extends ChangeNotifier {
   Timer? _reportTimer;
 
   bool get isDefault => permissions.isDefault;
-  bool get needsOnboarding => android && (!permissions.canRead || !onboarded);
+  bool get needsOnboarding => android && (!permissions.isDefault || !permissions.canRead || !onboarded);
 
   static List<MessageRecord> _sample() {
     final now = DateTime.now();
@@ -138,7 +138,7 @@ class AppStore extends ChangeNotifier {
     if (android) {
       SmsBridge.listen(_onNativeEvent);
       await checkPermissions();
-      if (permissions.canRead) unawaited(_quickThenAll());
+      if (permissions.isDefault && permissions.canRead) unawaited(_quickThenAll());
       try {
         final queued = await SmsBridge.pending();
         for (final item in queued) {
@@ -194,6 +194,14 @@ class AppStore extends ChangeNotifier {
     try {
       available = await SmsBridge.available();
       permissions = await SmsBridge.status();
+      if (!permissions.isDefault) {
+        // Stop any in-flight SMS page aggregation after default-role revocation.
+        _generation++;
+        _buffer = [];
+        loadingAll = false;
+        messages = [];
+        _reset();
+      }
       access = await SmsBridge.specialAccess();
     } catch (_) {
       error = 'وضعیت دسترسی‌ها خوانده نشد.';
@@ -202,8 +210,13 @@ class AppStore extends ChangeNotifier {
   }
 
   Future<SmsPermissionState> requestPermissions() async {
+    // Restricted SMS permissions are only appropriate when the app is the default handler.
+    if (!permissions.isDefault) {
+      await checkPermissions();
+      if (!permissions.isDefault) return permissions;
+    }
     permissions = await SmsBridge.request();
-    if (permissions.canRead && messages.isEmpty) unawaited(_quickThenAll());
+    if (permissions.isDefault && permissions.canRead && messages.isEmpty) unawaited(_quickThenAll());
     notifyListeners();
     return permissions;
   }
@@ -310,6 +323,7 @@ class AppStore extends ChangeNotifier {
 
   /// Shows the newest messages within a moment, then reads the whole inbox silently in the background.
   Future<void> _quickThenAll() async {
+    if (!permissions.isDefault || !permissions.canRead) return;
     if (messages.isEmpty) {
       try {
         final first = await SmsBridge.read(limit: 400);
@@ -327,7 +341,7 @@ class AppStore extends ChangeNotifier {
 
   /// Reads every SMS in one native pass. The first 150 messages appear at once; the rest follow in large pages.
   Future<void> loadAll() async {
-    if (!android || loadingAll) return;
+    if (!android || !permissions.isDefault || !permissions.canRead || loadingAll) return;
     loadingAll = true;
     error = null;
     loadedCount = 0;
@@ -357,7 +371,8 @@ class AppStore extends ChangeNotifier {
   }
 
   void _onPage(Object? args) {
-    if (args is! Map || args['generation'] != _generation || !loadingAll) return;
+    if (args is! Map || args['generation'] != _generation || !loadingAll ||
+        !permissions.isDefault || !permissions.canRead) { return; }
     final page = SmsBridge.fromColumns(args);
     _buffer.addAll(page);
     loadedCount = _buffer.length;
@@ -380,7 +395,7 @@ class AppStore extends ChangeNotifier {
     loading = true;
     try {
       permissions = await SmsBridge.status();
-      if (!permissions.canRead) return;
+      if (!permissions.isDefault || !permissions.canRead) return;
       if (messages.isEmpty) {
         loading = false;
         await loadAll();

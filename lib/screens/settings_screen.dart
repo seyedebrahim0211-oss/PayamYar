@@ -18,6 +18,7 @@ import 'home_screen.dart';
 import 'birthdays_screen.dart';
 import 'notification_style_screen.dart';
 import 'support_pages.dart';
+import 'privacy_disclosure_screen.dart';
 
 /// Settings hub: a short, friendly list of sections; each opens its own page.
 class SettingsScreen extends StatefulWidget {
@@ -393,6 +394,36 @@ class SendingSettingsPage extends StatelessWidget {
                         onTap: () { store.selectSim(sim['id'] as int); Navigator.pop(ctx); }),
                   ])))),
           ]),
+        SettingsGroup(title: 'ظرفیت فهرست گیرندگان', children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+            child: Text('تعداد مجاز برای انتخاب یا ساخت فهرست: ظرفیت بیشتر مجوز ارسال انبوه از سیم‌کارت نیست.',
+              style: Theme.of(context).textTheme.bodySmall),
+          ),
+          for (final size in const [500, 1000, 2000])
+            ListTile(
+              leading: Icon(settings.recipientCapacity == size ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded),
+              title: Text('${Jalali.digits(size)} مخاطب'),
+              subtitle: Text(size == 500 ? 'پیش‌فرض محافظه‌کارانه' : 'فقط افزایش ظرفیت فهرست؛ ارسال انبوه تابع محدودیت اپراتور'),
+              onTap: () async {
+                if (size > 500) {
+                  final ok = await showDialog<bool>(context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('تأیید افزایش ظرفیت انتخاب'),
+                      content: const Text('این تغییر فقط ظرفیت انتخاب مخاطب را افزایش می‌دهد. '
+                        'برای ارسال انبوه بیش از ۵۰۰ شماره باید از سرویس پیامکی مجاز با رضایت گیرندگان استفاده شود. '
+                        'اپراتورها سقف یکسان و تضمین‌شده ندارند.'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
+                        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('متوجه شدم')),
+                      ],
+                    ));
+                  if (ok != true) return;
+                }
+                await settings.update(recipientCapacity: size);
+              },
+            ),
+        ]),
         SettingsGroup(title: 'تأخیر در ارسال (فرصت لغو)', children: [
           SwitchListTile(
             secondary: Icon(Icons.timer_outlined, color: scheme.primary),
@@ -507,6 +538,20 @@ class AppearanceSettingsPage extends StatelessWidget {
             Slider(value: settings.bubbleText, min: 13, max: 20, divisions: 14,
               onChanged: (v) => settings.update(bubbleText: v)),
           ])),
+      ]),
+      SettingsGroup(title: 'پیمایش و عملکرد', children: [
+        SwitchListTile(
+          secondary: const Icon(Icons.swipe_outlined),
+          title: const Text('کشیدن بین صفحه‌ها'),
+          subtitle: const Text('با کشیدن سریع افقی بین گفتگوها، مخاطبین، گروه‌ها، گزارش‌ها و تنظیمات بروید.'),
+          value: settings.swipeTabs,
+          onChanged: (value) => settings.update(swipeTabs: value)),
+        SwitchListTile(
+          secondary: const Icon(Icons.speed_outlined),
+          title: const Text('حالت سبک برای گوشی‌های ضعیف‌تر'),
+          subtitle: const Text('افکت تاری اعلان‌های داخل برنامه را کاهش می‌دهد و مصرف گرافیکی را کم می‌کند.'),
+          value: settings.reduceEffects,
+          onChanged: (value) => settings.update(reduceEffects: value)),
       ]),
       SettingsGroup(title: 'شخصی‌سازی ظاهر و فونت', children: [
         Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -629,6 +674,13 @@ class PrivacySettingsPage extends StatelessWidget {
     children: (context) {
       final scheme = Theme.of(context).colorScheme;
       return [
+        SettingsGroup(title: 'شفافیت داده‌ها', children: [
+          SettingsTile(icon: Icons.policy_outlined, color: scheme.primary,
+            title: 'توضیح دسترسی‌ها و حریم خصوصی',
+            subtitle: 'پیامک، مخاطبین، اعلان‌ها، ملی‌پیامک و محل نگهداری داده‌ها',
+            onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+              builder: (_) => const PrivacyDisclosurePage()))),
+        ]),
         SettingsGroup(title: 'نمایش', children: [
           SwitchListTile(
             secondary: Icon(Icons.visibility_off_outlined, color: scheme.primary),

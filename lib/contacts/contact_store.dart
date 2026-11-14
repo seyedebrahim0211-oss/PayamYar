@@ -207,6 +207,46 @@ class ContactStore extends ChangeNotifier {
 
   int get duplicateCount => duplicates.fold(0, (n, l) => n + l.length);
 
+  // Relationships are user-confirmed, stored locally and never written to Android contacts.
+  static const _familyKey = 'payamyar_family_relations_v1';
+  Future<Map<String, String>> familyRelations() async {
+    final p = await SharedPreferences.getInstance();
+    try {
+      final raw = jsonDecode(p.getString(_familyKey) ?? '{}');
+      final saved = <String, String>{
+        if (raw is Map)
+          for (final e in raw.entries)
+            if (e.value is String && e.value.toString().isNotEmpty)
+              e.key.toString(): e.value.toString(),
+      };
+      // Also display contacts previously placed in the legacy family group.
+      for (final c in contacts) {
+        if (members[c.key]?.contains('family') ?? false) {
+          saved.putIfAbsent(c.key, () => 'سایر');
+        }
+      }
+      return saved;
+    } catch (_) {}
+    return {};
+  }
+
+  Future<void> setFamilyRelation(PhoneContact contact, String? label) async {
+    final all = await familyRelations();
+    if (label == null) {
+      all.remove(contact.key);
+      members[contact.key]?.remove('family');
+    } else {
+      all[contact.key] = label;
+      if (group('family') != null) {
+        (members[contact.key] ??= <String>{}).add('family');
+      }
+    }
+    await _saveGroups();
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_familyKey, jsonEncode(all));
+    notifyListeners();
+  }
+
   // ───────────── groups ─────────────
 
   Future<void> _loadGroups() async {

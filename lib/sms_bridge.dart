@@ -47,23 +47,42 @@ class SmsBridge {
   /// Decodes one page sent by the native side as typed columns.
   static List<MessageRecord> fromColumns(Object? raw) {
     if (raw is! Map) return const [];
-    final n = (raw['n'] as num?)?.toInt() ?? 0;
-    final ids = raw['ids'] as List, dates = raw['dates'] as List, types = raw['types'] as List;
-    final reads = raw['reads'] as List, status = raw['status'] as List;
-    final senders = raw['senders'] as List, bodies = raw['bodies'] as List;
-    return List<MessageRecord>.generate(n, (i) {
-      final type = (types[i] as num).toInt();
-      return MessageRecord(
-        id: (ids[i] as num).toInt(),
-        sender: senders[i] as String? ?? '',
-        body: bodies[i] as String? ?? '',
-        date: DateTime.fromMillisecondsSinceEpoch((dates[i] as num).toInt()),
-        outgoing: type != 1,
-        read: (reads[i] as num) != 0,
-        type: type,
-        delivery: (status[i] as num).toInt(),
-      );
-    }, growable: false);
+    final lists = <String, List>{};
+    for (final key in ['ids', 'dates', 'types', 'reads', 'status', 'senders', 'bodies']) {
+      final value = raw[key];
+      if (value is! List) return const [];
+      lists[key] = value;
+    }
+    final count = (raw['n'] as num?)?.toInt() ?? 0;
+    // Native IPC payloads are untrusted: never allocate from a claimed count
+    // unless all column lengths agree and the page has a reasonable bound.
+    if (count < 0 || count > 5000 ||
+        lists.values.any((values) => values.length < count)) { return const []; }
+    final out = <MessageRecord>[];
+    for (var i = 0; i < count; i++) {
+      final id = lists['ids']![i];
+      final date = lists['dates']![i];
+      final type = lists['types']![i];
+      final read = lists['reads']![i];
+      final status = lists['status']![i];
+      if (id is! num || date is! num || type is! num ||
+          read is! num || status is! num) { continue; }
+      try {
+        out.add(MessageRecord(
+          id: id.toInt(),
+          sender: lists['senders']![i]?.toString() ?? '',
+          body: lists['bodies']![i]?.toString() ?? '',
+          date: DateTime.fromMillisecondsSinceEpoch(date.toInt()),
+          outgoing: type.toInt() != 1,
+          read: read != 0,
+          type: type.toInt(),
+          delivery: status.toInt(),
+        ));
+      } catch (_) {
+        // Skip only this malformed record, not the entire inbox.
+      }
+    }
+    return out;
   }
 
   /// Newest [limit] messages (quick refresh after a change).
