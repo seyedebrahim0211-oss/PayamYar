@@ -347,7 +347,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
-        title: const Text('پیام جدید'),
+        title: Text(widget.lockGroupRecipients ? 'ارسال به گروه: ${groupName.text}' : 'پیام جدید'),
       ),
       body: Column(children: [
         Expanded(child: ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 24), children: [
