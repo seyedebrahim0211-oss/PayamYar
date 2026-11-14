@@ -27,6 +27,7 @@ const groupColors = [0xFFB4537A, 0xFF3A7CA5, 0xFFA17A37, 0xFF47765F, 0xFF75539A,
 /// Phone book state for the Contacts tab: list, search, groups, duplicates and photo cache.
 class ContactStore extends ChangeNotifier {
   static const _prefsKey = 'contact_groups_v1';
+  static const _birthdayKey = 'contact_jalali_birthdays_v1';
 
   List<PhoneContact> contacts = [];
   List<ContactGroup> groups = List.of(defaultGroups);
@@ -59,7 +60,21 @@ class ContactStore extends ChangeNotifier {
       canRead = p['read'] == true;
       canWrite = p['write'] == true;
       if (canRead) {
-        contacts = await ContactsBridge.list();
+        final native = await ContactsBridge.list();
+        final prefs = await SharedPreferences.getInstance();
+        Map<String, dynamic> saved = {};
+        try {
+          final raw = jsonDecode(prefs.getString(_birthdayKey) ?? '{}');
+          if (raw is Map) saved = raw.cast<String, dynamic>();
+        } catch (_) {}
+        contacts = [
+          for (final c in native)
+            c.withBirthdayOverride(
+              saved[c.key] is List && (saved[c.key] as List).length == 2
+                ? [0, (saved[c.key] as List)[0] as int, (saved[c.key] as List)[1] as int]
+                : null,
+            ),
+        ];
         _photos.clear();
       }
     } catch (e) {
@@ -291,6 +306,26 @@ class ContactStore extends ChangeNotifier {
       };
 
   int countIn(String groupId) => contacts.where((c) => members[c.key]?.contains(groupId) ?? false).length;
+
+  /// Local Jalali overrides for yearless contacts avoid Gregorian-leap shifts.
+  /// The Android Contacts provider itself only understands Gregorian --MM-DD.
+  Future<void> saveJalaliBirthday(PhoneContact c, List<int>? date) async {
+    final prefs = await SharedPreferences.getInstance();
+    Map<String, dynamic> saved = {};
+    try {
+      final raw = jsonDecode(prefs.getString(_birthdayKey) ?? '{}');
+      if (raw is Map) saved = raw.cast<String, dynamic>();
+    } catch (_) {}
+    if (date == null || date.length < 3 || date[0] != 0) {
+      saved.remove(c.key);
+    } else {
+      saved[c.key] = [date[1], date[2]];
+    }
+    await prefs.setString(_birthdayKey, jsonEncode(saved));
+    contacts = [for (final existing in contacts)
+      existing.key == c.key ? existing.withBirthdayOverride(date?.first == 0 ? date : null) : existing];
+    notifyListeners();
+  }
 
   Future<void> setGroups(PhoneContact c, Set<String> ids) async {
     members[c.key] = ids;
