@@ -169,7 +169,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
   String user = '';
   String line = MeliPayamak.defaultLine;
   double? credit;
-  bool creditVisible = false;
   String? error;
   bool loading = true;
   List<PanelMessage> inbox = const [];
@@ -206,7 +205,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _appVisible = state == AppLifecycleState.resumed;
-    if (!_appVisible && mounted) setState(() => creditVisible = false);
+    // Panel balance is operational credit, not private banking report data.
   }
 
   @override
@@ -464,18 +463,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
               Text('خط ${Jalali.digits(line)}', style: const TextStyle(color: Colors.white60, fontSize: 12)),
             ]),
             const SizedBox(height: 8),
-            Text(!creditVisible ? '•••••• پیامک' : credit == null ? '—' : '${Jalali.digits(credit!.toStringAsFixed(credit! % 1 == 0 ? 0 : 1))} پیامک',
+            Text(credit == null ? '—' : '${Jalali.digits(credit!.toStringAsFixed(credit! % 1 == 0 ? 0 : 1))} پیامک',
                 style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900)),
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: TextButton.icon(
-                onPressed: () => setState(() => creditVisible = !creditVisible),
-                icon: Icon(creditVisible ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                  color: Colors.white),
-                label: Text(creditVisible ? 'پنهان کردن موجودی' : 'نمایش موقت موجودی',
-                  style: const TextStyle(color: Colors.white)),
-              ),
-            ),
             if (error != null)
               const Padding(
                 padding: EdgeInsets.only(top: 4),
