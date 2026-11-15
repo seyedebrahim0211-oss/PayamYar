@@ -26,9 +26,11 @@ class _SupportInboxScreenState extends State<SupportInboxScreen> {
           return const Center(child: CircularProgressIndicator());
         }
         final ids = snapshot.data!;
-        if (ids.isEmpty) return const Center(child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text('هنوز گزارشی ثبت نشده است. گزارش خرابی را از تنظیمات ارسال کنید.')));
+        if (ids.isEmpty) {
+          return const Center(child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text('هنوز گزارشی ثبت نشده است. گزارش خرابی را از تنظیمات ارسال کنید.')));
+        }
         return ListView.builder(
           padding: const EdgeInsets.all(16),
           itemCount: ids.length,
