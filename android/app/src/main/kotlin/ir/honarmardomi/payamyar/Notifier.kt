@@ -305,8 +305,7 @@ object Notifier {
     } catch (_: Exception) { null }
 
     private fun bubble(c: Context, shortcutId: String): NotificationCompat.BubbleMetadata? {
-        if (Build.VERSION.SDK_INT < 30 ||
-            !(enabled(c, "notifyBubbles", false) || FloatingNotifications.enabled(c))) return null
+        if (Build.VERSION.SDK_INT < 30 || !enabled(c, "notifyBubbles", false)) return null
         // Android 11+ expects the *same* long-lived shortcut for both conversation
         // notification and bubble. The shortcut targets an embeddable BubbleActivity.
         return NotificationCompat.BubbleMetadata.Builder(shortcutId)
@@ -418,7 +417,7 @@ object Notifier {
                 builder.setShortcutId(shortcut).setLocusId(LocusIdCompat(shortcut))
                 // On Android 15 a background FGS may be blocked; native conversation bubbles
                 // remain the opt-in fallback without showing two bubbles when overlay succeeds.
-                if (!floating && (enabled(c, "notifyBubbles", false) || FloatingNotifications.enabled(c))) {
+                if (!floating && enabled(c, "notifyBubbles", false)) {
                     builder.setBubbleMetadata(bubble(c, shortcut))
                 }
             }
