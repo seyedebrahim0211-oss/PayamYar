@@ -229,10 +229,25 @@ class SmsBridge {
       (await _channel.invokeMethod<bool>('floatingPermission') ?? false);
   static Future<bool> enableFloating(bool enabled) async => supported &&
       (await _channel.invokeMethod<bool>('floatingEnable', {'enabled': enabled}) ?? false);
-  static Future<void> configureFloating({int? bubbleSize, int? textSize}) async {
+  static Future<void> configureFloating({
+    int? bubbleSize,
+    int? textSize,
+    int? bubbleSeconds,
+    double? bubbleOpacity,
+    int? bubbleStyle,
+    int? bubbleShape,
+    int? bubbleColor,
+  }) async {
     if (supported) {
-      await _channel.invokeMethod<void>('floatingConfigure',
-          {'bubbleSize': bubbleSize, 'textSize': textSize});
+      await _channel.invokeMethod<void>('floatingConfigure', {
+        'bubbleSize': bubbleSize,
+        'textSize': textSize,
+        'bubbleSeconds': bubbleSeconds,
+        'bubbleOpacity': bubbleOpacity,
+        'bubbleStyle': bubbleStyle,
+        'bubbleShape': bubbleShape,
+        'bubbleColor': bubbleColor,
+      });
     }
   }
 

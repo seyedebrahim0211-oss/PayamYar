@@ -74,7 +74,9 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
       }
       final ok = await SmsBridge.enableFloating(enabled);
       if (!ok) _floatingNotice('حباب شروع نشد؛ اجازه نمایش روی برنامه‌ها را بررسی کنید.');
-      if (ok && enabled) await widget.settings.updateNotify(notifyBubbles: false);
+      if (ok && enabled && !widget.settings.notifyBubbles) {
+        await widget.settings.updateNotify(notifyBubbles: true);
+      }
       await _loadFloating();
     } catch (_) {
       _floatingNotice('تغییر حالت اعلان انجام نشد؛ دوباره تلاش کنید.');
@@ -83,9 +85,15 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
     }
   }
 
-  Future<void> _floatingSize({int? bubble, int? text}) async {
+  Future<void> _floatingSize({
+    int? bubble, int? text, int? seconds, double? opacity,
+    int? style, int? shape, int? color,
+  }) async {
     try {
-      await SmsBridge.configureFloating(bubbleSize: bubble, textSize: text);
+      await SmsBridge.configureFloating(
+        bubbleSize: bubble, textSize: text, bubbleSeconds: seconds,
+        bubbleOpacity: opacity, bubbleStyle: style,
+        bubbleShape: shape, bubbleColor: color);
       await _loadFloating();
     } catch (_) { _floatingNotice('تنظیم ذخیره نشد.'); }
   }
@@ -193,8 +201,8 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                   SwitchListTile(
                     title: const Text('حباب و کارت شیشه‌ای مستقل'),
                     subtitle: Text(_floating['enabled'] == true
-                        ? 'فعال؛ حباب بیرون از برنامه دیده می‌شود. بکشید تا جابه‌جا شود؛ لمس کنید تا متن کامل باز شود.'
-                        : 'کارت بدون قاب سفید روی برنامه‌های دیگر؛ نیازمند اجازه نمایش روی برنامه‌ها'),
+                        ? 'فعال؛ حباب مخاطب فقط هنگام پیام جدید ظاهر می‌شود و سپس خودکار محو می‌شود.'
+                        : 'کارت شناور سفید با گوشه‌های گرد؛ نیازمند اجازه نمایش روی برنامه‌ها'),
                     secondary: Icon(Icons.chat_bubble_outline_rounded, color: scheme.primary),
                     value: _floating['enabled'] == true,
                     onChanged: !SmsBridge.supported || _floatingBusy ? null : _toggleFloating,
@@ -216,13 +224,82 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                         onChanged: (v) => setState(() => _floating['textSize'] = v.round()),
                         onChangeEnd: (v) => _floatingSize(text: v.round())),
                     ),
-                    const Padding(padding: EdgeInsets.all(12), child: Text(
-                      'رنگ، عرض، جای بالا یا پایین، زمان نمایش و حباب‌های تزئینی را از همین صفحه تغییر دهید. متن بلند قابل پیمایش است؛ لمس کارت زمان بسته‌شدن را متوقف می‌کند. برای خاموش‌کردن، از اعلان «حباب پیام‌یار فعال است» هم می‌توانید استفاده کنید.')),
+                    ListTile(
+                      title: const Text('مدت نمایش حباب مخاطب'),
+                      trailing: Text('${_floating['bubbleSeconds'] ?? 18} ثانیه'),
+                      subtitle: Slider(
+                        min: 8, max: 60, divisions: 13,
+                        value: ((_floating['bubbleSeconds'] as num?)?.toDouble() ?? 18).clamp(8, 60).toDouble(),
+                        onChanged: (v) => setState(() => _floating['bubbleSeconds'] = v.round()),
+                        onChangeEnd: (v) => _floatingSize(seconds: v.round()),
+                      ),
+                    ),
+                    ListTile(
+                      title: const Text('جنس حباب'),
+                      trailing: SegmentedButton<int>(
+                        showSelectedIcon: false,
+                        segments: const [
+                          ButtonSegment(value: 0, label: Text('شیشه‌ای')),
+                          ButtonSegment(value: 1, label: Text('رنگی')),
+                        ],
+                        selected: {(_floating['bubbleStyle'] as int?) ?? 0},
+                        onSelectionChanged: (v) {
+                          setState(() => _floating['bubbleStyle'] = v.first);
+                          _floatingSize(style: v.first);
+                        },
+                      ),
+                    ),
+                    ListTile(
+                      title: const Text('شکل حباب'),
+                      trailing: SegmentedButton<int>(
+                        showSelectedIcon: false,
+                        segments: const [
+                          ButtonSegment(value: 0, label: Text('دایره')),
+                          ButtonSegment(value: 1, label: Text('گردگوشه')),
+                        ],
+                        selected: {(_floating['bubbleShape'] as int?) ?? 0},
+                        onSelectionChanged: (v) {
+                          setState(() => _floating['bubbleShape'] = v.first);
+                          _floatingSize(shape: v.first);
+                        },
+                      ),
+                    ),
+                    ListTile(
+                      title: const Text('مات‌بودن حباب'),
+                      trailing: Text('${(((_floating['bubbleOpacity'] as num?)?.toDouble() ?? .92) * 100).round()}٪'),
+                      subtitle: Slider(
+                        min: .78, max: 1, divisions: 11,
+                        value: ((_floating['bubbleOpacity'] as num?)?.toDouble() ?? .92).clamp(.78, 1).toDouble(),
+                        onChanged: (v) => setState(() => _floating['bubbleOpacity'] = v),
+                        onChangeEnd: (v) => _floatingSize(opacity: v),
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                      child: Text('رنگ حباب مخاطب', style: TextStyle(fontWeight: FontWeight.w700)),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                      child: Wrap(spacing: 12, runSpacing: 12, children: [
+                        for (final color in palettes)
+                          _ColorDot(
+                            color: color,
+                            selected: _floating['bubbleColor'] == color.toARGB32(),
+                            onTap: () {
+                              setState(() => _floating['bubbleColor'] = color.toARGB32());
+                              _floatingSize(color: color.toARGB32());
+                            },
+                          ),
+                      ]),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Text('حباب مخصوص فرستنده آخرین پیام است و دائمی نمایش داده نمی‌شود. با لمس حباب کارت گفتگو باز می‌شود؛ اگر گوشی شروع سرویس شناور را در پس‌زمینه محدود کند، اعلان عادی اندروید باقی می‌ماند.'),
+                    ),
                   ],
-                  if (_floating['enabled'] != true)
-                    SwitchListTile(
-                      title: const Text('حباب استاندارد اندروید'),
-                      subtitle: const Text('گزینه جایگزین؛ وابسته به پشتیبانی گوشی و اجازه حباب در تنظیمات اندروید'),
+                  SwitchListTile(
+                      title: const Text('حباب پشتیبان اندروید'),
+                      subtitle: const Text('در صورت مسدودشدن شناور سفارشی، اندروید می‌تواند حباب رسمی گفتگو را نشان دهد؛ به مجوز حباب در تنظیمات گوشی نیاز دارد.'),
                       value: s.notifyBubbles,
                       onChanged: (v) => s.updateNotify(notifyBubbles: v),
                     ),
@@ -290,7 +367,8 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                     ),
                     ListTile(
                       leading: Icon(Icons.opacity_rounded, color: scheme.primary),
-                      title: const Text('شفافیت شیشه'),
+                      title: const Text('خوانایی و میزان مات‌بودن شیشه'),
+                       subtitle: const Text('پیش‌فرض ۹۰٪ برای خوانایی بهتر است'),
                       trailing: Text('$opacity٪'),
                     ),
                     Slider(

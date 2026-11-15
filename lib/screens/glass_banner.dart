@@ -234,6 +234,7 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
       AnimationController(vsync: this, duration: const Duration(seconds: 8));
   final _reply = TextEditingController();
   final _focus = FocusNode();
+  bool _expanded = false;
 
   @override
   void initState() {
@@ -250,6 +251,7 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
   @override
   void didUpdateWidget(GlassBannerCard oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.banner != widget.banner) _expanded = false;
     _syncBubbles();
   }
 
@@ -286,7 +288,7 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
     final tint = s.bannerColor;
     final minimal = s.bannerStyle == BannerStyle.minimal;
     final glass = s.bannerStyle == BannerStyle.glass;
-    final fg = minimal ? scheme.onSurface : Colors.white;
+    final fg = (minimal || glass) ? const Color(0xFF172E33) : Colors.white;
     final soft = fg.withValues(alpha: .72);
     final radius = BorderRadius.circular(26);
 
@@ -304,11 +306,11 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
           begin: AlignmentDirectional.topStart,
           end: AlignmentDirectional.bottomEnd,
           colors: [
-            Color.lerp(tint, Colors.black, .25)!.withValues(alpha: s.bannerOpacity),
-            tint.withValues(alpha: s.bannerOpacity * .62),
+            Colors.white.withValues(alpha: s.bannerOpacity),
+            const Color(0xFFEDF6F4).withValues(alpha: s.bannerOpacity),
           ],
         ),
-        border: Border.all(color: Colors.white.withValues(alpha: .38), width: 1.2),
+        border: Border.all(color: tint.withValues(alpha: .28), width: 1.1),
       );
     } else {
       decoration = BoxDecoration(
@@ -375,25 +377,34 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
                     Text('پیامیار • $clock', style: TextStyle(color: soft, fontSize: 11.5, height: 1.4)),
                   ]),
                 ),
-                if (widget.interactive)
+                if (_expanded && widget.interactive)
                   IconButton(
                     onPressed: widget.onClose,
                     visualDensity: VisualDensity.compact,
-                    tooltip: 'بستن',
-                    icon: Icon(Icons.close_rounded, color: soft, size: 20),
+                    tooltip: 'بستن اعلان',
+                    icon: Icon(Icons.close_rounded, color: soft, size: 18),
                   ),
+                IconButton(
+                  onPressed: widget.interactive
+                      ? () => setState(() => _expanded = !_expanded) : null,
+                  visualDensity: VisualDensity.compact,
+                  tooltip: _expanded ? 'جمع کردن اعلان' : 'نمایش متن کامل',
+                  icon: Icon(_expanded ? Icons.keyboard_arrow_up_rounded
+                      : Icons.keyboard_arrow_down_rounded, color: soft, size: 27),
+                ),
               ]),
               const SizedBox(height: 8),
               ConstrainedBox(
                 constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * .3),
                 child: SingleChildScrollView(
                   child: Text(b.body,
-                    maxLines: s.bannerCompact ? 4 : null,
-                    overflow: s.bannerCompact ? TextOverflow.ellipsis : TextOverflow.visible,
+                    maxLines: _expanded || !s.bannerCompact ? null : 2,
+                    overflow: _expanded || !s.bannerCompact
+                        ? TextOverflow.visible : TextOverflow.ellipsis,
                     style: TextStyle(color: fg, fontSize: 14, height: 1.65)),
                 ),
               ),
-              if (code != null && s.notifyOtpCopy) ...[
+              if (code != null && s.notifyOtpCopy && (_expanded || !s.bannerCompact)) ...[
                 const SizedBox(height: 8),
                 Align(
                   alignment: AlignmentDirectional.centerStart,
@@ -406,7 +417,7 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
                   ),
                 ),
               ],
-              if (showReply && !s.bannerCompact) ...[
+              if (showReply && (_expanded || !s.bannerCompact)) ...[
                 const SizedBox(height: 10),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -419,7 +430,7 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
                       ),
                   ]),
                 ),
-                if (widget.interactive && !s.bannerCompact) ...[
+                if (widget.interactive && (_expanded || !s.bannerCompact)) ...[
                   const SizedBox(height: 8),
                   TextField(
                     controller: _reply,
@@ -433,7 +444,9 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
                     decoration: InputDecoration(
                       isDense: true,
                       filled: true,
-                      fillColor: minimal ? scheme.surfaceContainerHighest : Colors.white.withValues(alpha: .16),
+                      fillColor: minimal ? scheme.surfaceContainerHighest
+                           : glass ? tint.withValues(alpha: .09)
+                           : Colors.white.withValues(alpha: .16),
                       hintText: 'پاسخ سریع…',
                       hintStyle: TextStyle(color: soft),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -463,7 +476,8 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
         decoration: BoxDecoration(
           borderRadius: radius,
           boxShadow: [
-            BoxShadow(color: (minimal ? Colors.black : tint).withValues(alpha: .28), blurRadius: 28, offset: const Offset(0, 10)),
+            BoxShadow(color: (minimal || glass ? Colors.black : tint).withValues(alpha: .18),
+                blurRadius: 26, offset: const Offset(0, 10)),
           ],
         ),
         child: ClipRRect(
@@ -537,9 +551,13 @@ class _GlassChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Material(
-      color: minimal ? scheme.secondaryContainer : Colors.white.withValues(alpha: .18),
+      color: minimal ? scheme.secondaryContainer
+          : fg == const Color(0xFF172E33) ? const Color(0x15087F81)
+          : Colors.white.withValues(alpha: .18),
       shape: StadiumBorder(
-          side: BorderSide(color: minimal ? Colors.transparent : Colors.white.withValues(alpha: .35))),
+          side: BorderSide(color: minimal ? Colors.transparent
+              : fg == const Color(0xFF172E33) ? const Color(0x44087F81)
+              : Colors.white.withValues(alpha: .35))),
       child: InkWell(
         customBorder: const StadiumBorder(),
         onTap: onTap,

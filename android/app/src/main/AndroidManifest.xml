@@ -58,7 +58,7 @@
         </receiver>
         <service android:name=".FloatingNotifications" android:exported="false" android:foregroundServiceType="specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="User-enabled persistent draggable SMS chat head and accessible floating message cards; stopped from its ongoing notification."/>
+                android:value="User-enabled transient sender chat head for incoming SMS and accessible floating cards; automatically stops after a configured timeout."/>
         </service>
         <service android:name=".RespondService" android:exported="true" android:permission="android.permission.SEND_RESPOND_VIA_MESSAGE">
             <intent-filter>
