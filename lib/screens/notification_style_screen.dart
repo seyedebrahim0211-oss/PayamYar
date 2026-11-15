@@ -373,9 +373,9 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                     ),
                     Slider(
                       value: s.bannerOpacity,
-                      min: .15,
-                      max: .95,
-                      divisions: 16,
+                      min: .78,
+                      max: 1,
+                      divisions: 11,
                       onChanged: (v) => s.updateNotify(bannerOpacity: v),
                     ),
                   ],
