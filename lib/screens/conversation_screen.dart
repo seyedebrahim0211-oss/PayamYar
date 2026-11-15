@@ -463,7 +463,7 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
                     child: Row(children: [
                       Expanded(child: Text(matches.isEmpty ? 'پیامی با این عبارت پیدا نشد'
-                        : 'نتیجه ' + Jalali.digits(_matchIndex.clamp(0, matches.length - 1) + 1) + ' از ' + Jalali.digits(matches.length),
+                        : 'نتیجه ${Jalali.digits(_matchIndex.clamp(0, matches.length - 1) + 1)} از ${Jalali.digits(matches.length)}',
                         style: TextStyle(color: scheme.primary, fontSize: 12))),
                       IconButton(tooltip: 'نتیجه جدیدتر',
                         icon: const Icon(Icons.keyboard_arrow_down_rounded),
