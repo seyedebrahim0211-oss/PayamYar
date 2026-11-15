@@ -36,6 +36,25 @@ class _ReportsScreenState extends State<ReportsScreen> with WidgetsBindingObserv
   ReportPeriod period = ReportPeriod.month;
   bool allTransactions = false;
   bool revealFinancialAmounts = false;
+  // Financial grouping is immutable for a report revision; do not re-sort banks
+  // each time an SMS progress event or the UI visibility toggle rebuilds the page.
+  int _bankCacheRevision = -1;
+  Map<String, List<AccountBalance>> _bankCache = {};
+  List<String> _bankOrder = const [];
+
+  void _cacheBanks(ReportData report) {
+    if (_bankCacheRevision == report.revision) return;
+    final groups = <String, List<AccountBalance>>{};
+    for (final balance in report.data.balances) {
+      (groups[balance.bank] ??= <AccountBalance>[]).add(balance);
+    }
+    final order = groups.keys.toList()
+      ..sort((a, b) => FinanceLogic.totalBalance(groups[b]!)
+          .compareTo(FinanceLogic.totalBalance(groups[a]!)));
+    _bankCache = groups;
+    _bankOrder = order;
+    _bankCacheRevision = report.revision;
+  }
 
   @override
   void initState() {
@@ -137,12 +156,9 @@ class _ReportsScreenState extends State<ReportsScreen> with WidgetsBindingObserv
         final scheme = Theme.of(context).colorScheme;
         final data = store.report.data;
         final p = data.periods[period];
-        final byBank = <String, List<AccountBalance>>{};
-        for (final b in data.balances) {
-          (byBank[b.bank] ??= []).add(b);
-        }
-        final banks = byBank.keys.toList()
-          ..sort((a, b) => FinanceLogic.totalBalance(byBank[b]!).compareTo(FinanceLogic.totalBalance(byBank[a]!)));
+        _cacheBanks(store.report);
+        final byBank = _bankCache;
+        final banks = _bankOrder;
         return Scaffold(
           appBar: AppBar(
             title: const Text('گزارش‌ها'),
