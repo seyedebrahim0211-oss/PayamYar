@@ -101,7 +101,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         onHorizontalDragEnd: widget.settings.swipeTabs ? (details) {
           final speed = details.primaryVelocity ?? 0;
           if (speed.abs() < 500) return;
-          final direction = speed < 0 ? 1 : -1;
+          final isRtl = Directionality.of(context) == TextDirection.rtl;
+          final direction = isRtl ? (speed > 0 ? 1 : -1) : (speed < 0 ? 1 : -1);
           final next = (tab + direction).clamp(0, 4);
           if (next != tab && mounted) setState(() => tab = next);
         } : null,
@@ -260,12 +261,12 @@ class _ConversationsPageState extends State<ConversationsPage> {
                 : Row(mainAxisSize: MainAxisSize.min, children: [
                     const BrandTile(size: 42),
                     const SizedBox(width: 12),
-                    Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                    Flexible(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                       const Text('پیامیار', style: TextStyle(fontFamily: 'Vazirmatn', fontWeight: FontWeight.w900, fontSize: 21)),
                       Text(unread > 0 ? '${Jalali.digits(unread)} گفتگوی خوانده‌نشده' : 'همه پیام‌ها خوانده شده',
                         style: TextStyle(fontSize: 12, fontWeight: FontWeight.w400,
-                          color: unread > 0 ? scheme.primary : scheme.onSurfaceVariant)),
-                    ]),
+                          color: unread > 0 ? scheme.primary : scheme.onSurfaceVariant), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    ])),
                   ]),
             actions: [
               if (!widget.archive)
@@ -350,7 +351,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
                   title: query.isNotEmpty ? 'نتیجه‌ای پیدا نشد' : widget.archive ? 'بایگانی خالی است' : 'پیامی وجود ندارد',
                   subtitle: widget.archive ? 'گفتگوها را با کشیدن به کنار بایگانی کنید.' : null)),
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(8, 0, 8, 96),
+                padding: EdgeInsets.fromLTRB(8, 0, 8, 96 + MediaQuery.paddingOf(context).bottom),
                 sliver: SliverList.builder(
                   itemCount: list.length,
                   itemBuilder: (context, i) {

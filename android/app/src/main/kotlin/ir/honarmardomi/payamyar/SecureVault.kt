@@ -1,6 +1,8 @@
 package ir.honarmardomi.payamyar
 
 import android.content.Context
+import android.os.SystemClock
+import android.provider.Settings
 import android.os.Handler
 import android.os.Looper
 import android.security.keystore.KeyGenParameterSpec
@@ -69,7 +71,7 @@ object SecureVault {
     }
 
     @Synchronized fun remove(c: Context, name: String) {
-        prefs(c).edit().remove("v:$name").remove("fail:$name").remove("until:$name").commit()
+        prefs(c).edit().remove("v:$name").remove("fail:$name").remove("until:$name").remove("mono:$name").remove("boot:$name").commit()
     }
 
     private fun pbkdf2(pin: String, salt: ByteArray): ByteArray {
@@ -84,14 +86,31 @@ object SecureVault {
         val salt = ByteArray(16).also { random.nextBytes(it) }
         val hash = pbkdf2(pin, salt)
         put(c, "pin_$name", Base64.encodeToString(salt, Base64.NO_WRAP) + ":" + Base64.encodeToString(hash, Base64.NO_WRAP))
-        prefs(c).edit().remove("fail:$name").remove("until:$name").commit()
+        prefs(c).edit().remove("fail:$name").remove("until:$name").remove("mono:$name").remove("boot:$name").commit()
     }
 
     fun hasPin(c: Context, name: String) = prefs(c).contains("v:pin_$name")
 
     /** Seconds the PIN is still locked after too many wrong attempts (0 = free). */
-    fun lockedFor(c: Context, name: String): Long =
-        ((prefs(c).getLong("until:$name", 0) - System.currentTimeMillis()) / 1000).coerceAtLeast(0)
+    @Synchronized fun lockedFor(c: Context, name: String): Long {
+        val p = prefs(c)
+        val now = SystemClock.elapsedRealtime()
+        val boot = Settings.Global.getInt(c.contentResolver, Settings.Global.BOOT_COUNT, -1)
+        val until = p.getLong("mono:$name", 0)
+        val legacy = p.contains("until:$name")
+        if (until == 0L && !legacy) return 0L
+        val duration = NotificationPolicy.lockoutMillis(p.getInt("fail:$name", 5))
+        // A new boot or a legacy timestamp starts a full bounded cooldown once;
+        // neither changing the wall clock nor rebooting makes an active lock expire.
+        if (legacy || p.getInt("boot:$name", -2) != boot) {
+            p.edit().remove("until:$name").putLong("mono:$name", now + duration)
+                .putInt("boot:$name", boot).commit()
+            return duration / 1000
+        }
+        val seconds = NotificationPolicy.remainingSeconds(until, now)
+        if (seconds == 0L) p.edit().remove("mono:$name").remove("boot:$name").commit()
+        return seconds
+    }
 
     /** "ok", "wrong:<attemptsLeft>", "locked:<seconds>" or "none". */
     @Synchronized fun verifyPin(c: Context, name: String, pin: String): String {
@@ -107,15 +126,16 @@ object SecureVault {
         val ok = MessageDigest.isEqual(expected, pbkdf2(pin, salt))
         val p = prefs(c)
         if (ok) {
-            p.edit().remove("fail:$name").remove("until:$name").commit()
+            p.edit().remove("fail:$name").remove("until:$name").remove("mono:$name").remove("boot:$name").commit()
             return "ok"
         }
         val fails = p.getInt("fail:$name", 0) + 1
         val edit = p.edit().putInt("fail:$name", fails)
         if (fails >= 5) {
             // 5 wrong → 1 min, then 5, 15, 60 minutes.
-            val minutes = when (fails) { 5 -> 1L; 6 -> 5L; 7 -> 15L; else -> 60L }
-            edit.putLong("until:$name", System.currentTimeMillis() + minutes * 60_000)
+            edit.putLong("mono:$name", SystemClock.elapsedRealtime() + NotificationPolicy.lockoutMillis(fails))
+                .putInt("boot:$name", Settings.Global.getInt(c.contentResolver, Settings.Global.BOOT_COUNT, -1))
+                .remove("until:$name")
         }
         edit.commit()
         return if (fails >= 5) "locked:${lockedFor(c, name)}" else "wrong:${5 - fails}"

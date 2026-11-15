@@ -30,7 +30,6 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.ContactsContract
 import android.widget.Toast
-import android.widget.RemoteViews
 import io.flutter.plugin.common.MethodChannel
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -53,6 +52,7 @@ import androidx.core.graphics.drawable.IconCompat
 object Notifier {
     // V2 uses fresh channels; Android never updates sound on an existing channel.
     const val INCOMING_CHANNEL = "incoming_sms_v4"
+    const val OVERLAY_CHANNEL = "incoming_sms_floating_v1"
     const val SENT_CHANNEL = "sent_sms_v2"
     private const val CHANNEL = INCOMING_CHANNEL
     const val ACTION_REPLY = "ir.honarmardomi.payamyar.NOTIFY_REPLY"
@@ -216,99 +216,6 @@ object Notifier {
     private fun profileBitmap(c: Context, address: String, label: String): Bitmap =
         styledAvatar(c, contactPhoto(c, address) ?: letterAvatar(label, address))
 
-    /** A small, bounded bitmap keeps custom RemoteViews below Android's IPC size limits.
-     * Native notifications cannot apply Flutter BackdropFilter: this is a static frosted
-     * approximation of the same palette, with matching reflection and subtle bubbles.
-     */
-    private fun glassBackdrop(c: Context, expanded: Boolean): Bitmap {
-        val w = 360
-        val h = if (expanded) 204 else 116
-        val result = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(result)
-        val style = number(c, "bannerStyle", 0L).toInt()
-        val tint = accent(c)
-        val base = when (style) {
-            2 -> Color.rgb(247, 249, 247) // minimal
-            1 -> lighten(tint, .14f)      // vivid
-            else -> lighten(tint, .08f)   // frosted glass
-        }
-        val end = when (style) {
-            2 -> Color.rgb(234, 242, 240)
-            1 -> darken(tint, .24f)
-            else -> darken(tint, .40f)
-        }
-        val bounds = RectF(1.5f, 1.5f, w - 1.5f, h - 1.5f)
-        val radius = 26f
-        val clip = Path().apply { addRoundRect(bounds, radius, radius, Path.Direction.CW) }
-        canvas.save()
-        canvas.clipPath(clip)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        paint.shader = LinearGradient(0f, 0f, w.toFloat(), h.toFloat(), base, end, Shader.TileMode.CLAMP)
-        canvas.drawRect(bounds, paint)
-        paint.shader = null
-        if (style == 0) {
-            val value = prefs(c).all["flutter.bannerOpacity"]
-            val opacity = when (value) {
-                is Number -> value.toFloat()
-                is String -> value.toFloatOrNull() ?: .5f
-                else -> .5f
-            }.coerceIn(.15f, .95f)
-            paint.shader = LinearGradient(0f, 0f, 0f, h * .78f,
-                Color.argb((opacity * 105f).toInt(), 255, 255, 255), Color.TRANSPARENT, Shader.TileMode.CLAMP)
-            canvas.drawRect(bounds, paint)
-            paint.shader = null
-        }
-        if (enabled(c, "bannerBubbles") && style != 2) {
-            val bubble = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                setStyle(Paint.Style.STROKE)
-                strokeWidth = 1.5f
-                color = 0x55FFFFFF.toInt()
-            }
-            for (i in 0 until 13) {
-                val x = ((i * 73 + 39) % w).toFloat()
-                val y = ((i * 47 + 27) % h).toFloat()
-                val r = (i % 4 + 3) * 3f
-                canvas.drawCircle(x, y, r, bubble)
-                paint.color = 0x18FFFFFF
-                canvas.drawCircle(x - r * .32f, y - r * .36f, r * .20f, paint)
-            }
-        }
-        canvas.restore()
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 1f
-        paint.color = if (style == 2) 0x3387B6AA else 0x28FFFFFF
-        canvas.drawRoundRect(bounds, radius, radius, paint)
-        return result
-    }
-
-    private fun fillGlassView(c: Context, layout: Int, name: String, text: String,
-                              time: Long, avatar: Bitmap, address: String,
-                              code: String?, expanded: Boolean, open: PendingIntent): RemoteViews {
-        val view = RemoteViews(c.packageName, layout)
-        val style = number(c, "bannerStyle", 0L).toInt()
-        val fg = if (style == 2) Color.rgb(32, 53, 53) else Color.WHITE
-        val muted = if (style == 2) Color.rgb(90, 110, 108) else 0xDCF5F6F3.toInt()
-        view.setImageViewBitmap(R.id.glass_backdrop, glassBackdrop(c, expanded))
-        view.setImageViewBitmap(R.id.glass_avatar, avatar)
-        view.setTextViewText(R.id.glass_sender, name.take(80))
-        view.setTextViewText(R.id.glass_meta, "پیام‌یار • پیامک")
-        view.setTextViewText(R.id.glass_clock,
-            java.text.SimpleDateFormat("HH:mm", java.util.Locale("fa", "IR")).format(java.util.Date(time)))
-        view.setTextViewText(R.id.glass_preview, text)
-        for (id in intArrayOf(R.id.glass_sender, R.id.glass_preview)) view.setTextColor(id, fg)
-        for (id in intArrayOf(R.id.glass_meta, R.id.glass_clock)) view.setTextColor(id, muted)
-        view.setOnClickPendingIntent(R.id.glass_frame, open)
-        if (code == null || !expanded) {
-            view.setViewVisibility(R.id.glass_code, android.view.View.GONE)
-        } else {
-            view.setTextViewText(R.id.glass_code, "کپی کد $code")
-            view.setTextColor(R.id.glass_code, fg)
-            view.setViewVisibility(R.id.glass_code, android.view.View.VISIBLE)
-            view.setOnClickPendingIntent(R.id.glass_code, broadcast(c, ACTION_COPY, address, code))
-        }
-        return view
-    }
-
     private fun broadcast(c: Context, action: String, address: String, extra: String? = null, mutable: Boolean = false): PendingIntent {
         val intent = Intent(c, NotifyActionReceiver::class.java).setAction(action)
             .setData(Uri.parse("payamyar:notify/" + Uri.encode(address) + "/" + action))
@@ -332,6 +239,12 @@ object Notifier {
             setSound(sound, audio)
             lockscreenVisibility = android.app.Notification.VISIBILITY_PRIVATE
             if (Build.VERSION.SDK_INT >= 29) setAllowBubbles(true)
+        })
+        manager.createNotificationChannel(NotificationChannel(OVERLAY_CHANNEL, "پیام‌ها هنگام حباب شناور", NotificationManager.IMPORTANCE_DEFAULT).apply {
+            description = "صدای پیام و سابقه در نوار اعلان؛ کارت شیشه‌ای توسط حباب شناور نمایش داده می‌شود"
+            setSound(sound, audio)
+            enableVibration(true)
+            lockscreenVisibility = android.app.Notification.VISIBILITY_PRIVATE
         })
         manager.createNotificationChannel(NotificationChannel(SENT_CHANNEL, "تأیید ارسال پیام", NotificationManager.IMPORTANCE_DEFAULT).apply {
             description = "صدای تأیید پذیرش پیامک توسط شبکه؛ قابل تغییر از تنظیمات اعلان گوشی"
@@ -408,11 +321,12 @@ object Notifier {
      */
     fun incoming(c: Context, address: String, contact: String?, body: String, time: Long, forceSystem: Boolean = false) {
         if (!enabled(c, "notifyIncoming")) return
-        val preview = enabled(c, "notifyPreview")
-        val name = contact?.takeIf { it.isNotBlank() } ?: address
+        val appLocked = enabled(c, "appLock", false)
+        val preview = enabled(c, "notifyPreview") && !appLocked
+        val name = if (appLocked) "پیام‌یار" else contact?.takeIf { it.isNotBlank() } ?: address
         val text = if (preview) body else "پیامک جدید"
         val code = if (preview && enabled(c, "notifyOtpCopy")) otp(body) else null
-        val reply = canReply(address) && enabled(c, "notifyQuickReply")
+        val reply = canReply(address) && enabled(c, "notifyQuickReply") && !appLocked
 
         val front = MainActivity.foregroundChannel
         if (!forceSystem && front != null && enabled(c, "notifyInApp")) {
@@ -441,17 +355,24 @@ object Notifier {
 
     private fun systemIncoming(c: Context, address: String, name: String, text: String,
                                time: Long, code: String?, reply: Boolean) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            Handler(Looper.getMainLooper()).post { systemIncoming(c.applicationContext, address, name, text, time, code, reply) }
+            return
+        }
         configureChannels(c)
         val manager = c.getSystemService(NotificationManager::class.java)
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(c, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        val floating = FloatingNotifications.show(c, address, name, text, address == "+989000000000")
+        val deliveryChannel = if (floating) OVERLAY_CHANNEL else CHANNEL
         val id = idFor(address)
-        val picture = profileBitmap(c, address, name)
+        val picture = if (enabled(c, "appLock", false)) styledAvatar(c, letterAvatar("پ", "private"))
+            else profileBitmap(c, address, name)
         // MessagingStyle retains conversation semantics and unread message history.
         val sender = Person.Builder().setName(name).setKey(address)
             .setIcon(IconCompat.createWithBitmap(picture)).setImportant(true).build()
 
         // Stack this message under earlier unread ones from the same sender.
-        val existing = if (enabled(c, "notifyPreview"))
+        val existing = if (enabled(c, "notifyPreview") && !enabled(c, "appLock", false))
             manager.activeNotifications.firstOrNull { it.id == id }?.notification else null
         val style = existing?.let { NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(it) }
             ?: NotificationCompat.MessagingStyle(Person.Builder().setName("شما").build())
@@ -469,7 +390,7 @@ object Notifier {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
         val color = accent(c)
-        val builder = NotificationCompat.Builder(c, CHANNEL)
+        val builder = NotificationCompat.Builder(c, deliveryChannel)
             .setSmallIcon(R.drawable.ic_stat_payamyar)
             .setColor(color)
             .setStyle(style)
@@ -478,7 +399,7 @@ object Notifier {
             .setContentTitle(name).setContentText(text)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setGroup("payamyar_incoming_sms")
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(if (floating) NotificationCompat.PRIORITY_DEFAULT else NotificationCompat.PRIORITY_HIGH)
             .setWhen(time).setShowWhen(true)
             .setContentIntent(open).setAutoCancel(true)
             .setSilent(SentSound.quietNow(c))
@@ -489,32 +410,17 @@ object Notifier {
 
 
 
-        if (!sample && enabled(c, "notifyBubbles", false)) {
+        if (!sample && !enabled(c, "appLock", false)) {
             val shortcut = conversationShortcut(c, address, name, sender,
                 IconCompat.createWithAdaptiveBitmap(adaptive(c, picture)))
             if (shortcut != null) {
                 builder.setShortcutId(shortcut).setLocusId(LocusIdCompat(shortcut))
-                builder.setBubbleMetadata(bubble(c, shortcut))
+                if (!floating && enabled(c, "notifyBubbles", false)) builder.setBubbleMetadata(bubble(c, shortcut))
             }
         }
 
-        // Large text uses the accessible system template; fixed custom slots cannot grow.
-        if (c.resources.configuration.fontScale <= 1.15f) try {
-            val compact = fillGlassView(c, R.layout.payamyar_notification_glass,
-                name, text, time, picture, address, code, false, open)
-            val headsUp = fillGlassView(c, R.layout.payamyar_notification_heads_up,
-                name, text, time, picture, address, code, false, open)
-            val history = style.messages.takeLast(4).asReversed().joinToString("\n") { it.text.toString() }
-            val expanded = fillGlassView(c, R.layout.payamyar_notification_expanded,
-                name, history, time, picture, address, code, true, open)
-            builder.setCustomContentView(compact)
-            builder.setCustomHeadsUpContentView(headsUp)
-            builder.setCustomBigContentView(expanded)
-        } catch (_: Exception) {
-            builder.setCustomContentView(null).setCustomHeadsUpContentView(null)
-                .setCustomBigContentView(null)
-        }
-
+        // The system shade uses MessagingStyle only: its OEM-owned layout handles large
+        // fonts, accessibility and lock-screen redaction. Glass is a separate overlay window.
         if (code != null) {
             builder.addAction(NotificationCompat.Action.Builder(0, "📋 کپی کد " + code, broadcast(c, ACTION_COPY, address, code)).build())
         }
@@ -528,14 +434,7 @@ object Notifier {
         }
         builder.addAction(NotificationCompat.Action.Builder(0, "✓ خوانده شد", broadcast(c, ACTION_READ, address))
             .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_MARK_AS_READ).setShowsUserInterface(false).build())
-        try {
-            NotificationManagerCompat.from(c).notify(id, builder.build())
-        } catch (_: RuntimeException) {
-            // OEM rejection must not lose the SMS alert; retain actions and message history.
-            builder.setCustomContentView(null).setCustomHeadsUpContentView(null)
-                .setCustomBigContentView(null)
-            NotificationManagerCompat.from(c).notify(id, builder.build())
-        }
+        NotificationManagerCompat.from(c).notify(id, builder.build())
     }
 
     /** Sample Android notification. No message is sent, and it expires automatically. */
@@ -551,7 +450,7 @@ object Notifier {
                 .getNotificationChannel(CHANNEL)?.importance == NotificationManager.IMPORTANCE_NONE) return false
         val address = "+989000000000"
         val body = "سلام! این نمونه اعلان شیشه‌ای پیام‌یار است. کد آزمایشی: 12345"
-        val showingBody = enabled(c, "notifyPreview")
+        val showingBody = enabled(c, "notifyPreview") && !enabled(c, "appLock", false)
         systemIncoming(c, address, "پیام‌یار", if (showingBody) body else "پیامک جدید",
             System.currentTimeMillis(), if (showingBody && enabled(c, "notifyOtpCopy")) "12345" else null, false)
         val token = ++sampleCounter
@@ -561,7 +460,17 @@ object Notifier {
         return true
     }
 
+    fun redactForLock(c: Context) {
+        if (!enabled(c, "appLock", false)) return
+        val manager = c.getSystemService(NotificationManager::class.java)
+        for (item in manager.activeNotifications) {
+            if (item.notification.category == NotificationCompat.CATEGORY_MESSAGE) manager.cancel(item.id)
+        }
+        FloatingNotifications.refresh()
+    }
+
     fun cancel(c: Context, address: String) {
+        FloatingNotifications.clear(address)
         c.getSystemService(NotificationManager::class.java).cancel(idFor(address))
     }
 }
@@ -569,6 +478,11 @@ object Notifier {
 class NotifyActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val address = intent.getStringExtra("address") ?: return
+        if (context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                .getBoolean("flutter.appLock", false) && intent.action != Notifier.ACTION_READ) {
+            Toast.makeText(context, "برای پاسخ یا کپی کد، قفل پیام‌یار را باز کنید", Toast.LENGTH_SHORT).show()
+            return
+        }
         when (intent.action) {
             Notifier.ACTION_COPY -> {
                 val code = intent.getStringExtra("extra") ?: return
