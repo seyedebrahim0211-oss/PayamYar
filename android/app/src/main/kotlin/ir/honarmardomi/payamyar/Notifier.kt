@@ -415,7 +415,11 @@ object Notifier {
                 IconCompat.createWithAdaptiveBitmap(adaptive(c, picture)))
             if (shortcut != null) {
                 builder.setShortcutId(shortcut).setLocusId(LocusIdCompat(shortcut))
-                if (!floating && enabled(c, "notifyBubbles", false)) builder.setBubbleMetadata(bubble(c, shortcut))
+                // On Android 15 a background FGS may be blocked; native conversation bubbles
+                // remain the opt-in fallback without showing two bubbles when overlay succeeds.
+                if (!floating && (enabled(c, "notifyBubbles", false) || FloatingNotifications.enabled(c))) {
+                    builder.setBubbleMetadata(bubble(c, shortcut))
+                }
             }
         }
 
