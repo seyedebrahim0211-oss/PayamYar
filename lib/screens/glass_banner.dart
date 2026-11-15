@@ -286,7 +286,7 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
     final tint = s.bannerColor;
     final minimal = s.bannerStyle == BannerStyle.minimal;
     final glass = s.bannerStyle == BannerStyle.glass;
-    final fg = minimal ? scheme.onSurface : Colors.white;
+    final fg = (minimal || glass) ? const Color(0xFF172E33) : Colors.white;
     final soft = fg.withValues(alpha: .72);
     final radius = BorderRadius.circular(26);
 
@@ -304,11 +304,11 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
           begin: AlignmentDirectional.topStart,
           end: AlignmentDirectional.bottomEnd,
           colors: [
-            Color.lerp(tint, Colors.black, .25)!.withValues(alpha: s.bannerOpacity),
-            tint.withValues(alpha: s.bannerOpacity * .62),
+            Colors.white.withValues(alpha: s.bannerOpacity),
+            const Color(0xFFEDF6F4).withValues(alpha: s.bannerOpacity),
           ],
         ),
-        border: Border.all(color: Colors.white.withValues(alpha: .38), width: 1.2),
+        border: Border.all(color: tint.withValues(alpha: .28), width: 1.1),
       );
     } else {
       decoration = BoxDecoration(
@@ -433,7 +433,9 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
                     decoration: InputDecoration(
                       isDense: true,
                       filled: true,
-                      fillColor: minimal ? scheme.surfaceContainerHighest : Colors.white.withValues(alpha: .16),
+                      fillColor: minimal ? scheme.surfaceContainerHighest
+                           : glass ? tint.withValues(alpha: .09)
+                           : Colors.white.withValues(alpha: .16),
                       hintText: 'پاسخ سریع…',
                       hintStyle: TextStyle(color: soft),
                       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -463,7 +465,8 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
         decoration: BoxDecoration(
           borderRadius: radius,
           boxShadow: [
-            BoxShadow(color: (minimal ? Colors.black : tint).withValues(alpha: .28), blurRadius: 28, offset: const Offset(0, 10)),
+            BoxShadow(color: (minimal || glass ? Colors.black : tint).withValues(alpha: .18),
+                blurRadius: 26, offset: const Offset(0, 10)),
           ],
         ),
         child: ClipRRect(
@@ -537,9 +540,13 @@ class _GlassChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Material(
-      color: minimal ? scheme.secondaryContainer : Colors.white.withValues(alpha: .18),
+      color: minimal ? scheme.secondaryContainer
+          : fg == const Color(0xFF172E33) ? const Color(0x15087F81)
+          : Colors.white.withValues(alpha: .18),
       shape: StadiumBorder(
-          side: BorderSide(color: minimal ? Colors.transparent : Colors.white.withValues(alpha: .35))),
+          side: BorderSide(color: minimal ? Colors.transparent
+              : fg == const Color(0xFF172E33) ? const Color(0x44087F81)
+              : Colors.white.withValues(alpha: .35))),
       child: InkWell(
         customBorder: const StadiumBorder(),
         onTap: onTap,
