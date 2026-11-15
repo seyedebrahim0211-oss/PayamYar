@@ -290,7 +290,7 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
     final glass = s.bannerStyle == BannerStyle.glass;
     final fg = minimal ? const Color(0xFF172E33) : Colors.white;
     final soft = fg.withValues(alpha: .72);
-    final radius = BorderRadius.circular(26);
+    final radius = BorderRadius.circular(s.bannerCorner);
 
     final Decoration decoration;
     if (minimal) {
@@ -310,7 +310,7 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
             const Color(0xFF063B44).withValues(alpha: s.bannerOpacity),
           ],
         ),
-        border: Border.all(color: const Color(0xFFB3E7DA).withValues(alpha: .7), width: 1.1),
+        border: Border.all(color: const Color(0xFFB3E7DA).withValues(alpha: s.bannerEdge), width: 1.1 + s.bannerEdge),
       );
     } else {
       decoration = BoxDecoration(
@@ -355,7 +355,7 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [Colors.white.withValues(alpha: .26), Colors.white.withValues(alpha: 0)],
+                    colors: [Colors.white.withValues(alpha: s.bannerShine * .48), Colors.white.withValues(alpha: 0)],
                   ),
                 ),
               ),
@@ -483,15 +483,16 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
         child: DecoratedBox(
           decoration: BoxDecoration(
             borderRadius: radius,
-            gradient: glass ? const LinearGradient(
+            gradient: glass ? LinearGradient(
               begin: Alignment.topRight, end: Alignment.bottomLeft,
-              colors: [Color(0xFF83C7BD), Color(0xFFD2E0BF), Color(0xFF62AFA9)],
+              colors: [Color.lerp(tint, const Color(0xFFCBEBDA), .65)!,
+                const Color(0xFFD2E0BF), Color.lerp(tint, const Color(0xFF62AFA9), .4)!],
             ) : null,
           ),
           child: Padding(
-            padding: EdgeInsets.all(glass ? 5 : 0),
+            padding: EdgeInsets.all(glass ? 2 + s.bannerEdge * 4 : 0),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(glass ? 21 : 26),
+              borderRadius: BorderRadius.circular(glass ? s.bannerCorner - 5 : s.bannerCorner),
               child: InkWell(onTap: widget.interactive ? widget.onTap : null, child: card),
             ),
           ),

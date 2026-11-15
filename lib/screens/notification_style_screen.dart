@@ -74,8 +74,8 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
       }
       final ok = await SmsBridge.enableFloating(enabled);
       if (!ok) _floatingNotice('حباب شروع نشد؛ اجازه نمایش روی برنامه‌ها را بررسی کنید.');
-      if (ok && enabled && !widget.settings.notifyBubbles) {
-        await widget.settings.updateNotify(notifyBubbles: true);
+      if (ok && enabled) {
+        await widget.settings.updateNotify(notifyBubbles: false, bannerStyle: BannerStyle.glass);
       }
       await _loadFloating();
     } catch (_) {
@@ -297,12 +297,11 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                       child: Text('حباب مخصوص فرستنده آخرین پیام است و دائمی نمایش داده نمی‌شود. با لمس حباب کارت گفتگو باز می‌شود؛ اگر گوشی شروع سرویس شناور را در پس‌زمینه محدود کند، اعلان عادی اندروید باقی می‌ماند.'),
                     ),
                   ],
-                  SwitchListTile(
-                      title: const Text('حباب پشتیبان اندروید'),
-                      subtitle: const Text('در صورت مسدودشدن شناور سفارشی، اندروید می‌تواند حباب رسمی گفتگو را نشان دهد؛ به مجوز حباب در تنظیمات گوشی نیاز دارد.'),
-                      value: s.notifyBubbles,
-                      onChanged: (v) => s.updateNotify(notifyBubbles: v),
-                    ),
+                  const ListTile(
+                    leading: Icon(Icons.shield_outlined),
+                    title: Text('بدون حباب تکراری'),
+                    subtitle: Text('حباب دوم اندروید غیرفعال است؛ اعلان سیستمی در گوشی‌های محدودکننده پنجره شناور باقی می‌ماند.'),
+                  ),
                   ListTile(
                     leading: const Icon(Icons.settings_outlined),
                     title: const Text('اجازه اعلان و حباب در گوشی'),
@@ -326,21 +325,14 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                   SwitchListTile(
                     secondary: Icon(Icons.web_asset_rounded, color: scheme.primary),
                     title: const Text('نمایش بنر هنگام باز بودن پیامیار'),
-                    subtitle: const Text('داخل برنامه کارت متحرک Flutter؛ بیرون برنامه اعلان بومی اندروید با رنگ هماهنگ، در محدوده ارتفاع مجاز گوشی.'),
+                    subtitle: const Text('یک کارت شیشه‌ای یکپارچه در داخل و خارج برنامه؛ در صورت محدودیت اندروید، اعلان سیستمی جایگزین می‌شود.'),
                     value: s.notifyInApp,
                     onChanged: (v) => s.updateNotify(notifyInApp: v),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                    child: SegmentedButton<BannerStyle>(
-                      showSelectedIcon: false,
-                      segments: [
-                        for (final style in BannerStyle.values)
-                          ButtonSegment(value: style, label: Text(bannerStyleNames[style]!)),
-                      ],
-                      selected: {s.bannerStyle},
-                      onSelectionChanged: (v) => s.updateNotify(bannerStyle: v.first),
-                    ),
+                  const ListTile(
+                    leading: Icon(Icons.layers_rounded),
+                    title: Text('فقط یک طرح: شیشه‌ای یکپارچه'),
+                    subtitle: Text('همه کارت‌های داخل برنامه و شناور از همین طرح استفاده می‌کنند؛ رنگ، کدری، قاب و انیمیشن قابل تغییر است.'),
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
@@ -348,11 +340,21 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                       for (var i = 0; i < palettes.length; i++)
                         _ColorDot(
                           color: palettes[i],
-                          selected: s.bannerTint == i,
-                          onTap: () => s.updateNotify(bannerTint: i),
+                          selected: s.bannerHue < 0 && s.bannerTint == i,
+                          onTap: () => s.updateNotify(bannerTint: i, bannerHue: -1),
                         ),
                     ]),
                   ),
+                  ListTile(
+                    leading: Icon(Icons.color_lens_outlined, color: scheme.primary),
+                    title: const Text('رنگ دلخواه شیشه'),
+                    subtitle: const Text('تغییر زنده رنگِ پیش‌نمایش و اعلان شناور'),
+                    trailing: TextButton(onPressed: () => s.updateNotify(bannerHue: -1),
+                        child: const Text('رنگ پیش‌فرض')),
+                  ),
+                  Slider(min: 0, max: 360, divisions: 72,
+                    value: s.bannerHue < 0 ? 180 : s.bannerHue,
+                    onChanged: (v) => s.updateNotify(bannerHue: v)),
                   if (s.bannerStyle == BannerStyle.glass) ...[
                     ListTile(
                       leading: Icon(Icons.blur_on_rounded, color: scheme.primary),
@@ -378,13 +380,36 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                       divisions: 11,
                       onChanged: (v) => s.updateNotify(bannerOpacity: v),
                     ),
+                    ListTile(
+                      leading: Icon(Icons.border_outer_rounded, color: scheme.primary),
+                      title: const Text('شدت قاب شیشه‌ای'),
+                      trailing: Text('${(s.bannerEdge * 100).round()}٪'),
+                    ),
+                    Slider(min: .15, max: 1, divisions: 17,
+                      value: s.bannerEdge,
+                      onChanged: (v) => s.updateNotify(bannerEdge: v)),
+                    ListTile(
+                      leading: Icon(Icons.auto_awesome_rounded, color: scheme.primary),
+                      title: const Text('درخشش نور و شیشه'),
+                      trailing: Text('${(s.bannerShine * 100).round()}٪'),
+                    ),
+                    Slider(min: 0, max: 1, divisions: 20,
+                      value: s.bannerShine,
+                      onChanged: (v) => s.updateNotify(bannerShine: v)),
+                    ListTile(
+                      leading: Icon(Icons.rounded_corner_rounded, color: scheme.primary),
+                      title: const Text('گردی گوشه‌های کارت'),
+                      trailing: Text('${s.bannerCorner.round()}'),
+                    ),
+                    Slider(min: 16, max: 36, divisions: 20,
+                      value: s.bannerCorner,
+                      onChanged: (v) => s.updateNotify(bannerCorner: v)),
+
                   ],
-                  SwitchListTile(
-                    secondary: Icon(Icons.crop_16_9_outlined, color: scheme.primary),
-                    title: const Text('کارت شیشه‌ای جمع‌وجور'),
-                    subtitle: const Text('کارت داخل برنامه را کوتاه می‌کند؛ در اعلان اندروید پیام طولانی با بازکردن کشوی اعلان خوانده می‌شود.'),
-                    value: s.bannerCompact,
-                    onChanged: (v) => s.updateNotify(bannerCompact: v),
+                  const ListTile(
+                    leading: Icon(Icons.text_snippet_outlined),
+                    title: Text('نمایش متن کامل'),
+                    subtitle: Text('متن پیام‌های طولانی در کارت قابل پیمایش است، نه بریده یا محو.'),
                   ),
                   ListTile(
                     leading: Icon(Icons.width_normal_outlined, color: scheme.primary),
