@@ -114,7 +114,9 @@ class FloatingNotifications : Service() {
     private fun dp(n: Int) = (n * resources.displayMetrics.density).roundToInt()
     private fun tint() = number("notifyAccent", 0xFF087F81).toInt()
     private fun opacity() = ((settings.all["flutter.bannerOpacity"] as? Number)?.toFloat() ?: .9f).coerceIn(.78f, 1f)
-    private fun cardStyle() = number("bannerStyle", 0).toInt().coerceIn(0, 2)
+    private fun cardStyle() = 0 // Unified teal-glass design, including migrated installs.
+    private fun surfaceFloat(key: String, default: Float): Float =
+        (settings.all["flutter.$key"] as? Number)?.toFloat() ?: default
     private fun bubbleColor() = prefs(this).getInt("bubbleColor", tint())
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onCreate() {
@@ -293,7 +295,9 @@ class FloatingNotifications : Service() {
             orientation = LinearLayout.VERTICAL
             layoutDirection = View.LAYOUT_DIRECTION_RTL
             setPadding(dp(14), dp(10), dp(14), dp(11))
-            background = GlassSurface(tint(), false, flag("bannerBubbles"), opacity(), cardStyle())
+            background = GlassSurface(tint(), false, flag("bannerBubbles"), opacity(), cardStyle(),
+                surfaceFloat("bannerEdge", .72f), surfaceFloat("bannerShine", .55f),
+                surfaceFloat("bannerCorner", 26f))
         }
         val header = LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL
@@ -400,12 +404,14 @@ class FloatingNotifications : Service() {
 /** Theme-aware, high-contrast overlay surface. The OS cannot provide cross-app backdrop blur. */
 private class GlassSurface(
     private val tint: Int, private val round: Boolean, private val bubbles: Boolean,
-    private val opacity: Float, private val style: Int
+    private val opacity: Float, private val style: Int,
+    private val edge: Float = .72f, private val shine: Float = .55f,
+    private val corner: Float = 26f
 ) : Drawable() {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     override fun draw(canvas: Canvas) {
         val rect = RectF(bounds)
-        val radius = if (round) rect.width() / 2 else min(rect.width(), rect.height()) * .18f
+        val radius = if (round) rect.width() / 2 else min(rect.width(), rect.height()) * (corner.coerceIn(16f, 36f) / 145f)
         val path = Path().apply { addRoundRect(rect, radius, radius, Path.Direction.CW) }
         canvas.save(); canvas.clipPath(path)
         // Reference palette: luminous emerald outer edge and deep teal card.
@@ -419,17 +425,18 @@ private class GlassSurface(
             (Color.green(tint) * f).toInt().coerceIn(0, 255),
             (Color.blue(tint) * f).toInt().coerceIn(0, 255))
         val top = if (paper) 0xFFFDFCF8.toInt()
-            else if (style == 0) Color.argb(effectiveAlpha, 12, 105, 108)
+            else if (style == 0) shade(.88f)
             else shade(.98f)
         val bottom = if (paper) 0xFFF0F2F0.toInt()
-            else if (style == 0) Color.argb(effectiveAlpha, 5, 68, 76)
+            else if (style == 0) shade(.43f)
             else shade(.47f)
         paint.shader = LinearGradient(0f, 0f, rect.width(), rect.height(),
             top, bottom, Shader.TileMode.CLAMP)
         canvas.drawRect(rect, paint); paint.shader = null
         if (!bright) {
             paint.shader = LinearGradient(0f, 0f, 0f, rect.height() * .5f,
-                0x38FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP)
+                Color.argb((shine.coerceIn(0f, 1f) * 88f).toInt(), 255, 255, 255),
+                0x00FFFFFF, Shader.TileMode.CLAMP)
             canvas.drawRect(rect, paint); paint.shader = null
         }
         if (bubbles && !paper) {
@@ -440,7 +447,7 @@ private class GlassSurface(
                 rect.width() * (.025f + .007f * (i % 3)), paint)
             paint.style = Paint.Style.FILL
         }
-        paint.color = if (paper) 0x66087F81 else 0xFF92CFC2.toInt()
+        paint.color = if (paper) 0x66087F81 else Color.argb((edge.coerceIn(.15f, 1f) * 255).toInt(), 146, 207, 194)
         paint.style = Paint.Style.STROKE; paint.strokeWidth = 1.5f
         canvas.drawRoundRect(RectF(rect.left + 1f, rect.top + 1f, rect.right - 1f, rect.bottom - 1f),
             radius, radius, paint)
@@ -449,7 +456,7 @@ private class GlassSurface(
     }
     override fun getOutline(outline: Outline) {
         outline.setRoundRect(bounds, if (round) bounds.width() / 2f
-            else min(bounds.width(), bounds.height()) * .18f)
+            else min(bounds.width(), bounds.height()) * (corner.coerceIn(16f, 36f) / 145f))
     }
     override fun setAlpha(alpha: Int) { }
     override fun setColorFilter(filter: ColorFilter?) { }
