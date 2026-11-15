@@ -74,7 +74,7 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
       }
       final ok = await SmsBridge.enableFloating(enabled);
       if (!ok) _floatingNotice('حباب شروع نشد؛ اجازه نمایش روی برنامه‌ها را بررسی کنید.');
-      if (ok && enabled) await widget.settings.updateNotify(notifyBubbles: false);
+      // Keep native bubbles as a fallback when Android blocks a background overlay.
       await _loadFloating();
     } catch (_) {
       _floatingNotice('تغییر حالت اعلان انجام نشد؛ دوباره تلاش کنید.');
