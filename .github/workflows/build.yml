@@ -44,6 +44,7 @@ jobs:
         run: |
           mkdir -p assets/fonts
           curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/main/ofl/vazirmatn/Vazirmatn%5Bwght%5D.ttf' --output assets/fonts/Vazirmatn.ttf
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/main/ofl/vazirmatn/OFL.txt' --output assets/fonts/OFL.txt
           flutter create --project-name payamyar --org ir.honarmardomi --platforms android --no-overwrite .
           printf '\napply(from = "payamyar.gradle")\n' >> android/app/build.gradle.kts
           flutter pub get
