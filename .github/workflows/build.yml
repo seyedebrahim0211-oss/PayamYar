@@ -29,6 +29,39 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
+  overlay-ui:
+    needs: analyze
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.9'
+      - name: Prepare Android UI test project
+        shell: bash
+        run: |
+          mkdir -p assets/fonts
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/main/ofl/vazirmatn/Vazirmatn%5Bwght%5D.ttf' --output assets/fonts/Vazirmatn.ttf
+          flutter create --project-name payamyar --org ir.honarmardomi --platforms android --no-overwrite .
+          printf '\napply(from = "payamyar.gradle")\n' >> android/app/build.gradle.kts
+          flutter pub get
+          sudo chmod 666 /dev/kvm
+      - name: Test real overlay windows, long text, privacy and stop on Android 15
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: cd android && ./gradlew :app:connectedDebugAndroidTest
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: floating-ui-test-results
+          path: android/app/build/reports/androidTests/
+          if-no-files-found: ignore
   android:
     needs: analyze
     runs-on: ubuntu-latest
@@ -226,7 +259,7 @@ jobs:
   github_release:
     name: Publish signed Android APK to Releases
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    needs: android
+    needs: [android, overlay-ui]
     runs-on: ubuntu-latest
     permissions:
       contents: write
