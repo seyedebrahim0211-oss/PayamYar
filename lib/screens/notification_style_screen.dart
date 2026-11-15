@@ -83,9 +83,15 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
     }
   }
 
-  Future<void> _floatingSize({int? bubble, int? text}) async {
+  Future<void> _floatingSize({
+    int? bubble, int? text, int? seconds, double? opacity,
+    int? style, int? shape, int? color,
+  }) async {
     try {
-      await SmsBridge.configureFloating(bubbleSize: bubble, textSize: text);
+      await SmsBridge.configureFloating(
+        bubbleSize: bubble, textSize: text, bubbleSeconds: seconds,
+        bubbleOpacity: opacity, bubbleStyle: style,
+        bubbleShape: shape, bubbleColor: color);
       await _loadFloating();
     } catch (_) { _floatingNotice('تنظیم ذخیره نشد.'); }
   }
@@ -193,8 +199,8 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                   SwitchListTile(
                     title: const Text('حباب و کارت شیشه‌ای مستقل'),
                     subtitle: Text(_floating['enabled'] == true
-                        ? 'فعال؛ حباب بیرون از برنامه دیده می‌شود. بکشید تا جابه‌جا شود؛ لمس کنید تا متن کامل باز شود.'
-                        : 'کارت بدون قاب سفید روی برنامه‌های دیگر؛ نیازمند اجازه نمایش روی برنامه‌ها'),
+                        ? 'فعال؛ حباب مخاطب فقط هنگام پیام جدید ظاهر می‌شود و سپس خودکار محو می‌شود.'
+                        : 'کارت شناور سفید با گوشه‌های گرد؛ نیازمند اجازه نمایش روی برنامه‌ها'),
                     secondary: Icon(Icons.chat_bubble_outline_rounded, color: scheme.primary),
                     value: _floating['enabled'] == true,
                     onChanged: !SmsBridge.supported || _floatingBusy ? null : _toggleFloating,
@@ -290,7 +296,8 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                     ),
                     ListTile(
                       leading: Icon(Icons.opacity_rounded, color: scheme.primary),
-                      title: const Text('شفافیت شیشه'),
+                      title: const Text('خوانایی و میزان مات‌بودن شیشه'),
+                       subtitle: const Text('پیش‌فرض ۹۰٪ برای خوانایی بهتر است'),
                       trailing: Text('$opacity٪'),
                     ),
                     Slider(
