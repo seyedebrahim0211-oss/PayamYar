@@ -288,7 +288,7 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
     final tint = s.bannerColor;
     final minimal = s.bannerStyle == BannerStyle.minimal;
     final glass = s.bannerStyle == BannerStyle.glass;
-    final fg = (minimal || glass) ? const Color(0xFF172E33) : Colors.white;
+    final fg = minimal ? const Color(0xFF172E33) : Colors.white;
     final soft = fg.withValues(alpha: .72);
     final radius = BorderRadius.circular(26);
 
@@ -306,11 +306,11 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
           begin: AlignmentDirectional.topStart,
           end: AlignmentDirectional.bottomEnd,
           colors: [
-            Colors.white.withValues(alpha: s.bannerOpacity),
-            const Color(0xFFEDF6F4).withValues(alpha: s.bannerOpacity),
+            Color.lerp(tint, const Color(0xFF075B60), .65)!.withValues(alpha: s.bannerOpacity),
+            const Color(0xFF063B44).withValues(alpha: s.bannerOpacity),
           ],
         ),
-        border: Border.all(color: tint.withValues(alpha: .28), width: 1.1),
+        border: Border.all(color: const Color(0xFFB3E7DA).withValues(alpha: .7), width: 1.1),
       );
     } else {
       decoration = BoxDecoration(
@@ -476,13 +476,25 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
         decoration: BoxDecoration(
           borderRadius: radius,
           boxShadow: [
-            BoxShadow(color: (minimal || glass ? Colors.black : tint).withValues(alpha: .18),
+            BoxShadow(color: const Color(0xFF07535A).withValues(alpha: .28),
                 blurRadius: 26, offset: const Offset(0, 10)),
           ],
         ),
-        child: ClipRRect(
-          borderRadius: radius,
-          child: InkWell(onTap: widget.interactive ? widget.onTap : null, child: card),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: radius,
+            gradient: glass ? const LinearGradient(
+              begin: Alignment.topRight, end: Alignment.bottomLeft,
+              colors: [Color(0xFF83C7BD), Color(0xFFD2E0BF), Color(0xFF62AFA9)],
+            ) : null,
+          ),
+          child: Padding(
+            padding: EdgeInsets.all(glass ? 5 : 0),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(glass ? 21 : 26),
+              child: InkWell(onTap: widget.interactive ? widget.onTap : null, child: card),
+            ),
+          ),
         ),
       ),
     );
