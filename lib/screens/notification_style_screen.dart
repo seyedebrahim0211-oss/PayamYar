@@ -222,8 +222,78 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                         onChanged: (v) => setState(() => _floating['textSize'] = v.round()),
                         onChangeEnd: (v) => _floatingSize(text: v.round())),
                     ),
-                    const Padding(padding: EdgeInsets.all(12), child: Text(
-                      'رنگ، عرض، جای بالا یا پایین، زمان نمایش و حباب‌های تزئینی را از همین صفحه تغییر دهید. متن بلند قابل پیمایش است؛ لمس کارت زمان بسته‌شدن را متوقف می‌کند. برای خاموش‌کردن، از اعلان «حباب پیام‌یار فعال است» هم می‌توانید استفاده کنید.')),
+                    ListTile(
+                      title: const Text('مدت نمایش حباب مخاطب'),
+                      trailing: Text('${_floating['bubbleSeconds'] ?? 18} ثانیه'),
+                      subtitle: Slider(
+                        min: 8, max: 60, divisions: 13,
+                        value: ((_floating['bubbleSeconds'] as num?)?.toDouble() ?? 18).clamp(8, 60).toDouble(),
+                        onChanged: (v) => setState(() => _floating['bubbleSeconds'] = v.round()),
+                        onChangeEnd: (v) => _floatingSize(seconds: v.round()),
+                      ),
+                    ),
+                    ListTile(
+                      title: const Text('جنس حباب'),
+                      trailing: SegmentedButton<int>(
+                        showSelectedIcon: false,
+                        segments: const [
+                          ButtonSegment(value: 0, label: Text('شیشه‌ای')),
+                          ButtonSegment(value: 1, label: Text('رنگی')),
+                        ],
+                        selected: {(_floating['bubbleStyle'] as int?) ?? 0},
+                        onSelectionChanged: (v) {
+                          setState(() => _floating['bubbleStyle'] = v.first);
+                          _floatingSize(style: v.first);
+                        },
+                      ),
+                    ),
+                    ListTile(
+                      title: const Text('شکل حباب'),
+                      trailing: SegmentedButton<int>(
+                        showSelectedIcon: false,
+                        segments: const [
+                          ButtonSegment(value: 0, label: Text('دایره')),
+                          ButtonSegment(value: 1, label: Text('گردگوشه')),
+                        ],
+                        selected: {(_floating['bubbleShape'] as int?) ?? 0},
+                        onSelectionChanged: (v) {
+                          setState(() => _floating['bubbleShape'] = v.first);
+                          _floatingSize(shape: v.first);
+                        },
+                      ),
+                    ),
+                    ListTile(
+                      title: const Text('مات‌بودن حباب'),
+                      trailing: Text('${(((_floating['bubbleOpacity'] as num?)?.toDouble() ?? .92) * 100).round()}٪'),
+                      subtitle: Slider(
+                        min: .78, max: 1, divisions: 11,
+                        value: ((_floating['bubbleOpacity'] as num?)?.toDouble() ?? .92).clamp(.78, 1).toDouble(),
+                        onChanged: (v) => setState(() => _floating['bubbleOpacity'] = v),
+                        onChangeEnd: (v) => _floatingSize(opacity: v),
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                      child: Text('رنگ حباب مخاطب', style: TextStyle(fontWeight: FontWeight.w700)),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                      child: Wrap(spacing: 12, runSpacing: 12, children: [
+                        for (final color in palettes)
+                          _ColorDot(
+                            color: color,
+                            selected: _floating['bubbleColor'] == color.toARGB32(),
+                            onTap: () {
+                              setState(() => _floating['bubbleColor'] = color.toARGB32());
+                              _floatingSize(color: color.toARGB32());
+                            },
+                          ),
+                      ]),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Text('حباب مخصوص فرستنده آخرین پیام است و دائمی نمایش داده نمی‌شود. با لمس حباب کارت گفتگو باز می‌شود؛ اگر گوشی شروع سرویس شناور را در پس‌زمینه محدود کند، اعلان عادی اندروید باقی می‌ماند.'),
+                    ),
                   ],
                   if (_floating['enabled'] != true)
                     SwitchListTile(
