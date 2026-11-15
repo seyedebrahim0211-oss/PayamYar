@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'app_channel.dart';
 import 'conversation_logic.dart';
+import 'conversation_folders.dart';
 import 'finance_logic.dart';
 import 'message_logic.dart';
 import 'notify_banner.dart';
@@ -86,6 +87,7 @@ class AppStore extends ChangeNotifier {
   int selectedSim = -1;
   final List<PendingSend> pendingSends = [];
   final SmsGroupStore smsGroups = SmsGroupStore();
+  final ConversationFolders folders = ConversationFolders();
   ReleaseInfo? update;
   bool updateDismissed = false;
   bool updateCheckFailed = false;
@@ -126,6 +128,7 @@ class AppStore extends ChangeNotifier {
   Future<void> init() async {
     final p = await SharedPreferences.getInstance();
     await smsGroups.load();
+    await folders.load();
     onboarded = p.getBool('onboarded') ?? false;
     archived.addAll(p.getStringList('archived') ?? []);
     pinned.addAll(p.getStringList('pinned') ?? []);
@@ -806,6 +809,7 @@ class AppStore extends ChangeNotifier {
     _reportTimer?.cancel();
     if (android) SmsBridge.stopListening();
     smsGroups.dispose();
+    folders.dispose();
     super.dispose();
   }
 }

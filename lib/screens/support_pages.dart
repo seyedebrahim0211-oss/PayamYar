@@ -1,6 +1,5 @@
 import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../app_settings.dart';
 import '../app_store.dart';
@@ -8,6 +7,8 @@ import '../brand_mark.dart';
 import '../jalali.dart';
 import '../sms_bridge.dart';
 import '../update_service.dart';
+import '../support_service.dart';
+import 'support_inbox_screen.dart';
 
 const _faq = <(String, String)>[
   ('چرا باید پیامیار را پیام‌رسان پیش‌فرض کنم؟',
@@ -92,6 +93,7 @@ class _BugReportPageState extends State<BugReportPage> {
   final steps = TextEditingController();
   String kind = 'ارسال پیام';
   bool includeInfo = true;
+  bool _sending = false;
   static const kinds = ['ارسال پیام', 'دریافت پیام', 'اعلان و صدا', 'ظاهر برنامه', 'به‌روزرسانی', 'سایر'];
 
   @override
@@ -121,15 +123,33 @@ class _BugReportPageState extends State<BugReportPage> {
   }
 
   Future<void> _send() async {
-    if (what.text.trim().length < 5) {
-      widget.store.onNotice?.call('لطفاً مشکل را در چند کلمه توضیح دهید.');
+    if (what.text.trim().length < 5 || _sending) {
+      widget.store.onNotice?.call('لطفاً مشکل را دقیق‌تر توضیح دهید.');
       return;
     }
-    final text = await _report();
-    final shared = await SmsBridge.shareText(text, subject: 'گزارش خرابی پیامیار', title: 'ارسال گزارش با');
-    if (!shared) {
-      await Clipboard.setData(ClipboardData(text: text));
-      widget.store.onNotice?.call('گزارش کپی شد؛ آن را در صفحه ارتباط با ما ارسال کنید.');
+    setState(() => _sending = true);
+    try {
+      final text = await _report();
+      final info = await PackageInfo.fromPlatform();
+      const categories = {
+        'ارسال پیام': 'delivery', 'دریافت پیام': 'delivery',
+        'اعلان و صدا': 'notification', 'ظاهر برنامه': 'bug',
+        'به‌روزرسانی': 'bug', 'سایر': 'other',
+      };
+      final id = await SupportService.create(
+        category: categories[kind] ?? 'other',
+        subject: '$kind — ${what.text.trim().length > 70 ? what.text.trim().substring(0, 70) : what.text.trim()}',
+        body: text, version: info.version);
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
+        builder: (_) => SupportThreadScreen(ticketId: id)));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('ثبت گزارش ممکن نشد؛ اتصال اینترنت را بررسی کنید. اطلاعات گزارش در کادرها باقی می‌ماند.')));
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
     }
   }
 
@@ -157,9 +177,17 @@ class _BugReportPageState extends State<BugReportPage> {
           subtitle: const Text('نسخه برنامه، نسخه اندروید و وضعیت دسترسی‌ها — بدون متن پیام یا شماره‌ها'),
           value: includeInfo, onChanged: (v) => setState(() => includeInfo = v)),
         const SizedBox(height: 12),
-        FilledButton.icon(onPressed: _send, icon: const Icon(Icons.send_rounded), label: const Text('ارسال گزارش')),
+        FilledButton.icon(onPressed: _sending ? null : _send,
+          icon: const Icon(Icons.send_rounded), label: Text(_sending ? 'در حال ثبت امن گزارش…' : 'ثبت در پشتیبانی هنر مردمی')),
         const SizedBox(height: 10),
-        Text('گزارش از طریق پیام‌رسان یا ایمیل دلخواه شما فرستاده می‌شود؛ پیامیار چیزی را خودکار ارسال نمی‌کند.',
+        OutlinedButton.icon(
+          icon: const Icon(Icons.forum_outlined),
+          label: const Text('پیگیری گزارش‌ها و پاسخ مدیر'),
+          onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => const SupportInboxScreen())),
+        ),
+        const SizedBox(height: 10),
+        Text('فقط متن همین فرم با تأیید ارسال به سامانه پشتیبانی سایت منتقل می‌شود؛ شماره مدیر نمایش داده نمی‌شود و متن SMSهای گوشی ارسال نخواهد شد.',
           style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
       ]),
     );

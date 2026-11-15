@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app_store.dart';
+import '../text_polish.dart';
 import '../sms_bridge.dart';
 import '../sms_groups.dart';
 import '../recipient_suggestions.dart';
@@ -340,6 +341,71 @@ class _ComposeScreenState extends State<ComposeScreen> {
     }
   }
 
+  void _showLocalStickers() {
+    // Unicode motifs travel as normal SMS. Image stickers require MMS/RCS and
+    // are deliberately not misrepresented as supported by ordinary SMS.
+    const stickers = ['🌹', '💐', '🇮🇷', '🌙', '🕌', '🤲', '📿', '✨',
+      '🎉', '🎂', '🕊️', '🌺', '❤️', '🌷', '🙏', '😊', '😄', '💚',
+      '🌄', '🏜️', '☀️', '🍉', '🧿', '🎨'];
+    showModalBottomSheet<void>(context: context, showDragHandle: true,
+      builder: (ctx) => SafeArea(child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('نمادها و استیکرهای متنی ایرانی',
+            style: TextStyle(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          const Text('با پیامک معمولی منتقل می‌شوند؛ تصویر یا استیکر متحرک نیستند.'),
+          const SizedBox(height: 14),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final symbol in stickers)
+              ActionChip(label: Text(symbol, style: const TextStyle(fontSize: 24)),
+                onPressed: () {
+                  setState(() => body.text += symbol);
+                  _saveDraft();
+                  Navigator.pop(ctx);
+                }),
+          ]),
+        ]),
+      )));
+  }
+
+  Future<void> _shortenSms() async {
+    final original = body.text;
+    final compact = TextPolish.compactSms(original);
+    if (compact == original) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('فاصله اضافی قابل حذف در این متن پیدا نشد.')));
+      return;
+    }
+    final before = TextPolish.smsParts(original);
+    final after = TextPolish.smsParts(compact);
+    final apply = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('بهینه‌سازی تعداد پیامک'),
+      content: SingleChildScrollView(child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('قبل: ${before.parts} بخش • ${original.length} نویسه'),
+          Text('بعد: ${after.parts} بخش • ${compact.length} نویسه',
+            style: const TextStyle(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 12),
+          const Text('پیش‌نمایش متن؛ هیچ واژه‌ای حذف نمی‌شود و پیام بدون تأیید شما ارسال نخواهد شد.'),
+          const SizedBox(height: 8),
+          SelectableText(compact),
+        ],
+      )),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('بدون تغییر')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('جایگزینی متن')),
+      ],
+    ));
+    if (apply != true || !mounted) return;
+    setState(() => body.text = compact);
+    await _saveDraft();
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -536,6 +602,18 @@ class _ComposeScreenState extends State<ComposeScreen> {
               }),
           ]),
           const SizedBox(height: 16),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.emoji_emotions_outlined),
+            label: const Text('استیکرهای متنی و نمادهای ایرانی'),
+            onPressed: _showLocalStickers,
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.compress_rounded),
+            label: const Text('کاهش تعداد بخش‌های پیامک • با پیش‌نمایش'),
+            onPressed: body.text.trim().isEmpty ? null : _shortenSms,
+          ),
+          const SizedBox(height: 8),
           OutlinedButton.icon(
             icon: const Icon(Icons.auto_fix_high_rounded),
             label: const Text('ویرایش املا و لحن پیام'),
