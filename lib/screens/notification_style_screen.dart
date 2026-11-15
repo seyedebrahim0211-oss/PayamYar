@@ -48,8 +48,11 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
     if (!mounted) return;
     if (_enableOnReturn) {
       _enableOnReturn = false;
-      if (_floating['permission'] == true) await _toggleFloating(true);
-      else _floatingNotice('اجازه نمایش روی برنامه‌های دیگر داده نشد؛ اعلان استاندارد فعال می‌ماند.');
+      if (_floating['permission'] == true) {
+        await _toggleFloating(true);
+      } else {
+        _floatingNotice('اجازه نمایش روی برنامه‌های دیگر داده نشد؛ اعلان استاندارد فعال می‌ماند.');
+      }
     }
   }
 

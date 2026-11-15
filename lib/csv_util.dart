@@ -11,7 +11,9 @@ String csvCell(String value) {
   var v = value;
   final phone = RegExp(r'^\+[0-9]{7,15}$').hasMatch(v);
   if (!phone && (RegExp(r'^[\s\uFEFF]*[=+\-@]').hasMatch(v) ||
-      v.startsWith('\t') || v.startsWith('\r') || v.startsWith('\n'))) v = "'$v";
+      v.startsWith('\t') || v.startsWith('\r') || v.startsWith('\n'))) {
+    v = "'$v";
+  }
   return '"${v.replaceAll('"', '""')}"';
 }
 

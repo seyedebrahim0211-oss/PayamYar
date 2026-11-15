@@ -230,8 +230,10 @@ class SmsBridge {
   static Future<bool> enableFloating(bool enabled) async => supported &&
       (await _channel.invokeMethod<bool>('floatingEnable', {'enabled': enabled}) ?? false);
   static Future<void> configureFloating({int? bubbleSize, int? textSize}) async {
-    if (supported) await _channel.invokeMethod<void>('floatingConfigure',
-        {'bubbleSize': bubbleSize, 'textSize': textSize});
+    if (supported) {
+      await _channel.invokeMethod<void>('floatingConfigure',
+          {'bubbleSize': bubbleSize, 'textSize': textSize});
+    }
   }
 
   static Future<bool> previewNotification() async {
