@@ -52,8 +52,9 @@ class FloatingNotificationsTest {
         scenario = ActivityScenario.launch(Intent(context, MainActivity::class.java))
         scenario!!.onActivity { assertTrue(FloatingNotifications.setEnabled(it, true)) }
         device.pressHome()
-        assertTrue("The opted-in edge chat head must appear outside the app",
-            device.wait(Until.hasObject(By.descContains("حباب پیام‌یار")), 15000))
+        // Enabling only records the preference: no idle bubble and no permanent alert.
+        assertFalse("The idle app must not display a persistent chat head",
+            device.hasObject(By.descContains("حباب پیام‌یار")))
     }
     @After fun stop() {
         instrumentation.runOnMainSync { FloatingNotifications.setEnabled(context, false) }
@@ -103,7 +104,23 @@ class FloatingNotificationsTest {
         assertTrue(b.top >= 0 && b.bottom <= device.displayHeight)
         assertTrue("Conversation action must be reachable by scrolling", scrollToAction("باز کردن گفتگو / پاسخ"))
     }
+    @Test fun senderBubbleAppearsOnlyForIncomingSms() {
+        assertFalse(device.hasObject(By.descContains("حباب پیام‌یار")))
+        instrumentation.runOnMainSync {
+            context.getSharedPreferences("payamyar_overlay", Context.MODE_PRIVATE).edit()
+                .putInt("bubbleSeconds", 8).commit()
+            assertTrue(FloatingNotifications.show(context, "+989120000001", "مریم", "سلام، پیام تازه", false))
+        }
+        assertTrue("A newly received message must show its sender bubble",
+            device.wait(Until.hasObject(By.descContains("حباب پیام‌یار")), 15000))
+        assertTrue("The transient bubble must disappear after its configured lifetime",
+            device.wait(Until.gone(By.descContains("حباب پیام‌یار")), 12000))
+    }
     @Test fun stoppingServiceRemovesChatHead() {
+        instrumentation.runOnMainSync {
+            assertTrue(FloatingNotifications.show(context, "+989120000001", "مریم", "پیام", false))
+        }
+        assertTrue(device.wait(Until.hasObject(By.descContains("حباب پیام‌یار")), 15000))
         instrumentation.runOnMainSync { FloatingNotifications.setEnabled(context, false) }
         assertTrue(device.wait(Until.gone(By.descContains("حباب پیام‌یار")), 5000))
     }
