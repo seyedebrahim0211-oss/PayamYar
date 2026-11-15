@@ -451,6 +451,10 @@ private class GlassSurface(
         paint.style = Paint.Style.FILL
         canvas.restore()
     }
+    override fun getOutline(outline: Outline) {
+        outline.setRoundRect(bounds, if (round) bounds.width() / 2f
+            else min(bounds.width(), bounds.height()) * .18f)
+    }
     override fun setAlpha(alpha: Int) { }
     override fun setColorFilter(filter: ColorFilter?) { }
     @Deprecated("Deprecated in Java") override fun getOpacity() = PixelFormat.TRANSLUCENT
