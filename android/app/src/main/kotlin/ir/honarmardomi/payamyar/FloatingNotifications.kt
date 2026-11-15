@@ -297,10 +297,10 @@ class FloatingNotifications : Service() {
             dp(number("bannerMaxWidth", 360).toInt().coerceIn(280, 520)), dp(8))
         val maxHeight = (bounds.height() * .65f).toInt().coerceAtLeast(1)
         val private = privateContent()
-        val phone = message.address.replace(Regex("[\\\\s()-]"), "")
+        val phone = message.address.replace(Regex("[\\s()-]"), "")
         val canReplyHere = !private && !message.sample &&
             flag("notifyQuickReply") && SmsCore.isDefault(this) &&
-            Regex("^\\\\+?[0-9]{7,15}$").matches(phone)
+            Regex("^\\+?[0-9]{7,15}$").matches(phone)
         var editor: EditText? = null
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -377,7 +377,7 @@ class FloatingNotifications : Service() {
                             android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
                         minLines = 1
                         maxLines = 3
-                        isSingleLine = false
+                        setSingleLine(false)
                         isFocusableInTouchMode = true
                         setPadding(dp(14), dp(8), dp(14), dp(8))
                         background = android.graphics.drawable.GradientDrawable().apply {
