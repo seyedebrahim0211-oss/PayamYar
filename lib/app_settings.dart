@@ -66,7 +66,7 @@ class AppSettings extends ChangeNotifier {
   BannerStyle bannerStyle = BannerStyle.glass;
   int bannerTint = 0;
   double bannerBlur = 18;
-  double bannerOpacity = .5;
+  double bannerOpacity = .9;
   bool bannerTop = true;
   int bannerSeconds = 6;
   bool bannerCompact = true;
@@ -117,7 +117,7 @@ class AppSettings extends ChangeNotifier {
     bannerStyle = BannerStyle.values[(p.getInt('bannerStyle') ?? 0).clamp(0, BannerStyle.values.length - 1).toInt()];
     bannerTint = (p.getInt('bannerTint') ?? palette).clamp(0, palettes.length - 1).toInt();
     bannerBlur = (p.getDouble('bannerBlur') ?? 18).clamp(0, 30).toDouble();
-    bannerOpacity = (p.getDouble('bannerOpacity') ?? .5).clamp(.15, .95).toDouble();
+    bannerOpacity = (p.getDouble('bannerOpacity') ?? .9).clamp(.78, 1).toDouble();
     bannerTop = p.getBool('bannerTop') ?? true;
     bannerSeconds = (p.getInt('bannerSeconds') ?? 6).clamp(2, 15).toInt();
     bannerCompact = p.getBool('bannerCompact') ?? true;
@@ -207,7 +207,7 @@ class AppSettings extends ChangeNotifier {
     this.bannerStyle = bannerStyle ?? this.bannerStyle;
     this.bannerTint = (bannerTint ?? this.bannerTint).clamp(0, palettes.length - 1).toInt();
     this.bannerBlur = (bannerBlur ?? this.bannerBlur).clamp(0, 30).toDouble();
-    this.bannerOpacity = (bannerOpacity ?? this.bannerOpacity).clamp(.15, .95).toDouble();
+    this.bannerOpacity = (bannerOpacity ?? this.bannerOpacity).clamp(.78, 1).toDouble();
     this.bannerTop = bannerTop ?? this.bannerTop;
     this.bannerSeconds = (bannerSeconds ?? this.bannerSeconds).clamp(2, 15).toInt();
     this.bannerCompact = bannerCompact ?? this.bannerCompact;
