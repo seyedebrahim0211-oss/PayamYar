@@ -1,4 +1,4 @@
-import 'dart:async' show unawaited;
+import 'dart:async' show Timer, unawaited;
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import '../app_settings.dart';
@@ -222,12 +222,15 @@ class _ConversationsPageState extends State<ConversationsPage> {
   String query = '';
   bool unreadOnly = false;
   MessageCategory? category;
+  String? folder;
+  Timer? _searchDebounce;
   final search = TextEditingController();
 
   AppStore get store => widget.store;
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     search.dispose();
     super.dispose();
   }
@@ -235,8 +238,9 @@ class _ConversationsPageState extends State<ConversationsPage> {
   List<Conversation> _filtered() {
     final q = query.trim().toLowerCase();
     final all = store.visible(archive: widget.archive);
-    if (!unreadOnly && category == null && q.isEmpty) return all;
+    if (!unreadOnly && category == null && folder == null && q.isEmpty) return all;
     return all.where((c) {
+      if (folder != null && store.folders.forAddress(c.address) != folder) return false;
       if (unreadOnly && store.unreadCount(c) == 0) return false;
       if (category != null && store.categoryOf(c) != category) return false;
       if (q.isEmpty) return true;
@@ -245,13 +249,56 @@ class _ConversationsPageState extends State<ConversationsPage> {
     }).toList();
   }
 
+  Future<void> _createFolder() async {
+    final controller = TextEditingController();
+    final name = await showDialog<String>(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('پوشه جدید'),
+      content: TextField(controller: controller, maxLength: 30, autofocus: true,
+        decoration: const InputDecoration(hintText: 'مثلاً: خانواده یا کاری')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('انصراف')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, controller.text), child: const Text('ساخت پوشه')),
+      ],
+    ));
+    controller.dispose();
+    if (name == null) return;
+    final created = await store.folders.create(name);
+    if (mounted && !created) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('نام پوشه تکراری است یا ظرفیت پوشه‌ها تکمیل شده است.')));
+    }
+  }
+
+  Future<void> _chooseFolder(String address) async {
+    if (store.folders.titles.isEmpty) await _createFolder();
+    if (!mounted) return;
+    await showModalBottomSheet<void>(context: context, showDragHandle: true,
+      builder: (sheetContext) => SafeArea(child: ListView(
+        shrinkWrap: true, padding: const EdgeInsets.only(bottom: 16),
+        children: [
+          const ListTile(title: Text('انتقال گفتگو به پوشه', style: TextStyle(fontWeight: FontWeight.bold))),
+          ListTile(leading: const Icon(Icons.all_inbox_outlined),
+            title: const Text('بدون پوشه'),
+            onTap: () { Navigator.pop(sheetContext); store.folders.assign(address, null); }),
+          for (final title in store.folders.titles)
+            ListTile(leading: const Icon(Icons.folder_outlined), title: Text(title),
+              selected: store.folders.forAddress(address) == title,
+              onTap: () { Navigator.pop(sheetContext); store.folders.assign(address, title); }),
+          ListTile(leading: const Icon(Icons.create_new_folder_outlined),
+            title: const Text('پوشه جدید'),
+            onTap: () { Navigator.pop(sheetContext); _createFolder(); }),
+        ],
+      )));
+  }
+
   void _actions(Conversation c) {
     final unread = store.unreadCount(c) > 0;
     final isPinned = store.isPinned(c.address);
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      builder: (ctx) => SafeArea(child: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
         ListTile(title: Text(store.displayName(c.address), style: const TextStyle(fontWeight: FontWeight.w800))),
         ListTile(
           leading: Icon(isPinned ? Icons.push_pin_outlined : Icons.push_pin_rounded),
@@ -260,6 +307,11 @@ class _ConversationsPageState extends State<ConversationsPage> {
         if (unread)
           ListTile(leading: const Icon(Icons.mark_chat_read_outlined), title: const Text('علامت‌گذاری به‌عنوان خوانده‌شده'),
             onTap: () { Navigator.pop(ctx); store.markRead(c); }),
+        ListTile(
+          leading: const Icon(Icons.folder_outlined),
+          title: const Text('قرار دادن در پوشه'),
+          subtitle: Text(store.folders.forAddress(c.address) ?? 'بدون پوشه'),
+          onTap: () { Navigator.pop(ctx); _chooseFolder(c.address); }),
         ListTile(
           leading: const Icon(Icons.archive_outlined),
           title: Text(store.isArchived(c.address) ? 'خارج کردن از بایگانی' : 'بایگانی'),
@@ -275,7 +327,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
             await confirmDeleteConversation(context, store, c);
           }),
       ])),
-    );
+    ));
   }
 
   /// Left/right gestures cycle inbox views; archiving is an intentional
@@ -297,7 +349,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return ListenableBuilder(
-      listenable: Listenable.merge([store, widget.settings]),
+      listenable: Listenable.merge([store, widget.settings, store.folders]),
       builder: (context, _) {
         final list = _filtered();
         final unread = store.unreadConversations;
@@ -349,7 +401,12 @@ class _ConversationsPageState extends State<ConversationsPage> {
                 padding: const EdgeInsets.fromLTRB(14, 2, 14, 6),
                 child: TextField(
                   controller: search,
-                  onChanged: (v) => setState(() => query = v),
+                  onChanged: (v) {
+                    _searchDebounce?.cancel();
+                    _searchDebounce = Timer(const Duration(milliseconds: 180), () {
+                      if (mounted) setState(() => query = v);
+                    });
+                  },
                   textInputAction: TextInputAction.search,
                   decoration: InputDecoration(
                     hintText: 'جستجو در نام‌ها و پیام‌ها',
@@ -386,10 +443,14 @@ class _ConversationsPageState extends State<ConversationsPage> {
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                   children: [
-                    _chip('همه', !unreadOnly && category == null, () => setState(() { unreadOnly = false; category = null; })),
+                    _chip('همه', !unreadOnly && category == null && folder == null, () =>
+                      setState(() { unreadOnly = false; category = null; folder = null; })),
                     _chip('خوانده‌نشده', unreadOnly, () => setState(() { unreadOnly = !unreadOnly; })),
                     for (final c in MessageCategory.values)
                       _chip(categoryName(c), category == c, () => setState(() => category = category == c ? null : c)),
+                    for (final title in store.folders.titles)
+                      _chip('📁 $title', folder == title, () => setState(() => folder = folder == title ? null : title)),
+                    _chip('＋ پوشه', false, _createFolder),
                   ]))),
               if (store.error != null)
                 SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.all(16),

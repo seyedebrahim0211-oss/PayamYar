@@ -1,3 +1,4 @@
+import 'dart:async' show Timer;
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -19,7 +20,13 @@ class PayamYar extends StatefulWidget {
   State<PayamYar> createState() => _PayamYarState();
 }
 
-class _PayamYarState extends State<PayamYar> {
+class _PayamYarState extends State<PayamYar> with WidgetsBindingObserver {
+  Timer? _nightClock;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && settings.autoNight && mounted) setState(() {});
+  }
   final settings = AppSettings();
   final store = AppStore(android: SmsBridge.supported);
   final messenger = GlobalKey<ScaffoldMessengerState>();
@@ -27,6 +34,10 @@ class _PayamYarState extends State<PayamYar> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _nightClock = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (settings.autoNight && mounted) setState(() {});
+    });
     store.onNotice = (text) => messenger.currentState
         ?..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(
@@ -68,6 +79,8 @@ class _PayamYarState extends State<PayamYar> {
 
   @override
   void dispose() {
+    _nightClock?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     store.dispose();
     settings.dispose();
     super.dispose();
@@ -168,7 +181,7 @@ class _PayamYarState extends State<PayamYar> {
         scaffoldMessengerKey: messenger,
         theme: _theme(Brightness.light),
         darkTheme: _theme(Brightness.dark),
-        themeMode: settings.mode,
+        themeMode: settings.effectiveMode(DateTime.now()),
         builder: (context, child) => Directionality(
           textDirection: TextDirection.rtl,
           child: MediaQuery(

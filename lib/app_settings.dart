@@ -35,6 +35,9 @@ const defaultQuickReplies = ['باشه 👍', 'ممنون', 'الان نمی‌�
 class AppSettings extends ChangeNotifier {
   int palette = 0;
   ThemeMode mode = ThemeMode.system;
+  bool autoNight = false;
+  int nightStart = 20 * 60;
+  int nightEnd = 7 * 60;
   double scale = 1;
   int fontChoice = 0; // 0 = Vazirmatn, 1 = Android default, 2 = Android serif / Naskh fallback
   bool hidePreview = true;
@@ -91,12 +94,25 @@ class AppSettings extends ChangeNotifier {
   int quietStart = 23 * 60;
   int quietEnd = 7 * 60;
 
+  /// Scheduled dark mode is local to the device and never depends on location.
+  ThemeMode effectiveMode(DateTime now) {
+    if (!autoNight) return mode;
+    final minute = now.hour * 60 + now.minute;
+    final dark = nightStart < nightEnd
+        ? minute >= nightStart && minute < nightEnd
+        : nightStart > nightEnd && (minute >= nightStart || minute < nightEnd);
+    return dark ? ThemeMode.dark : ThemeMode.light;
+  }
+
   Duration get sendDelay => sendDelayEnabled ? Duration(seconds: sendDelaySeconds) : Duration.zero;
 
   Future<void> load() async {
     final p = await SharedPreferences.getInstance();
     palette = (p.getInt('palette') ?? 0).clamp(0, palettes.length - 1).toInt();
     mode = ThemeMode.values[(p.getInt('theme') ?? 0).clamp(0, 2).toInt()];
+    autoNight = p.getBool('autoNight') ?? false;
+    nightStart = (p.getInt('nightStart') ?? 20 * 60).clamp(0, 1439).toInt();
+    nightEnd = (p.getInt('nightEnd') ?? 7 * 60).clamp(0, 1439).toInt();
     scale = (p.getDouble('scale') ?? 1).clamp(.9, 1.5).toDouble();
     fontChoice = (p.getInt('fontChoice') ?? 0).clamp(0, 2).toInt();
     hidePreview = p.getBool('privatePreview') ?? true;
@@ -145,7 +161,7 @@ class AppSettings extends ChangeNotifier {
 
   static int _capacity(int value) => const [500, 1000, 2000].contains(value) ? value : 500;
 
-  Future<void> update({int? palette, ThemeMode? mode, double? scale, int? fontChoice,
+  Future<void> update({int? palette, ThemeMode? mode, bool? autoNight, int? nightStart, int? nightEnd, double? scale, int? fontChoice,
       bool? hidePreview, bool? notifyPreview, bool? notifyIncoming, bool? notifySent,
       bool? sendDelayEnabled, int? sendDelaySeconds, SentFeedback? sentFeedback, bool? enterToSend,
       bool? signatureEnabled, String? signature, bool? smartReplies, int? recipientCapacity,
@@ -153,6 +169,9 @@ class AppSettings extends ChangeNotifier {
       double? bubbleText, bool? quietHours, int? quietStart, int? quietEnd}) async {
     this.palette = palette ?? this.palette;
     this.mode = mode ?? this.mode;
+    this.autoNight = autoNight ?? this.autoNight;
+    this.nightStart = (nightStart ?? this.nightStart).clamp(0, 1439).toInt();
+    this.nightEnd = (nightEnd ?? this.nightEnd).clamp(0, 1439).toInt();
     this.scale = scale ?? this.scale;
     this.fontChoice = fontChoice ?? this.fontChoice;
     this.hidePreview = hidePreview ?? this.hidePreview;
@@ -182,6 +201,9 @@ class AppSettings extends ChangeNotifier {
     final p = await SharedPreferences.getInstance();
     await p.setInt('palette', palette);
     await p.setInt('theme', mode.index);
+    await p.setBool('autoNight', autoNight);
+    await p.setInt('nightStart', nightStart);
+    await p.setInt('nightEnd', nightEnd);
     await p.setDouble('scale', scale);
     await p.setInt('fontChoice', fontChoice);
     await p.setBool('privatePreview', hidePreview);

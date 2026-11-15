@@ -18,6 +18,7 @@ import 'home_screen.dart';
 import 'birthdays_screen.dart';
 import 'notification_style_screen.dart';
 import 'support_pages.dart';
+import 'support_inbox_screen.dart';
 import 'privacy_disclosure_screen.dart';
 
 /// Settings hub: a short, friendly list of sections; each opens its own page.
@@ -200,6 +201,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: 'سوالات متداول', onTap: () => _open(const FaqPage())),
               SettingsTile(icon: Icons.bug_report_outlined, color: scheme.primary,
                 title: 'گزارش خرابی', onTap: () => _open(BugReportPage(store: store, settings: settings))),
+              SettingsTile(icon: Icons.support_agent_rounded, color: const Color(0xFF087F81),
+                title: 'پشتیبانی و پیگیری پاسخ‌ها', subtitle: 'گفتگوی محرمانه با مدیر، بدون شماره تماس',
+                onTap: () => _open(const SupportInboxScreen())),
               SettingsTile(icon: Icons.chat_outlined, color: scheme.primary,
                 title: 'ارتباط با ما', onTap: () => _open(const ContactPage())),
               SettingsTile(icon: Icons.info_outline_rounded, color: scheme.primary,
@@ -527,6 +531,11 @@ class SendingSettingsPage extends StatelessWidget {
 class AppearanceSettingsPage extends StatelessWidget {
   final AppSettings settings;
   const AppearanceSettingsPage({super.key, required this.settings});
+  Future<int?> _pickTime(BuildContext context, int minutes) async {
+    final value = await showTimePicker(context: context,
+      initialTime: TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60));
+    return value == null ? null : value.hour * 60 + value.minute;
+  }
   @override
   Widget build(BuildContext context) => _Page(
     title: 'ظاهر و قالب گفتگو',
@@ -585,6 +594,24 @@ class AppearanceSettingsPage extends StatelessWidget {
             ],
             selected: {settings.mode},
             onSelectionChanged: (v) => settings.update(mode: v.first))),
+          const SizedBox(height: 12),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('حالت شب هوشمند بر اساس ساعت'),
+            subtitle: const Text('با رسیدن به ساعت مشخص، تم خودکار تغییر می‌کند؛ زمان‌بندی فقط روی گوشی است.'),
+            secondary: const Icon(Icons.nights_stay_outlined),
+            value: settings.autoNight,
+            onChanged: (v) => settings.update(autoNight: v)),
+          if (settings.autoNight) ...[
+            ListTile(
+              title: const Text('شروع حالت شب'),
+              trailing: Text('${settings.nightStart ~/ 60}:${(settings.nightStart % 60).toString().padLeft(2, '0')}'),
+              onTap: () async { final v = await _pickTime(context, settings.nightStart); if (v != null) settings.update(nightStart: v); }),
+            ListTile(
+              title: const Text('پایان حالت شب'),
+              trailing: Text('${settings.nightEnd ~/ 60}:${(settings.nightEnd % 60).toString().padLeft(2, '0')}'),
+              onTap: () async { final v = await _pickTime(context, settings.nightEnd); if (v != null) settings.update(nightEnd: v); }),
+          ],
           const SizedBox(height: 16),
           const Text('قلم برنامه'),
           const SizedBox(height: 8),
@@ -736,8 +763,7 @@ class PrivacySettingsPage extends StatelessWidget {
               onTap: SmsBridge.manageBlocked),
           ]),
         const Padding(padding: EdgeInsets.all(12), child: Text(
-          'پیامیار متن پیامک‌ها و مخاطبان شما را به هیچ سروری ارسال نمی‌کند. تنها ارتباط اینترنتی برنامه، بررسی نسخه جدید از honarmardomi.ir '
-          '(فقط نسخه سایت) و در صورت فعال‌سازی پنل مدیر، اتصال مستقیم به وب‌سرویس ملی پیامک است.',
+          'پیامک‌ها و مخاطبان به سامانه پشتیبانی فرستاده نمی‌شوند. تنها متن گزارشی که با تأیید خودتان ثبت می‌کنید در سایت هنر مردمی ذخیره می‌شود. بررسی به‌روزرسانی و در صورت استفاده از پنل پیامکی، ارتباط با سرویس ملی‌پیامک نیز به اینترنت نیاز دارد.',
           style: TextStyle(fontSize: 12.5, height: 1.8))),
       ];
     },

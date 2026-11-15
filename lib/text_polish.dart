@@ -1,6 +1,16 @@
 /// On-device Persian text editor: spelling, half-spaces, punctuation and a more formal tone.
 /// Rule-based (no internet, no AI): it fixes common, unambiguous cases and leaves the rest untouched.
 class TextPolish {
+  /// Conservative, offline SMS length optimization. Never removes words or
+  /// changes the meaning without asking the sender to approve the preview.
+  static String compactSms(String text) => text
+    .replaceAll('ي', 'ی').replaceAll('ك', 'ک')
+    .replaceAll('\r\n', '\n')
+    .replaceAll(RegExp(r'[ \t]{2,}'), ' ')
+    .replaceAll(RegExp(r'[ \t]*\n[ \t]*'), '\n')
+    .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+    .trim();
+
   static const _zwnj = '‌';
   // Persian/Arabic letters, diacritics and Persian digits; punctuation marks are deliberately excluded.
   static const _fa = r'ء-غـ-ْٮ-ۓ۰-۹';
