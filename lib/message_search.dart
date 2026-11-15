@@ -23,6 +23,10 @@ class MessageSearch {
           ch = 'ک';
         case 'ة':
           ch = 'ه';
+        case 'أ':
+        case 'إ':
+        case 'آ':
+          ch = 'ا';
         case '\u200c':
         case '\u200d':
           ch = ' ';
