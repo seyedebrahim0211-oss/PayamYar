@@ -504,7 +504,7 @@ object Notifier {
                 name, text, time, picture, address, code, false, open)
             val headsUp = fillGlassView(c, R.layout.payamyar_notification_heads_up,
                 name, text, time, picture, address, code, false, open)
-            val history = style.messages.takeLast(4).joinToString("\n") { it.text.toString() }
+            val history = style.messages.takeLast(4).asReversed().joinToString("\n") { it.text.toString() }
             val expanded = fillGlassView(c, R.layout.payamyar_notification_expanded,
                 name, history, time, picture, address, code, true, open)
             builder.setCustomContentView(compact)
