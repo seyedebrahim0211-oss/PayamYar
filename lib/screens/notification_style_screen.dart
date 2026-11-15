@@ -74,7 +74,9 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
       }
       final ok = await SmsBridge.enableFloating(enabled);
       if (!ok) _floatingNotice('حباب شروع نشد؛ اجازه نمایش روی برنامه‌ها را بررسی کنید.');
-      // Keep native bubbles as a fallback when Android blocks a background overlay.
+      if (ok && enabled && !widget.settings.notifyBubbles) {
+        await widget.settings.updateNotify(notifyBubbles: true);
+      }
       await _loadFloating();
     } catch (_) {
       _floatingNotice('تغییر حالت اعلان انجام نشد؛ دوباره تلاش کنید.');
@@ -295,10 +297,9 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                       child: Text('حباب مخصوص فرستنده آخرین پیام است و دائمی نمایش داده نمی‌شود. با لمس حباب کارت گفتگو باز می‌شود؛ اگر گوشی شروع سرویس شناور را در پس‌زمینه محدود کند، اعلان عادی اندروید باقی می‌ماند.'),
                     ),
                   ],
-                  if (_floating['enabled'] != true)
-                    SwitchListTile(
-                      title: const Text('حباب استاندارد اندروید'),
-                      subtitle: const Text('گزینه جایگزین؛ وابسته به پشتیبانی گوشی و اجازه حباب در تنظیمات اندروید'),
+                  SwitchListTile(
+                      title: const Text('حباب پشتیبان اندروید'),
+                      subtitle: const Text('در صورت مسدودشدن شناور سفارشی، اندروید می‌تواند حباب رسمی گفتگو را نشان دهد؛ به مجوز حباب در تنظیمات گوشی نیاز دارد.'),
                       value: s.notifyBubbles,
                       onChanged: (v) => s.updateNotify(notifyBubbles: v),
                     ),
