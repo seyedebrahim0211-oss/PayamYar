@@ -265,7 +265,7 @@ class FloatingNotifications : Service() {
     }
     private fun label(text: String, size: Float, bold: Boolean = false) = TextView(this).apply {
         this.text = text; textSize = size
-        setTextColor(if (cardStyle() == 1) Color.WHITE else 0xFF172D33.toInt())
+        setTextColor(if (cardStyle() == 2) 0xFF172D33.toInt() else Color.WHITE)
         textDirection = View.TEXT_DIRECTION_FIRST_STRONG; gravity = Gravity.START
         if (bold) typeface = Typeface.DEFAULT_BOLD
         setPadding(dp(3), dp(3), dp(3), dp(3))
@@ -274,14 +274,14 @@ class FloatingNotifications : Service() {
         minHeight = dp(48); gravity = Gravity.CENTER; setPadding(dp(10), dp(4), dp(10), dp(4))
         background = android.graphics.drawable.GradientDrawable().apply {
             cornerRadius = dp(18).toFloat()
-            setColor(if (cardStyle() == 1) 0x33FFFFFF else 0x19087F81)
-            setStroke(dp(1), if (cardStyle() == 1) 0x55FFFFFF else 0x44087F81)
+            setColor(if (cardStyle() == 2) 0x19087F81 else 0x33FFFFFF)
+            setStroke(dp(1), if (cardStyle() == 2) 0x44087F81 else 0x65FFFFFF)
         }
         setOnClickListener { action() }
     }
-    /** Compact white-glass capsule matching the reference: avatar right, details centre, chevron left. */
+    /** Teal frosted notification: sender avatar, complete message and accessible scrollable actions. */
     private fun renderCard(message: Message, pinned: Boolean = false,
-                           expanded: Boolean = message.sample): Boolean {
+                           expanded: Boolean = true): Boolean {
         hideCard()
         if (locked() || !allowed(this) || !enabled(this)) return false
         val bounds = area()
@@ -327,7 +327,7 @@ class FloatingNotifications : Service() {
         val chevron = TextView(this).apply {
             text = if (expanded) "⌃" else "⌄"
             textSize = 25f; gravity = Gravity.CENTER
-            setTextColor(if (cardStyle() == 1) Color.WHITE else 0xFF1F343B.toInt())
+            setTextColor(if (cardStyle() == 2) 0xFF1F343B.toInt() else Color.WHITE)
             contentDescription = if (expanded) "جمع کردن اعلان" else "باز کردن متن کامل اعلان"
             minWidth = dp(48); minHeight = dp(48)
             setOnClickListener { renderCard(message, pinned = true, expanded = !expanded) }
@@ -408,25 +408,22 @@ private class GlassSurface(
         val radius = if (round) rect.width() / 2 else min(rect.width(), rect.height()) * .18f
         val path = Path().apply { addRoundRect(rect, radius, radius, Path.Direction.CW) }
         canvas.save(); canvas.clipPath(path)
-        // Glass is a luminous off-white surface (like the supplied Android screenshot).
-        // The alpha floor is intentionally high so dark text remains readable anywhere.
+        // Reference palette: luminous emerald outer edge and deep teal card.
+        // A firm alpha floor keeps white typography legible on bright wallpapers.
         val paper = style == 2
-        val bright = style != 1
-        val effectiveAlpha = if (style == 1 || paper) 255
-            else (opacity.coerceIn(.78f, 1f) * 255).toInt()
+        val bright = paper
+        val effectiveAlpha = if (paper) 255
+            else (opacity.coerceIn(.82f, 1f) * 255).toInt()
         fun shade(f: Float) = Color.argb(effectiveAlpha,
             (Color.red(tint) * f).toInt().coerceIn(0, 255),
             (Color.green(tint) * f).toInt().coerceIn(0, 255),
             (Color.blue(tint) * f).toInt().coerceIn(0, 255))
         val top = if (paper) 0xFFFDFCF8.toInt()
-            else if (bright) Color.argb(effectiveAlpha, 255, 255, 255)
-            else shade(.94f)
+            else if (style == 0) Color.argb(effectiveAlpha, 12, 105, 108)
+            else shade(.98f)
         val bottom = if (paper) 0xFFF0F2F0.toInt()
-            else if (bright) Color.argb(effectiveAlpha,
-                (238 * 9 + Color.red(tint)) / 10,
-                (248 * 9 + Color.green(tint)) / 10,
-                (247 * 9 + Color.blue(tint)) / 10)
-            else shade(.48f)
+            else if (style == 0) Color.argb(effectiveAlpha, 5, 68, 76)
+            else shade(.47f)
         paint.shader = LinearGradient(0f, 0f, rect.width(), rect.height(),
             top, bottom, Shader.TileMode.CLAMP)
         canvas.drawRect(rect, paint); paint.shader = null
@@ -443,8 +440,7 @@ private class GlassSurface(
                 rect.width() * (.025f + .007f * (i % 3)), paint)
             paint.style = Paint.Style.FILL
         }
-        paint.color = if (bright) Color.argb(80,
-            Color.red(tint), Color.green(tint), Color.blue(tint)) else 0x70FFFFFF
+        paint.color = if (paper) 0x66087F81 else 0xFF92CFC2.toInt()
         paint.style = Paint.Style.STROKE; paint.strokeWidth = 1.5f
         canvas.drawRoundRect(RectF(rect.left + 1f, rect.top + 1f, rect.right - 1f, rect.bottom - 1f),
             radius, radius, paint)
