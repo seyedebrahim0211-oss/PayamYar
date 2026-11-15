@@ -234,6 +234,7 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
       AnimationController(vsync: this, duration: const Duration(seconds: 8));
   final _reply = TextEditingController();
   final _focus = FocusNode();
+  bool _expanded = false;
 
   @override
   void initState() {
@@ -250,6 +251,7 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
   @override
   void didUpdateWidget(GlassBannerCard oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.banner != widget.banner) _expanded = false;
     _syncBubbles();
   }
 
@@ -375,25 +377,34 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
                     Text('پیامیار • $clock', style: TextStyle(color: soft, fontSize: 11.5, height: 1.4)),
                   ]),
                 ),
-                if (widget.interactive)
+                if (_expanded && widget.interactive)
                   IconButton(
                     onPressed: widget.onClose,
                     visualDensity: VisualDensity.compact,
-                    tooltip: 'بستن',
-                    icon: Icon(Icons.close_rounded, color: soft, size: 20),
+                    tooltip: 'بستن اعلان',
+                    icon: Icon(Icons.close_rounded, color: soft, size: 18),
                   ),
+                IconButton(
+                  onPressed: widget.interactive
+                      ? () => setState(() => _expanded = !_expanded) : null,
+                  visualDensity: VisualDensity.compact,
+                  tooltip: _expanded ? 'جمع کردن اعلان' : 'نمایش متن کامل',
+                  icon: Icon(_expanded ? Icons.keyboard_arrow_up_rounded
+                      : Icons.keyboard_arrow_down_rounded, color: soft, size: 27),
+                ),
               ]),
               const SizedBox(height: 8),
               ConstrainedBox(
                 constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * .3),
                 child: SingleChildScrollView(
                   child: Text(b.body,
-                    maxLines: s.bannerCompact ? 4 : null,
-                    overflow: s.bannerCompact ? TextOverflow.ellipsis : TextOverflow.visible,
+                    maxLines: _expanded || !s.bannerCompact ? null : 2,
+                    overflow: _expanded || !s.bannerCompact
+                        ? TextOverflow.visible : TextOverflow.ellipsis,
                     style: TextStyle(color: fg, fontSize: 14, height: 1.65)),
                 ),
               ),
-              if (code != null && s.notifyOtpCopy) ...[
+              if (code != null && s.notifyOtpCopy && (_expanded || !s.bannerCompact)) ...[
                 const SizedBox(height: 8),
                 Align(
                   alignment: AlignmentDirectional.centerStart,
@@ -406,7 +417,7 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
                   ),
                 ),
               ],
-              if (showReply && !s.bannerCompact) ...[
+              if (showReply && (_expanded || !s.bannerCompact)) ...[
                 const SizedBox(height: 10),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -419,7 +430,7 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
                       ),
                   ]),
                 ),
-                if (widget.interactive && !s.bannerCompact) ...[
+                if (widget.interactive && (_expanded || !s.bannerCompact)) ...[
                   const SizedBox(height: 8),
                   TextField(
                     controller: _reply,
