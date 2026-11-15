@@ -7,6 +7,7 @@ import '../brand_mark.dart';
 import '../conversation_logic.dart';
 import '../jalali.dart';
 import '../message_logic.dart';
+import '../message_search.dart';
 import '../sms_bridge.dart';
 import '../update_service.dart' show formatBytes;
 import '../contacts/contacts_screen.dart';
@@ -236,7 +237,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
   }
 
   List<Conversation> _filtered() {
-    final q = query.trim().toLowerCase();
+    final q = query.trim();
     final all = store.visible(archive: widget.archive);
     if (!unreadOnly && category == null && folder == null && q.isEmpty) return all;
     return all.where((c) {
@@ -244,8 +245,8 @@ class _ConversationsPageState extends State<ConversationsPage> {
       if (unreadOnly && store.unreadCount(c) == 0) return false;
       if (category != null && store.categoryOf(c) != category) return false;
       if (q.isEmpty) return true;
-      if (store.displayName(c.address).toLowerCase().contains(q) || c.address.toLowerCase().contains(q)) return true;
-      return c.messages.any((m) => m.body.toLowerCase().contains(q));
+      if (MessageSearch.matches(store.displayName(c.address), q) || MessageSearch.matches(c.address, q)) return true;
+      return c.messages.any((m) => MessageSearch.matches(m.body, q));
     }).toList();
   }
 
@@ -471,6 +472,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
                       store: store,
                       conversation: c,
                       hidePreview: widget.settings.hidePreview,
+                      searchQuery: query,
                       onLongPress: () => _actions(c),
                     );
                   },
@@ -633,8 +635,9 @@ class ConversationTile extends StatelessWidget {
   final AppStore store;
   final Conversation conversation;
   final bool hidePreview;
+  final String searchQuery;
   final VoidCallback onLongPress;
-  const ConversationTile({super.key, required this.store, required this.conversation, required this.hidePreview, required this.onLongPress});
+  const ConversationTile({super.key, required this.store, required this.conversation, required this.hidePreview, required this.onLongPress, this.searchQuery = ''});
 
   @override
   Widget build(BuildContext context) {
@@ -645,7 +648,9 @@ class ConversationTile extends StatelessWidget {
     final name = store.displayName(conversation.address);
     final pinned = store.isPinned(conversation.address);
     final bold = unread > 0;
-    final preview = hidePreview ? 'متن پیام مخفی است' : '${m.outgoing ? 'شما: ' : ''}${m.body.replaceAll('\n', ' ')}';
+    final matches = MessageSearch.withinConversation(conversation.messages, searchQuery);
+    final previewMessage = matches.isNotEmpty ? matches.first : m;
+    final preview = hidePreview ? 'متن پیام مخفی است' : '${previewMessage.outgoing ? 'شما: ' : ''}${previewMessage.body.replaceAll('\n', ' ')}';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Material(
@@ -654,7 +659,8 @@ class ConversationTile extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(20),
           onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
-            builder: (_) => ConversationScreen(store: store, address: conversation.address))),
+            builder: (_) => ConversationScreen(store: store, address: conversation.address,
+              initialSearch: searchQuery.isNotEmpty && matches.isNotEmpty ? searchQuery : ''))),
           onLongPress: onLongPress,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
@@ -682,6 +688,10 @@ class ConversationTile extends StatelessWidget {
                   Expanded(child: Text(preview, maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: TextStyle(color: bold ? scheme.onSurface : scheme.onSurfaceVariant,
                       fontWeight: bold ? FontWeight.w600 : null))),
+                  if (searchQuery.trim().isNotEmpty && matches.isNotEmpty)
+                    Padding(padding: const EdgeInsetsDirectional.only(start: 5),
+                      child: Text('${Jalali.digits(matches.length)} نتیجه',
+                        style: TextStyle(color: scheme.primary, fontSize: 11))),
                   if (unread > 0)
                     Container(
                       margin: const EdgeInsetsDirectional.only(start: 8),
