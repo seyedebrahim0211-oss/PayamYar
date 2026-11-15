@@ -263,6 +263,13 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> {
                       onSelectionChanged: (v) => s.updateNotify(notifyAvatarShape: v.first),
                     ),
                   ),
+                  SwitchListTile(
+                    secondary: Icon(Icons.chat_bubble_outline_rounded, color: scheme.primary),
+                    title: const Text('حباب شناور گفتگو'),
+                    subtitle: const Text('در اندروید ۱۱ به بالا؛ اجازه حباب‌ها در تنظیمات اعلان گوشی هم باید فعال باشد.'),
+                    value: s.notifyBubbles,
+                    onChanged: (v) => s.updateNotify(notifyBubbles: v),
+                  ),
                   const ListTile(
                     leading: Icon(Icons.web_asset_rounded),
                     title: Text('اعلان شیشه‌ای بالای صفحه'),

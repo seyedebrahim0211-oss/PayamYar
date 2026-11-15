@@ -275,8 +275,8 @@ object Notifier {
         }
         canvas.restore()
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 2f
-        paint.color = if (style == 2) 0x5587B6AA else 0xAAFFFFFF.toInt()
+        paint.strokeWidth = 1f
+        paint.color = if (style == 2) 0x3387B6AA else 0x28FFFFFF
         canvas.drawRoundRect(bounds, radius, radius, paint)
         return result
     }
@@ -298,7 +298,7 @@ object Notifier {
         for (id in intArrayOf(R.id.glass_sender, R.id.glass_preview)) view.setTextColor(id, fg)
         for (id in intArrayOf(R.id.glass_meta, R.id.glass_clock)) view.setTextColor(id, muted)
         view.setOnClickPendingIntent(R.id.glass_frame, open)
-        if (code == null) {
+        if (code == null || !expanded) {
             view.setViewVisibility(R.id.glass_code, android.view.View.GONE)
         } else {
             view.setTextViewText(R.id.glass_code, "کپی کد $code")
@@ -331,7 +331,7 @@ object Notifier {
             vibrationPattern = longArrayOf(0, 150, 100, 160)
             setSound(sound, audio)
             lockscreenVisibility = android.app.Notification.VISIBILITY_PRIVATE
-            if (Build.VERSION.SDK_INT >= 29) setAllowBubbles(false)
+            if (Build.VERSION.SDK_INT >= 29) setAllowBubbles(true)
         })
         manager.createNotificationChannel(NotificationChannel(SENT_CHANNEL, "تأیید ارسال پیام", NotificationManager.IMPORTANCE_DEFAULT).apply {
             description = "صدای تأیید پذیرش پیامک توسط شبکه؛ قابل تغییر از تنظیمات اعلان گوشی"
@@ -422,11 +422,11 @@ object Notifier {
                 try {
                     front.invokeMethod("incomingBanner", payload, object : MethodChannel.Result {
                         override fun success(result: Any?) { /* Glass banner owns foreground alert. */ }
-                        override fun error(code: String, message: String?, details: Any?) {
-                            systemIncoming(c, address, name, text, time, code = null, reply = reply)
+                        override fun error(errorCode: String, message: String?, details: Any?) {
+                            systemIncoming(c, address, name, text, time, code, reply)
                         }
                         override fun notImplemented() {
-                            systemIncoming(c, address, name, text, time, code = null, reply = reply)
+                            systemIncoming(c, address, name, text, time, code, reply)
                         }
                     })
                 } catch (_: Exception) {
@@ -446,12 +446,13 @@ object Notifier {
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(c, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val id = idFor(address)
         val picture = profileBitmap(c, address, name)
-        // Use native heads-up notification instead of floating Android bubble.
+        // MessagingStyle retains conversation semantics and unread message history.
         val sender = Person.Builder().setName(name).setKey(address)
             .setIcon(IconCompat.createWithBitmap(picture)).setImportant(true).build()
 
         // Stack this message under earlier unread ones from the same sender.
-        val existing = manager.activeNotifications.firstOrNull { it.id == id }?.notification
+        val existing = if (enabled(c, "notifyPreview"))
+            manager.activeNotifications.firstOrNull { it.id == id }?.notification else null
         val style = existing?.let { NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(it) }
             ?: NotificationCompat.MessagingStyle(Person.Builder().setName("شما").build())
         style.addMessage(text, time, sender)
@@ -479,7 +480,7 @@ object Notifier {
             .setGroup("payamyar_incoming_sms")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setWhen(time).setShowWhen(true)
-            .setContentIntent(open).setAutoCancel(false)
+            .setContentIntent(open).setAutoCancel(true)
             .setSilent(SentSound.quietNow(c))
             .setLights(color, 600, 2400)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
@@ -488,18 +489,30 @@ object Notifier {
 
 
 
-        try {
+        if (!sample && enabled(c, "notifyBubbles", false)) {
+            val shortcut = conversationShortcut(c, address, name, sender,
+                IconCompat.createWithAdaptiveBitmap(adaptive(c, picture)))
+            if (shortcut != null) {
+                builder.setShortcutId(shortcut).setLocusId(LocusIdCompat(shortcut))
+                builder.setBubbleMetadata(bubble(c, shortcut))
+            }
+        }
+
+        // Large text uses the accessible system template; fixed custom slots cannot grow.
+        if (c.resources.configuration.fontScale <= 1.15f) try {
             val compact = fillGlassView(c, R.layout.payamyar_notification_glass,
                 name, text, time, picture, address, code, false, open)
+            val headsUp = fillGlassView(c, R.layout.payamyar_notification_heads_up,
+                name, text, time, picture, address, code, false, open)
+            val history = style.messages.takeLast(4).joinToString("\n") { it.text.toString() }
             val expanded = fillGlassView(c, R.layout.payamyar_notification_expanded,
-                name, text, time, picture, address, code, true, open)
+                name, history, time, picture, address, code, true, open)
             builder.setCustomContentView(compact)
-            // Heads-up must use the COMPACT layout: Android/MagicOS clips the
-            // previous expanded view into a broken one-line rectangle.
-            builder.setCustomHeadsUpContentView(compact)
+            builder.setCustomHeadsUpContentView(headsUp)
             builder.setCustomBigContentView(expanded)
         } catch (_: Exception) {
-            // Preserve system MessagingStyle and actions if an OEM rejects RemoteViews.
+            builder.setCustomContentView(null).setCustomHeadsUpContentView(null)
+                .setCustomBigContentView(null)
         }
 
         if (code != null) {
@@ -515,7 +528,14 @@ object Notifier {
         }
         builder.addAction(NotificationCompat.Action.Builder(0, "✓ خوانده شد", broadcast(c, ACTION_READ, address))
             .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_MARK_AS_READ).setShowsUserInterface(false).build())
-        NotificationManagerCompat.from(c).notify(id, builder.build())
+        try {
+            NotificationManagerCompat.from(c).notify(id, builder.build())
+        } catch (_: RuntimeException) {
+            // OEM rejection must not lose the SMS alert; retain actions and message history.
+            builder.setCustomContentView(null).setCustomHeadsUpContentView(null)
+                .setCustomBigContentView(null)
+            NotificationManagerCompat.from(c).notify(id, builder.build())
+        }
     }
 
     /** Sample Android notification. No message is sent, and it expires automatically. */
@@ -526,6 +546,9 @@ object Notifier {
              ContextCompat.checkSelfPermission(c, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)) {
             return false
         }
+        configureChannels(c)
+        if (Build.VERSION.SDK_INT >= 26 && c.getSystemService(NotificationManager::class.java)
+                .getNotificationChannel(CHANNEL)?.importance == NotificationManager.IMPORTANCE_NONE) return false
         val address = "+989000000000"
         val body = "سلام! این نمونه اعلان شیشه‌ای پیام‌یار است. کد آزمایشی: 12345"
         val showingBody = enabled(c, "notifyPreview")
@@ -563,10 +586,10 @@ class NotifyActionReceiver : BroadcastReceiver() {
                             SmsCore.dispatch(context, id)
                         }
                         if (address != "+989000000000") SmsCore.markAddressRead(context, address)
+                        Notifier.cancel(context, address)
                     } catch (_: Exception) {
                         SmsCore.notify(context, 4, "پاسخ ارسال نشد", "پیامیار را باز کنید و دوباره تلاش کنید.")
                     } finally {
-                        Notifier.cancel(context, address)
                         pending.finish()
                     }
                 }.start()

@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('compact and expanded notification views preserve native glass contract', () {
     for (final name in ['payamyar_notification_glass.xml',
-      'payamyar_notification_expanded.xml']) {
+      'payamyar_notification_expanded.xml', 'payamyar_notification_heads_up.xml']) {
       final xml = File('android/app/src/main/res/layout/$name').readAsStringSync();
       for (final id in ['glass_frame', 'glass_backdrop', 'glass_avatar',
         'glass_sender', 'glass_meta', 'glass_clock', 'glass_preview', 'glass_code']) {
@@ -16,11 +16,11 @@ void main() {
     }
   });
 
-  test('native heads-up uses compact view, expanded shade retains full layout', () {
+  test('native heads-up uses its own bounded view, expanded shade retains history', () {
     final source = File(
       'android/app/src/main/kotlin/ir/honarmardomi/payamyar/Notifier.kt'
     ).readAsStringSync();
-    expect(source, contains('builder.setCustomHeadsUpContentView(compact)'));
+    expect(source, contains('builder.setCustomHeadsUpContentView(headsUp)'));
     expect(source, contains('builder.setCustomBigContentView(expanded)'));
     expect(source, contains('view.setImageViewBitmap(R.id.glass_avatar, avatar)'));
     expect(source, contains('view.setImageViewBitmap(R.id.glass_backdrop, glassBackdrop(c, expanded))'));
