@@ -7,8 +7,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
-import androidx.test.uiautomator.UiScrollable
-import androidx.test.uiautomator.UiSelector
+import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.Until
 import org.junit.After
 import org.junit.Assert.*
@@ -22,6 +21,28 @@ class FloatingNotificationsTest {
     private val context = instrumentation.targetContext
     private val device = UiDevice.getInstance(instrumentation)
     private var scenario: ActivityScenario<MainActivity>? = null
+
+    /**
+     * UiScrollable's legacy UiSelector cannot reliably match application overlay windows
+     * on Android 15, even though UiObject2 resolves their content and class correctly.
+     * Use the accessible ScrollView itself, and verify the actions as we scroll.
+     */
+    private fun scrollToAction(text: String): Boolean {
+        val selector = By.text(text)
+        for (attempt in 0..14) {
+            if (device.hasObject(selector)) return true
+            val view = device.wait(
+                Until.findObject(By.clazz("android.widget.ScrollView").pkg(context.packageName)), 2000
+            ) ?: return false
+            try {
+                view.scroll(Direction.DOWN, .70f)
+            } catch (_: RuntimeException) {
+                return false
+            }
+            device.waitForIdle()
+        }
+        return device.hasObject(selector)
+    }
     @Before fun start() {
         device.executeShellCommand("appops set ${context.packageName} SYSTEM_ALERT_WINDOW allow")
         device.executeShellCommand("pm grant ${context.packageName} android.permission.POST_NOTIFICATIONS")
@@ -53,11 +74,9 @@ class FloatingNotificationsTest {
         val bounds = header.visibleBounds
         assertTrue(bounds.left >= 0 && bounds.right <= device.displayWidth)
         assertTrue(bounds.top >= 0 && bounds.bottom <= device.displayHeight)
-        assertTrue(UiScrollable(UiSelector().className("android.widget.ScrollView").packageName(context.packageName))
-            .scrollTextIntoView("کپی کد 12345"))
+        assertTrue("Code action must be reachable by scrolling long text", scrollToAction("کپی کد 12345"))
         assertNotNull(device.findObject(By.text("کپی کد 12345")))
-        assertTrue(UiScrollable(UiSelector().className("android.widget.ScrollView").packageName(context.packageName))
-            .scrollTextIntoView("باز کردن گفتگو / پاسخ"))
+        assertTrue("Conversation action must be reachable by scrolling", scrollToAction("باز کردن گفتگو / پاسخ"))
     }
     @Test fun appLockNeverExposesSampleOtpOrSenderInOverlay() {
         context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).edit()
@@ -82,8 +101,7 @@ class FloatingNotificationsTest {
         val b = scroll.visibleBounds
         assertTrue(b.left >= 0 && b.right <= device.displayWidth)
         assertTrue(b.top >= 0 && b.bottom <= device.displayHeight)
-        assertTrue(UiScrollable(UiSelector().className("android.widget.ScrollView").packageName(context.packageName))
-            .scrollTextIntoView("باز کردن گفتگو / پاسخ"))
+        assertTrue("Conversation action must be reachable by scrolling", scrollToAction("باز کردن گفتگو / پاسخ"))
     }
     @Test fun stoppingServiceRemovesChatHead() {
         instrumentation.runOnMainSync { FloatingNotifications.setEnabled(context, false) }
