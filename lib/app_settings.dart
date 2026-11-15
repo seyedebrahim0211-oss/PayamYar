@@ -65,11 +65,15 @@ class AppSettings extends ChangeNotifier {
   bool notifyInApp = true;
   BannerStyle bannerStyle = BannerStyle.glass;
   int bannerTint = 0;
+  double bannerHue = -1; // -1 = chosen brand palette, 0..360 = user-selected colour
   double bannerBlur = 18;
+  double bannerEdge = .72;
+  double bannerShine = .55;
+  double bannerCorner = 26;
   double bannerOpacity = .9;
   bool bannerTop = true;
   int bannerSeconds = 6;
-  bool bannerCompact = true;
+  bool bannerCompact = false;
   double bannerMaxWidth = 360;
   bool bannerBubbles = true;
   bool notifyGlassAvatar = true;
@@ -79,7 +83,8 @@ class AppSettings extends ChangeNotifier {
   bool notifyOtpCopy = true;
   List<String> quickReplies = List.of(defaultQuickReplies);
 
-  Color get bannerColor => palettes[bannerTint];
+  Color get bannerColor => bannerHue < 0 ? palettes[bannerTint] :
+      HSVColor.fromAHSV(1, bannerHue, .75, .57).toColor();
 
   // ── quiet hours (minutes after midnight), read natively ──
   bool quietHours = false;
@@ -114,18 +119,23 @@ class AppSettings extends ChangeNotifier {
     quietStart = (p.getInt('quietStart') ?? 23 * 60).clamp(0, 1439).toInt();
     quietEnd = (p.getInt('quietEnd') ?? 7 * 60).clamp(0, 1439).toInt();
     notifyInApp = p.getBool('notifyInApp') ?? true;
-    bannerStyle = BannerStyle.values[(p.getInt('bannerStyle') ?? 0).clamp(0, BannerStyle.values.length - 1).toInt()];
+    // Migration: retire the old vivid/minimal pop-ups. One unified glass style.
+    bannerStyle = BannerStyle.glass;
     bannerTint = (p.getInt('bannerTint') ?? palette).clamp(0, palettes.length - 1).toInt();
+    bannerHue = (p.getDouble('bannerHue') ?? -1).clamp(-1, 360).toDouble();
     bannerBlur = (p.getDouble('bannerBlur') ?? 18).clamp(0, 30).toDouble();
+    bannerEdge = (p.getDouble('bannerEdge') ?? .72).clamp(.15, 1).toDouble();
+    bannerShine = (p.getDouble('bannerShine') ?? .55).clamp(0, 1).toDouble();
+    bannerCorner = (p.getDouble('bannerCorner') ?? 26).clamp(16, 36).toDouble();
     bannerOpacity = (p.getDouble('bannerOpacity') ?? .9).clamp(.78, 1).toDouble();
     bannerTop = p.getBool('bannerTop') ?? true;
     bannerSeconds = (p.getInt('bannerSeconds') ?? 6).clamp(2, 15).toInt();
-    bannerCompact = p.getBool('bannerCompact') ?? true;
+    bannerCompact = false; // Never truncate the glass popup.
     bannerMaxWidth = (p.getDouble('bannerMaxWidth') ?? 360).clamp(280, 520).toDouble();
     bannerBubbles = p.getBool('bannerBubbles') ?? true;
     notifyGlassAvatar = p.getBool('notifyGlassAvatar') ?? true;
     notifyAvatarShape = (p.getInt('notifyAvatarShape') ?? 0).clamp(0, 1).toInt();
-    notifyBubbles = p.getBool('notifyBubbles') ?? false;
+    notifyBubbles = false; // No competing OS bubble when one floating style is selected.
     notifyQuickReply = p.getBool('notifyQuickReply') ?? true;
     notifyOtpCopy = p.getBool('notifyOtpCopy') ?? true;
     final replies = p.getString('notifyQuickReplies');
@@ -198,24 +208,29 @@ class AppSettings extends ChangeNotifier {
   }
 
   /// Notification look; separate from [update] to keep that signature readable.
-  Future<void> updateNotify({bool? notifyInApp, BannerStyle? bannerStyle, int? bannerTint, double? bannerBlur,
+  Future<void> updateNotify({bool? notifyInApp, BannerStyle? bannerStyle, int? bannerTint, double? bannerHue, double? bannerBlur,
+      double? bannerEdge, double? bannerShine, double? bannerCorner,
       double? bannerOpacity, bool? bannerTop, int? bannerSeconds, bool? bannerCompact,
       double? bannerMaxWidth, bool? bannerBubbles, bool? notifyGlassAvatar,
       int? notifyAvatarShape, bool? notifyBubbles, bool? notifyQuickReply, bool? notifyOtpCopy,
       List<String>? quickReplies}) async {
     this.notifyInApp = notifyInApp ?? this.notifyInApp;
-    this.bannerStyle = bannerStyle ?? this.bannerStyle;
+    this.bannerStyle = BannerStyle.glass;
     this.bannerTint = (bannerTint ?? this.bannerTint).clamp(0, palettes.length - 1).toInt();
+    this.bannerHue = (bannerHue ?? this.bannerHue).clamp(-1, 360).toDouble();
+    this.bannerEdge = (bannerEdge ?? this.bannerEdge).clamp(.15, 1).toDouble();
+    this.bannerShine = (bannerShine ?? this.bannerShine).clamp(0, 1).toDouble();
+    this.bannerCorner = (bannerCorner ?? this.bannerCorner).clamp(16, 36).toDouble();
     this.bannerBlur = (bannerBlur ?? this.bannerBlur).clamp(0, 30).toDouble();
     this.bannerOpacity = (bannerOpacity ?? this.bannerOpacity).clamp(.78, 1).toDouble();
     this.bannerTop = bannerTop ?? this.bannerTop;
     this.bannerSeconds = (bannerSeconds ?? this.bannerSeconds).clamp(2, 15).toInt();
-    this.bannerCompact = bannerCompact ?? this.bannerCompact;
+    this.bannerCompact = false;
     this.bannerMaxWidth = (bannerMaxWidth ?? this.bannerMaxWidth).clamp(280, 520).toDouble();
     this.bannerBubbles = bannerBubbles ?? this.bannerBubbles;
     this.notifyGlassAvatar = notifyGlassAvatar ?? this.notifyGlassAvatar;
     this.notifyAvatarShape = (notifyAvatarShape ?? this.notifyAvatarShape).clamp(0, 1).toInt();
-    this.notifyBubbles = notifyBubbles ?? this.notifyBubbles;
+    this.notifyBubbles = false;
     this.notifyQuickReply = notifyQuickReply ?? this.notifyQuickReply;
     this.notifyOtpCopy = notifyOtpCopy ?? this.notifyOtpCopy;
     if (quickReplies != null) this.quickReplies = cleanReplies(quickReplies);
@@ -236,6 +251,10 @@ class AppSettings extends ChangeNotifier {
     await p.setBool('notifyInApp', notifyInApp);
     await p.setInt('bannerStyle', bannerStyle.index);
     await p.setInt('bannerTint', bannerTint);
+    await p.setDouble('bannerHue', bannerHue);
+    await p.setDouble('bannerEdge', bannerEdge);
+    await p.setDouble('bannerShine', bannerShine);
+    await p.setDouble('bannerCorner', bannerCorner);
     await p.setDouble('bannerBlur', bannerBlur);
     await p.setDouble('bannerOpacity', bannerOpacity);
     await p.setBool('bannerTop', bannerTop);
@@ -254,6 +273,7 @@ class AppSettings extends ChangeNotifier {
 
   Map<String, Object> notifyJson() => {
     'notifyInApp': notifyInApp, 'bannerStyle': bannerStyle.index, 'bannerTint': bannerTint,
+    'bannerHue': bannerHue, 'bannerEdge': bannerEdge, 'bannerShine': bannerShine, 'bannerCorner': bannerCorner,
     'bannerBlur': bannerBlur, 'bannerOpacity': bannerOpacity, 'bannerTop': bannerTop,
     'bannerSeconds': bannerSeconds, 'bannerCompact': bannerCompact,
     'bannerMaxWidth': bannerMaxWidth, 'bannerBubbles': bannerBubbles, 'notifyGlassAvatar': notifyGlassAvatar,
@@ -270,7 +290,8 @@ class AppSettings extends ChangeNotifier {
     await updateNotify(
       notifyInApp: b('notifyInApp'),
       bannerStyle: style == null ? null : BannerStyle.values[style.clamp(0, BannerStyle.values.length - 1).toInt()],
-      bannerTint: i('bannerTint'), bannerBlur: d('bannerBlur'), bannerOpacity: d('bannerOpacity'),
+      bannerTint: i('bannerTint'), bannerHue: d('bannerHue'), bannerBlur: d('bannerBlur'),
+      bannerEdge: d('bannerEdge'), bannerShine: d('bannerShine'), bannerCorner: d('bannerCorner'), bannerOpacity: d('bannerOpacity'),
       bannerTop: b('bannerTop'), bannerSeconds: i('bannerSeconds'),
       bannerCompact: b('bannerCompact'), bannerMaxWidth: d('bannerMaxWidth'),
       bannerBubbles: b('bannerBubbles'),
