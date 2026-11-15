@@ -297,7 +297,8 @@ class _ConversationsPageState extends State<ConversationsPage> {
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      builder: (ctx) => SafeArea(child: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
         ListTile(title: Text(store.displayName(c.address), style: const TextStyle(fontWeight: FontWeight.w800))),
         ListTile(
           leading: Icon(isPinned ? Icons.push_pin_outlined : Icons.push_pin_rounded),
@@ -326,7 +327,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
             await confirmDeleteConversation(context, store, c);
           }),
       ])),
-    );
+    ));
   }
 
   /// Left/right gestures cycle inbox views; archiving is an intentional
