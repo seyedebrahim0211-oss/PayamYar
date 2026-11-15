@@ -201,11 +201,17 @@ class FloatingNotifications : Service() {
         return Rect(dp(8), dp(32), m.widthPixels - dp(8), m.heightPixels - dp(48))
     }
     @Suppress("DEPRECATION")
-    private fun params(w: Int, h: Int) = WindowManager.LayoutParams(w, h,
+    private fun params(w: Int, h: Int, focusable: Boolean = false) = WindowManager.LayoutParams(w, h,
         if (Build.VERSION.SDK_INT >= 26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
             WindowManager.LayoutParams.FLAG_SECURE,
-        PixelFormat.TRANSLUCENT).apply { gravity = Gravity.TOP or Gravity.LEFT }
+        PixelFormat.TRANSLUCENT).apply {
+            gravity = Gravity.TOP or Gravity.LEFT
+            if (focusable) {
+                flags = flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+                softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+            }
+        }
     private fun removeBubble() { bubble?.let { try { wm.removeView(it) } catch (_: RuntimeException) { } }; bubble = null }
     private fun hideCard() { main.removeCallbacks(hide); card?.let { try { wm.removeView(it) } catch (_: RuntimeException) { } }; card = null }
     private fun renderBubble() {
@@ -283,7 +289,7 @@ class FloatingNotifications : Service() {
     }
     /** Teal frosted notification: sender avatar, complete message and accessible scrollable actions. */
     private fun renderCard(message: Message, pinned: Boolean = false,
-                           expanded: Boolean = true): Boolean {
+                           expanded: Boolean = true, replying: Boolean = false): Boolean {
         hideCard()
         if (locked() || !allowed(this) || !enabled(this)) return false
         val bounds = area()
@@ -291,6 +297,11 @@ class FloatingNotifications : Service() {
             dp(number("bannerMaxWidth", 360).toInt().coerceIn(280, 520)), dp(8))
         val maxHeight = (bounds.height() * .65f).toInt().coerceAtLeast(1)
         val private = privateContent()
+        val phone = message.address.replace(Regex("[\\\\s()-]"), "")
+        val canReplyHere = !private && !message.sample &&
+            flag("notifyQuickReply") && SmsCore.isDefault(this) &&
+            Regex("^\\\\+?[0-9]{7,15}$").matches(phone)
+        var editor: EditText? = null
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutDirection = View.LAYOUT_DIRECTION_RTL
@@ -353,6 +364,94 @@ class FloatingNotifications : Service() {
                     hideCard()
                 })
             }
+            if (canReplyHere) {
+                if (replying) {
+                    main.removeCallbacks(expireBubble)
+                    main.postDelayed(expireBubble, 60000)
+                    val input = EditText(this).apply {
+                        hint = "پاسخ به ${message.name}…"
+                        textSize = 15f
+                        setTextColor(Color.WHITE)
+                        setHintTextColor(0xB8E8F6F0.toInt())
+                        inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                            android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+                        minLines = 1
+                        maxLines = 3
+                        isSingleLine = false
+                        isFocusableInTouchMode = true
+                        setPadding(dp(14), dp(8), dp(14), dp(8))
+                        background = android.graphics.drawable.GradientDrawable().apply {
+                            cornerRadius = dp(16).toFloat()
+                            setColor(0x350B353A)
+                            setStroke(dp(1), 0x88B3E7DA.toInt())
+                        }
+                    }
+                    editor = input
+                    actions.addView(input, LinearLayout.LayoutParams(-1, -2))
+                    val rawSims = try { SmsCore.subscriptions(this) }
+                                  catch (_: RuntimeException) { emptyList() }
+                    val active = rawSims.filter { ((it["id"] as? Number)?.toInt() ?: -1) >= 0 }
+                    val sims = active.ifEmpty {
+                        listOf(mapOf<String, Any>("id" to -1, "label" to "سیم‌کارت پیش‌فرض"))
+                    }
+                    var selection = 0
+                    val chooseSim = button("سیم‌کارت: ${sims.first()["label"]}") { }
+                    chooseSim.setOnClickListener {
+                        selection = (selection + 1) % sims.size
+                        chooseSim.text = "سیم‌کارت: ${sims[selection]["label"]}"
+                    }
+                    actions.addView(chooseSim)
+                    val send = button("ارسال با فرصت لغو ۵ ثانیه") { }
+                    send.setOnClickListener {
+                        val typed = input.text.toString().trim()
+                        if (typed.isBlank() || typed.length > 2000) {
+                            Toast.makeText(this, "متن پاسخ باید بین ۱ تا ۲۰۰۰ نویسه باشد", Toast.LENGTH_SHORT).show()
+                        } else {
+                            try {
+                                // The same durable queue and undo window used throughout PayamYar.
+                                val id = SmsCore.queue(this, phone, typed,
+                                    (sims[selection]["id"] as Number).toInt(), 5000)
+                                input.isEnabled = false
+                                chooseSim.isEnabled = false
+                                send.text = "لغو ارسال (تا ۵ ثانیه)"
+                                send.setOnClickListener {
+                                    val cancelled = SmsCore.cancel(this, id)
+                                    Toast.makeText(this, if (cancelled) "ارسال لغو شد"
+                                        else "مهلت لغو تمام شده است", Toast.LENGTH_SHORT).show()
+                                    if (cancelled) { hideCard(); renderBubble() }
+                                }
+                                main.postDelayed({
+                                    if (card != null) {
+                                        send.text = "ارسال در شبکه انجام می‌شود"
+                                        send.isEnabled = false
+                                    }
+                                }, 5500)
+                            } catch (e: Exception) {
+                                Toast.makeText(this, "ارسال ممکن نیست؛ سیم‌کارت و مجوز پیامک را بررسی کنید",
+                                    Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                    actions.addView(send)
+                } else {
+                    actions.addView(button("پاسخ سریع در همین پنجره") {
+                        renderCard(message, pinned = true, expanded = true, replying = true)
+                    })
+                }
+                actions.addView(button("علامت‌گذاری خوانده‌شده") {
+                    try { SmsCore.markAddressRead(this, phone) }
+                    catch (_: SecurityException) { }
+                    Notifier.cancel(this, message.address)
+                })
+                actions.addView(button("تماس با فرستنده") {
+                    val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(phone)))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    try { startActivity(intent) }
+                    catch (_: RuntimeException) {
+                        Toast.makeText(this, "شماره‌گیر گوشی در دسترس نیست", Toast.LENGTH_SHORT).show()
+                    }
+                })
+            }
             actions.addView(button(if (private) "باز کردن برنامه" else "باز کردن گفتگو / پاسخ") {
                 open(if (message.sample) null else message.address)
             })
@@ -364,6 +463,19 @@ class FloatingNotifications : Service() {
             })
             layout.addView(actions)
         }
+        val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent): Boolean = true
+            override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float,
+                                 velocityY: Float): Boolean {
+                if (e1 == null || messages.size < 2 || abs(velocityX) < 450 ||
+                    abs(e2.x - e1.x) < dp(70) || abs(velocityY) > abs(velocityX)) return false
+                val all = messages.values.toList()
+                val i = all.indexOfFirst { it.address == message.address }
+                val next = all[(i + (if (velocityX < 0) 1 else all.size - 1)).mod(all.size)]
+                main.post { shown = next; renderCard(next, pinned = true, expanded = true) }
+                return true
+            }
+        })
         val scroll = ScrollView(this).apply {
             isFillViewport = false
             isVerticalScrollBarEnabled = expanded
@@ -374,18 +486,29 @@ class FloatingNotifications : Service() {
             addView(layout, ViewGroup.LayoutParams(-1, -2))
             setOnTouchListener { _, e ->
                 if (e.actionMasked == MotionEvent.ACTION_DOWN) main.removeCallbacks(hide)
+                detector.onTouchEvent(e)
                 false
             }
         }
         scroll.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(maxHeight, View.MeasureSpec.AT_MOST))
-        val p = params(width, NotificationPolicy.cardHeight(bounds.height(), scroll.measuredHeight))
+        val p = params(width, NotificationPolicy.cardHeight(bounds.height(), scroll.measuredHeight), replying)
         p.x = bounds.left + (bounds.width() - width) / 2
         p.y = if (flag("bannerTop")) bounds.top + dp(8) else bounds.bottom - p.height - dp(8)
         return try {
             wm.addView(scroll, p)
             card = scroll
-            if (!pinned) main.postDelayed(hide, number("bannerSeconds", 6).coerceIn(2, 15) * 1000)
+            if (replying) {
+                val field = editor
+                main.postDelayed({
+                    if (card === scroll && field != null) {
+                        field.requestFocus()
+                        getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+                            .showSoftInput(field, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+                    }
+                }, 180)
+            }
+            if (!pinned && !replying) main.postDelayed(hide, number("bannerSeconds", 6).coerceIn(2, 15) * 1000)
             true
         } catch (_: RuntimeException) { false }
     }
