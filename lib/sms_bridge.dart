@@ -221,6 +221,19 @@ class SmsBridge {
   }
 
   /// Posts a sample Android notification with the chosen look and quick replies.
+  static Future<Map<String, dynamic>> floatingStatus() async {
+    if (!supported) return {'permission': false, 'enabled': false, 'running': false};
+    return await _channel.invokeMapMethod<String, dynamic>('floatingStatus') ?? {};
+  }
+  static Future<bool> requestFloatingPermission() async => supported &&
+      (await _channel.invokeMethod<bool>('floatingPermission') ?? false);
+  static Future<bool> enableFloating(bool enabled) async => supported &&
+      (await _channel.invokeMethod<bool>('floatingEnable', {'enabled': enabled}) ?? false);
+  static Future<void> configureFloating({int? bubbleSize, int? textSize}) async {
+    if (supported) await _channel.invokeMethod<void>('floatingConfigure',
+        {'bubbleSize': bubbleSize, 'textSize': textSize});
+  }
+
   static Future<bool> previewNotification() async {
     if (!supported) return false;
     return await _channel.invokeMethod<bool>('previewNotification') ?? false;

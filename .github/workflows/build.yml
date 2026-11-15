@@ -201,6 +201,10 @@ jobs:
           done
           cp "$RUNNER_TEMP/AndroidManifest.site.xml" "$manifest"
 
+      - name: Native notification geometry and security unit tests
+        working-directory: android
+        run: ./gradlew :app:testDebugUnitTest
+
       - name: Remove temporary private signing material
         if: always() && github.event_name != 'pull_request'
         shell: bash

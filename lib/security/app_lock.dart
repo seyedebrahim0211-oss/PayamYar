@@ -21,7 +21,7 @@ class AppLock extends ChangeNotifier {
   int relockSeconds = 30;
   bool locked = false;
   bool loaded = false;
-  DateTime? _pausedAt;
+  Stopwatch? _backgroundTimer;
 
   Future<void> load() async {
     try {
@@ -99,14 +99,16 @@ class AppLock extends ChangeNotifier {
     return r;
   }
 
-  void paused() => _pausedAt ??= DateTime.now();
+  void paused() => _backgroundTimer ??= (Stopwatch()..start());
 
   void resumed() {
-    final at = _pausedAt;
-    _pausedAt = null;
+    final at = _backgroundTimer;
+    _backgroundTimer = null;
+    at?.stop();
     if (!enabled || at == null) return;
-    if (DateTime.now().difference(at).inSeconds >= relockSeconds) {
+    if (at.elapsed.inSeconds >= relockSeconds) {
       locked = true;
+      FocusManager.instance.primaryFocus?.unfocus();
       notifyListeners();
     }
   }

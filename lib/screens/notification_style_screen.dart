@@ -17,13 +17,83 @@ class NotificationStyleScreen extends StatefulWidget {
   State<NotificationStyleScreen> createState() => _NotificationStyleScreenState();
 }
 
-class _NotificationStyleScreenState extends State<NotificationStyleScreen> {
+class _NotificationStyleScreenState extends State<NotificationStyleScreen> with WidgetsBindingObserver {
+  Map<String, dynamic> _floating = {};
+  bool _enableOnReturn = false;
+  bool _floatingBusy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _loadFloating();
+  }
+
+  Future<void> _loadFloating() async {
+    try {
+      final value = await SmsBridge.floatingStatus();
+      if (mounted) setState(() => _floating = value);
+    } catch (_) {
+      if (mounted) setState(() => _floating = {});
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _resumeFloating();
+  }
+
+  Future<void> _resumeFloating() async {
+    await _loadFloating();
+    if (!mounted) return;
+    if (_enableOnReturn) {
+      _enableOnReturn = false;
+      if (_floating['permission'] == true) await _toggleFloating(true);
+      else _floatingNotice('اجازه نمایش روی برنامه‌های دیگر داده نشد؛ اعلان استاندارد فعال می‌ماند.');
+    }
+  }
+
+  void _floatingNotice(String text) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  Future<void> _toggleFloating(bool enabled) async {
+    if (_floatingBusy) return;
+    setState(() => _floatingBusy = true);
+    try {
+      if (enabled && _floating['permission'] != true) {
+        _enableOnReturn = true;
+        if (!await SmsBridge.requestFloatingPermission()) {
+          _enableOnReturn = false;
+          _floatingNotice('صفحه اجازه نمایش باز نشد؛ از تنظیمات گوشی اجازه نمایش روی برنامه‌های دیگر را فعال کنید.');
+        }
+        return;
+      }
+      final ok = await SmsBridge.enableFloating(enabled);
+      if (!ok) _floatingNotice('حباب شروع نشد؛ اجازه نمایش روی برنامه‌ها را بررسی کنید.');
+      if (ok && enabled) await widget.settings.updateNotify(notifyBubbles: false);
+      await _loadFloating();
+    } catch (_) {
+      _floatingNotice('تغییر حالت اعلان انجام نشد؛ دوباره تلاش کنید.');
+    } finally {
+      if (mounted) setState(() => _floatingBusy = false);
+    }
+  }
+
+  Future<void> _floatingSize({int? bubble, int? text}) async {
+    try {
+      await SmsBridge.configureFloating(bubbleSize: bubble, textSize: text);
+      await _loadFloating();
+    } catch (_) { _floatingNotice('تنظیم ذخیره نشد.'); }
+  }
+
   Timer? _previewTimer;
   String? _activePreview;
 
   @override
   void dispose() {
     _previewTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
@@ -116,6 +186,49 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> {
               key: const PageStorageKey('notification_settings_scroll'),
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
               children: [
+                SettingsGroup(title: 'حباب کنار صفحه و اعلان شناور', children: [
+                  SwitchListTile(
+                    title: const Text('حباب و کارت شیشه‌ای مستقل'),
+                    subtitle: Text(_floating['enabled'] == true
+                        ? 'فعال؛ حباب بیرون از برنامه دیده می‌شود. بکشید تا جابه‌جا شود؛ لمس کنید تا متن کامل باز شود.'
+                        : 'کارت بدون قاب سفید روی برنامه‌های دیگر؛ نیازمند اجازه نمایش روی برنامه‌ها'),
+                    secondary: Icon(Icons.chat_bubble_outline_rounded, color: scheme.primary),
+                    value: _floating['enabled'] == true,
+                    onChanged: !SmsBridge.supported || _floatingBusy ? null : _toggleFloating,
+                  ),
+                  if (_floating['enabled'] == true) ...[
+                    ListTile(
+                      title: const Text('اندازه حباب'),
+                      subtitle: Slider(min: 48, max: 72, divisions: 6,
+                        value: ((_floating['bubbleSize'] as num?)?.toDouble() ?? 56).clamp(48, 72).toDouble(),
+                        label: Jalali.digits((_floating['bubbleSize'] ?? 56).toString()),
+                        onChanged: (v) => setState(() => _floating['bubbleSize'] = v.round()),
+                        onChangeEnd: (v) => _floatingSize(bubble: v.round())),
+                    ),
+                    ListTile(
+                      title: const Text('اندازه متن کارت شناور'),
+                      subtitle: Slider(min: 12, max: 22, divisions: 10,
+                        value: ((_floating['textSize'] as num?)?.toDouble() ?? 15).clamp(12, 22).toDouble(),
+                        label: Jalali.digits((_floating['textSize'] ?? 15).toString()),
+                        onChanged: (v) => setState(() => _floating['textSize'] = v.round()),
+                        onChangeEnd: (v) => _floatingSize(text: v.round())),
+                    ),
+                    const Padding(padding: EdgeInsets.all(12), child: Text(
+                      'رنگ، عرض، جای بالا یا پایین، زمان نمایش و حباب‌های تزئینی را از همین صفحه تغییر دهید. متن بلند قابل پیمایش است؛ لمس کارت زمان بسته‌شدن را متوقف می‌کند. برای خاموش‌کردن، از اعلان «حباب پیام‌یار فعال است» هم می‌توانید استفاده کنید.')),
+                  ],
+                  if (_floating['enabled'] != true)
+                    SwitchListTile(
+                      title: const Text('حباب استاندارد اندروید'),
+                      subtitle: const Text('گزینه جایگزین؛ وابسته به پشتیبانی گوشی و اجازه حباب در تنظیمات اندروید'),
+                      value: s.notifyBubbles,
+                      onChanged: (v) => s.updateNotify(notifyBubbles: v),
+                    ),
+                  ListTile(
+                    leading: const Icon(Icons.settings_outlined),
+                    title: const Text('اجازه اعلان و حباب در گوشی'),
+                    onTap: () => SmsBridge.openNotificationSettings(),
+                  ),
+                ]),
                 SizedBox(width: double.infinity, child: FilledButton.tonalIcon(
                   onPressed: _testInApp,
                   icon: const Icon(Icons.web_asset_rounded),
@@ -263,17 +376,10 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> {
                       onSelectionChanged: (v) => s.updateNotify(notifyAvatarShape: v.first),
                     ),
                   ),
-                  SwitchListTile(
-                    secondary: Icon(Icons.chat_bubble_outline_rounded, color: scheme.primary),
-                    title: const Text('حباب شناور گفتگو'),
-                    subtitle: const Text('در اندروید ۱۱ به بالا؛ اجازه حباب‌ها در تنظیمات اعلان گوشی هم باید فعال باشد.'),
-                    value: s.notifyBubbles,
-                    onChanged: (v) => s.updateNotify(notifyBubbles: v),
-                  ),
                   const ListTile(
                     leading: Icon(Icons.web_asset_rounded),
-                    title: Text('اعلان شیشه‌ای بالای صفحه'),
-                    subtitle: Text('ظاهر بومی به رنگ و سبک انتخابی نزدیک شده؛ مات‌سازی زنده و حباب متحرک فقط داخل برنامه امکان‌پذیر است. ارتفاع اعلان واقعی با Android/MagicOS کنترل می‌شود.'),
+                    title: Text('نمایش سازگار با گوشی'),
+                    subtitle: Text('بدون اجازه شناور، اعلان استاندارد اندروید نمایش داده می‌شود. حباب و کارت شناور روی صفحه قفل پنهان می‌شوند؛ با قفل برنامه، متن و کد تأیید نمایش داده نمی‌شوند.'),
                   ),
                   SwitchListTile(
                     secondary: Icon(Icons.pin_outlined, color: scheme.primary),

@@ -154,6 +154,19 @@ open class MainActivity : FlutterActivity() {
                     val ok = try { Birthdays.sendNow(this, call.argument<String>("id").orEmpty()) } catch (e: Exception) { false }
                     runOnUiThread { result.success(ok) }
                 }
+                "floatingStatus" -> result.success(FloatingNotifications.status(this))
+                "floatingPermission" -> {
+                    try {
+                        startActivity(Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse("package:$packageName")))
+                        result.success(true)
+                    } catch (_: Exception) { result.success(false) }
+                }
+                "floatingEnable" -> result.success(FloatingNotifications.setEnabled(this, call.argument<Boolean>("enabled") == true))
+                "floatingConfigure" -> {
+                    FloatingNotifications.configure(this, call.argument<Int>("bubbleSize"), call.argument<Int>("textSize"))
+                    result.success(null)
+                }
                 "previewNotification" -> { result.success(Notifier.preview(this)) }
                 "openBubbleSettings" -> {
                     Notifier.configureChannels(this)
@@ -189,6 +202,8 @@ open class MainActivity : FlutterActivity() {
                     // Blocks screenshots, screen recording and the recent-apps preview of private chats.
                     if (call.argument<Boolean>("on") == true) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
                     else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+                    Notifier.redactForLock(this)
+                    FloatingNotifications.refresh()
                     result.success(null)
                 }
                 "openUrl" -> {
@@ -424,10 +439,13 @@ open class MainActivity : FlutterActivity() {
     override fun onResume() {
         super.onResume()
         if (::channel.isInitialized) { observeMessages(); foregroundChannel = channel }
+        if (FloatingNotifications.enabled(this)) FloatingNotifications.setEnabled(this, true)
+        FloatingNotifications.refresh()
     }
     override fun onPause() {
         if (::channel.isInitialized && foregroundChannel === channel) foregroundChannel = null
         super.onPause()
+        FloatingNotifications.refresh()
     }
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
