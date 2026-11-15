@@ -113,7 +113,7 @@ class FloatingNotifications : Service() {
         !getSystemService(PowerManager::class.java).isInteractive
     private fun dp(n: Int) = (n * resources.displayMetrics.density).roundToInt()
     private fun tint() = number("notifyAccent", 0xFF087F81).toInt()
-    private fun opacity() = ((settings.all["flutter.bannerOpacity"] as? Number)?.toFloat() ?: .86f).coerceIn(.72f, 1f)
+    private fun opacity() = ((settings.all["flutter.bannerOpacity"] as? Number)?.toFloat() ?: .9f).coerceIn(.78f, 1f)
     private fun cardStyle() = number("bannerStyle", 0).toInt().coerceIn(0, 2)
     private fun bubbleColor() = prefs(this).getInt("bubbleColor", tint())
     override fun onBind(intent: Intent?): IBinder? = null
@@ -221,7 +221,9 @@ class FloatingNotifications : Service() {
             val initial = if (privateContent()) "پ" else latestName.take(1).ifBlank { "پ" }
             text = if (messages.size > 1) "$initial\n${messages.size}" else initial
             textSize = if (messages.size > 1) 15f else 22f
-            gravity = Gravity.CENTER; setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setTextColor(if (prefs(this@FloatingNotifications).getInt("bubbleStyle", 0) == 0)
+                0xFF17383D.toInt() else Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
             background = GlassSurface(bubbleColor(), prefs(this@FloatingNotifications).getInt("bubbleShape", 0) == 0,
                 prefs(this@FloatingNotifications).getInt("bubbleStyle", 0) == 0,
@@ -232,7 +234,7 @@ class FloatingNotifications : Service() {
         var downX = 0f; var downY = 0f; var startX = 0; var startY = 0; var dragged = false
         view.setOnClickListener {
             val msg = messages.values.lastOrNull()
-            if (msg == null) open(null) else { shown = msg; renderCard(msg, pinned = true) }
+            if (msg == null) open(null) else { shown = msg; renderCard(msg, pinned = true, expanded = true) }
         }
         view.setOnTouchListener { v, event ->
             when (event.actionMasked) {
@@ -263,7 +265,7 @@ class FloatingNotifications : Service() {
     }
     private fun label(text: String, size: Float, bold: Boolean = false) = TextView(this).apply {
         this.text = text; textSize = size
-        setTextColor(if (cardStyle() == 2) 0xFF142D32.toInt() else Color.WHITE)
+        setTextColor(if (cardStyle() == 1) Color.WHITE else 0xFF172D33.toInt())
         textDirection = View.TEXT_DIRECTION_FIRST_STRONG; gravity = Gravity.START
         if (bold) typeface = Typeface.DEFAULT_BOLD
         setPadding(dp(3), dp(3), dp(3), dp(3))
@@ -272,51 +274,104 @@ class FloatingNotifications : Service() {
         minHeight = dp(48); gravity = Gravity.CENTER; setPadding(dp(10), dp(4), dp(10), dp(4))
         background = android.graphics.drawable.GradientDrawable().apply {
             cornerRadius = dp(18).toFloat()
-            setColor(if (cardStyle() == 2) 0x1A087F81 else 0x33FFFFFF)
-            setStroke(dp(1), if (cardStyle() == 2) 0x55087F81 else 0x55FFFFFF)
+            setColor(if (cardStyle() == 1) 0x33FFFFFF else 0x19087F81)
+            setStroke(dp(1), if (cardStyle() == 1) 0x55FFFFFF else 0x44087F81)
         }
         setOnClickListener { action() }
     }
-    private fun renderCard(message: Message, pinned: Boolean = false): Boolean {
+    /** Compact white-glass capsule matching the reference: avatar right, details centre, chevron left. */
+    private fun renderCard(message: Message, pinned: Boolean = false,
+                           expanded: Boolean = message.sample): Boolean {
         hideCard()
-        if (locked() || !allowed(this)) return false
+        if (locked() || !allowed(this) || !enabled(this)) return false
         val bounds = area()
-        val width = NotificationPolicy.cardWidth(bounds.width(), dp(number("bannerMaxWidth", 360).toInt().coerceIn(280, 520)), dp(8))
+        val width = NotificationPolicy.cardWidth(bounds.width(),
+            dp(number("bannerMaxWidth", 360).toInt().coerceIn(280, 520)), dp(8))
         val maxHeight = (bounds.height() * .65f).toInt().coerceAtLeast(1)
         val private = privateContent()
         val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; layoutDirection = View.LAYOUT_DIRECTION_RTL
-            setPadding(dp(14), dp(10), dp(14), dp(10))
+            orientation = LinearLayout.VERTICAL
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
+            setPadding(dp(14), dp(10), dp(14), dp(11))
             background = GlassSurface(tint(), false, flag("bannerBubbles"), opacity(), cardStyle())
         }
-        val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        header.addView(label(if (private) "پیام‌یار" else message.name, 17f, true), LinearLayout.LayoutParams(0, -2, 1f))
-        header.addView(button("×") { hideCard() }.apply { contentDescription = "بستن اعلان" }, LinearLayout.LayoutParams(dp(48), dp(48)))
-        layout.addView(header)
-        layout.addView(label(if (message.sample) "پیش‌نمایش؛ پیامی ارسال نمی‌شود" else "پیامک جدید • پیام‌یار", 11f))
-        layout.addView(label(if (private) "پیام جدید؛ برای مشاهده برنامه را باز کنید" else message.body,
-            prefs(this).getInt("textSize", 15).toFloat()))
-        val actions = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        if (!private && flag("notifyOtpCopy")) Notifier.otp(message.body)?.let { code ->
-            actions.addView(button("کپی کد $code") {
-                getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("کد تأیید", code))
-                Toast.makeText(this, "کد کپی شد", Toast.LENGTH_SHORT).show()
-                hideCard()
-            })
+        val header = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
+            minimumHeight = dp(66)
         }
-        actions.addView(button(if (private) "باز کردن برنامه" else "باز کردن گفتگو / پاسخ") { open(if (message.sample) null else message.address) })
-        if (messages.size > 1 && !message.sample) actions.addView(button("گفتگوی بعدی (${messages.size})") {
-            val list = messages.values.toList(); val next = list[(list.indexOf(message) + 1).mod(list.size)]
-            shown = next; renderCard(next, pinned = true)
+        val avatar = TextView(this).apply {
+            text = if (private) "پ" else message.name.trim().take(1).ifBlank { "پ" }
+            textSize = 20f
+            gravity = Gravity.CENTER
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(tint() or 0xFF000000.toInt())
+                setStroke(dp(2), 0xFFCF9B62.toInt())
+            }
+            contentDescription = "تصویر فرستنده"
+        }
+        header.addView(avatar, LinearLayout.LayoutParams(dp(42), dp(42)).apply { marginEnd = dp(10) })
+        val mainText = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        mainText.addView(label(if (private) "پیام‌یار" else message.name, 15.5f, true))
+        val summary = if (private) "پیام جدید؛ برای مشاهده، برنامه را باز کنید"
+            else if (message.sample) "پیش‌نمایش اعلان پیام‌یار"
+            else message.body.replace("\n", " ")
+        mainText.addView(label(summary, 13f).apply {
+            maxLines = if (expanded) 3 else 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
         })
-        layout.addView(actions)
+        header.addView(mainText, LinearLayout.LayoutParams(0, -2, 1f))
+        val chevron = TextView(this).apply {
+            text = if (expanded) "⌃" else "⌄"
+            textSize = 25f; gravity = Gravity.CENTER
+            setTextColor(if (cardStyle() == 1) Color.WHITE else 0xFF1F343B.toInt())
+            contentDescription = if (expanded) "جمع کردن اعلان" else "باز کردن متن کامل اعلان"
+            minWidth = dp(48); minHeight = dp(48)
+            setOnClickListener { renderCard(message, pinned = true, expanded = !expanded) }
+        }
+        header.addView(chevron, LinearLayout.LayoutParams(dp(48), dp(48)))
+        header.setOnClickListener { renderCard(message, pinned = true, expanded = !expanded) }
+        layout.addView(header)
+        if (expanded) {
+            layout.addView(label(if (private) "پیام جدید؛ برای مشاهده برنامه را باز کنید" else message.body,
+                prefs(this).getInt("textSize", 15).toFloat()).apply {
+                setPadding(dp(4), dp(8), dp(4), dp(12))
+            })
+            val actions = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            if (!private && flag("notifyOtpCopy")) Notifier.otp(message.body)?.let { code ->
+                actions.addView(button("کپی کد $code") {
+                    getSystemService(ClipboardManager::class.java)
+                        .setPrimaryClip(ClipData.newPlainText("کد تأیید", code))
+                    Toast.makeText(this, "کد کپی شد", Toast.LENGTH_SHORT).show()
+                    hideCard()
+                })
+            }
+            actions.addView(button(if (private) "باز کردن برنامه" else "باز کردن گفتگو / پاسخ") {
+                open(if (message.sample) null else message.address)
+            })
+            if (messages.size > 1 && !message.sample) actions.addView(button("گفتگوی بعدی (${messages.size})") {
+                val list = messages.values.toList()
+                val next = list[(list.indexOf(message) + 1).mod(list.size)]
+                shown = next
+                renderCard(next, pinned = true, expanded = true)
+            })
+            layout.addView(actions)
+        }
         val scroll = ScrollView(this).apply {
-            isFillViewport = false; isVerticalScrollBarEnabled = true; clipToOutline = true
-            background = layout.background; layout.background = null
+            isFillViewport = false
+            isVerticalScrollBarEnabled = expanded
+            clipToOutline = true
+            background = layout.background
+            layout.background = null
             outlineProvider = ViewOutlineProvider.BACKGROUND
             addView(layout, ViewGroup.LayoutParams(-1, -2))
-            // Reading or scrolling pins the card; it will not disappear under a finger.
-            setOnTouchListener { _, e -> if (e.actionMasked == MotionEvent.ACTION_DOWN) main.removeCallbacks(hide); false }
+            setOnTouchListener { _, e ->
+                if (e.actionMasked == MotionEvent.ACTION_DOWN) main.removeCallbacks(hide)
+                false
+            }
         }
         scroll.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(maxHeight, View.MeasureSpec.AT_MOST))
@@ -324,7 +379,8 @@ class FloatingNotifications : Service() {
         p.x = bounds.left + (bounds.width() - width) / 2
         p.y = if (flag("bannerTop")) bounds.top + dp(8) else bounds.bottom - p.height - dp(8)
         return try {
-            wm.addView(scroll, p); card = scroll
+            wm.addView(scroll, p)
+            card = scroll
             if (!pinned) main.postDelayed(hide, number("bannerSeconds", 6).coerceIn(2, 15) * 1000)
             true
         } catch (_: RuntimeException) { false }
@@ -352,30 +408,39 @@ private class GlassSurface(
         val radius = if (round) rect.width() / 2 else min(rect.width(), rect.height()) * .18f
         val path = Path().apply { addRoundRect(rect, radius, radius, Path.Direction.CW) }
         canvas.save(); canvas.clipPath(path)
+        // Glass is a luminous off-white surface (like the supplied Android screenshot).
+        // The alpha floor is intentionally high so dark text remains readable anywhere.
         val paper = style == 2
-        val effectiveAlpha = if (style == 1 || paper) 255 else (opacity.coerceIn(.72f, 1f) * 255).toInt()
+        val bright = style != 1
+        val effectiveAlpha = if (style == 1 || paper) 255
+            else (opacity.coerceIn(.78f, 1f) * 255).toInt()
         fun shade(f: Float) = Color.argb(effectiveAlpha,
             (Color.red(tint) * f).toInt().coerceIn(0, 255),
             (Color.green(tint) * f).toInt().coerceIn(0, 255),
             (Color.blue(tint) * f).toInt().coerceIn(0, 255))
-        val top = if (paper) 0xFFF8F7F1.toInt() else shade(if (style == 1) 1f else .88f)
-        val bottom = if (paper) 0xFFE5ECE9.toInt() else shade(.42f)
-        paint.shader = LinearGradient(0f, 0f, rect.width(), rect.height(), top, bottom, Shader.TileMode.CLAMP)
+        val top = if (paper) 0xFFFDFCF8.toInt()
+            else if (bright) Color.argb(effectiveAlpha, 255, 255, 255)
+            else shade(.94f)
+        val bottom = if (paper) 0xFFF0F2F0.toInt()
+            else if (bright) Color.argb(effectiveAlpha, 238, 248, 247)
+            else shade(.48f)
+        paint.shader = LinearGradient(0f, 0f, rect.width(), rect.height(),
+            top, bottom, Shader.TileMode.CLAMP)
         canvas.drawRect(rect, paint); paint.shader = null
-        if (!paper) {
+        if (!bright) {
             paint.shader = LinearGradient(0f, 0f, 0f, rect.height() * .5f,
                 0x38FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP)
             canvas.drawRect(rect, paint); paint.shader = null
         }
         if (bubbles && !paper) {
             paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 1.5f; paint.color = 0x2CFFFFFF
+            paint.strokeWidth = 1.5f; paint.color = if (bright) 0x16087F81 else 0x2CFFFFFF
             for (i in 0..5) canvas.drawCircle(rect.width() * ((i * 37 + 9) % 100) / 100f,
                 rect.height() * ((i * 29 + 13) % 100) / 100f,
                 rect.width() * (.025f + .007f * (i % 3)), paint)
             paint.style = Paint.Style.FILL
         }
-        paint.color = if (paper) 0x44087F81 else 0x70FFFFFF
+        paint.color = if (bright) 0x44087F81 else 0x70FFFFFF
         paint.style = Paint.Style.STROKE; paint.strokeWidth = 1.5f
         canvas.drawRoundRect(RectF(rect.left + 1f, rect.top + 1f, rect.right - 1f, rect.bottom - 1f),
             radius, radius, paint)
