@@ -43,6 +43,22 @@ class FloatingNotificationsTest {
         }
         return device.hasObject(selector)
     }
+    /**
+     * Android 15 restricts launching FGS from the background. Real SMS notification
+     * fallback is separately native; UI overlay scenarios start while visible, then
+     * verify the actual off-app overlay after Home.
+     */
+    private fun displayWhileAppVisible(address: String, name: String, body: String, sample: Boolean) {
+        device.executeShellCommand("am start -n ${context.packageName}/.MainActivity")
+        assertTrue("App must be visible before starting a test foreground service",
+            device.wait(Until.hasObject(By.pkg(context.packageName)), 5000))
+        instrumentation.runOnMainSync {
+            if (!sample) MainActivity.foregroundChannel = null
+            assertTrue(FloatingNotifications.show(context, address, name, body, sample))
+        }
+        instrumentation.waitForIdleSync()
+        device.pressHome()
+    }
     @Before fun start() {
         device.executeShellCommand("appops set ${context.packageName} SYSTEM_ALERT_WINDOW allow")
         device.executeShellCommand("pm grant ${context.packageName} android.permission.POST_NOTIFICATIONS")
@@ -67,9 +83,7 @@ class FloatingNotificationsTest {
     }
     @Test fun longMessageFitsWindowAndCanScrollToActions() {
         val body = (1..40).joinToString("\n") { "خط $it از پیام فارسی بلند برای آزمایش نمایش کامل" } + "\nکد: 12345"
-        instrumentation.runOnMainSync {
-            assertTrue(FloatingNotifications.show(context, "+989000000000", "آزمون اعلان", body, true))
-        }
+        displayWhileAppVisible("+989000000000", "آزمون اعلان", body, true)
         val header = device.wait(Until.findObject(By.text("آزمون اعلان")), 5000)
         assertNotNull(header)
         val bounds = header.visibleBounds
@@ -83,9 +97,7 @@ class FloatingNotificationsTest {
         context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).edit()
             .putBoolean("flutter.appLock", true).commit()
         instrumentation.waitForIdleSync()
-        instrumentation.runOnMainSync {
-            assertTrue(FloatingNotifications.show(context, "+989000000000", "PRIVATE_SENDER", "PRIVATE_BODY کد: 12345", true))
-        }
+        displayWhileAppVisible("+989000000000", "PRIVATE_SENDER", "PRIVATE_BODY کد: 12345", true)
         assertTrue(device.wait(Until.hasObject(By.text("باز کردن برنامه")), 5000))
         assertFalse(device.hasObject(By.textContains("PRIVATE_")))
         assertFalse(device.hasObject(By.textContains("12345")))
@@ -94,9 +106,7 @@ class FloatingNotificationsTest {
         device.setOrientationLeft()
         device.executeShellCommand("settings put system font_scale 1.8")
         device.waitForIdle()
-        instrumentation.runOnMainSync {
-            assertTrue(FloatingNotifications.show(context, "+989000000000", "متن بزرگ", "پیام آزمایشی\n".repeat(60), true))
-        }
+        displayWhileAppVisible("+989000000000", "متن بزرگ", "پیام آزمایشی\n".repeat(60), true)
         val scroll = device.wait(Until.findObject(By.clazz("android.widget.ScrollView").pkg(context.packageName)), 5000)
         assertNotNull(scroll)
         val b = scroll.visibleBounds
@@ -106,20 +116,16 @@ class FloatingNotificationsTest {
     }
     @Test fun senderBubbleAppearsOnlyForIncomingSms() {
         assertFalse(device.hasObject(By.descContains("حباب پیام‌یار")))
-        instrumentation.runOnMainSync {
-            context.getSharedPreferences("payamyar_overlay", Context.MODE_PRIVATE).edit()
-                .putInt("bubbleSeconds", 8).commit()
-            assertTrue(FloatingNotifications.show(context, "+989120000001", "مریم", "سلام، پیام تازه", false))
-        }
+        context.getSharedPreferences("payamyar_overlay", Context.MODE_PRIVATE).edit()
+            .putInt("bubbleSeconds", 8).commit()
+        displayWhileAppVisible("+989120000001", "مریم", "سلام، پیام تازه", false)
         assertTrue("A newly received message must show its sender bubble",
             device.wait(Until.hasObject(By.descContains("حباب پیام‌یار")), 15000))
         assertTrue("The transient bubble must disappear after its configured lifetime",
             device.wait(Until.gone(By.descContains("حباب پیام‌یار")), 12000))
     }
     @Test fun stoppingServiceRemovesChatHead() {
-        instrumentation.runOnMainSync {
-            assertTrue(FloatingNotifications.show(context, "+989120000001", "مریم", "پیام", false))
-        }
+        displayWhileAppVisible("+989120000001", "مریم", "پیام", false)
         assertTrue(device.wait(Until.hasObject(By.descContains("حباب پیام‌یار")), 15000))
         instrumentation.runOnMainSync { FloatingNotifications.setEnabled(context, false) }
         assertTrue(device.wait(Until.gone(By.descContains("حباب پیام‌یار")), 5000))
