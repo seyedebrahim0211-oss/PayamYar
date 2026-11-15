@@ -305,7 +305,8 @@ object Notifier {
     } catch (_: Exception) { null }
 
     private fun bubble(c: Context, shortcutId: String): NotificationCompat.BubbleMetadata? {
-        if (Build.VERSION.SDK_INT < 30 || !enabled(c, "notifyBubbles")) return null
+        if (Build.VERSION.SDK_INT < 30 ||
+            !(enabled(c, "notifyBubbles", false) || FloatingNotifications.enabled(c))) return null
         // Android 11+ expects the *same* long-lived shortcut for both conversation
         // notification and bubble. The shortcut targets an embeddable BubbleActivity.
         return NotificationCompat.BubbleMetadata.Builder(shortcutId)
