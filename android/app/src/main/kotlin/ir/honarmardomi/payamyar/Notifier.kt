@@ -402,7 +402,7 @@ object Notifier {
             .setPriority(if (floating) NotificationCompat.PRIORITY_DEFAULT else NotificationCompat.PRIORITY_HIGH)
             .setWhen(time).setShowWhen(true)
             .setContentIntent(open).setAutoCancel(true)
-            .setSilent(SentSound.quietNow(c))
+            .setSilent(floating || SentSound.quietNow(c))
             .setLights(color, 600, 2400)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setPublicVersion(NotificationCompat.Builder(c, CHANNEL).setSmallIcon(R.drawable.ic_stat_payamyar)
@@ -415,11 +415,8 @@ object Notifier {
                 IconCompat.createWithAdaptiveBitmap(adaptive(c, picture)))
             if (shortcut != null) {
                 builder.setShortcutId(shortcut).setLocusId(LocusIdCompat(shortcut))
-                // On Android 15 a background FGS may be blocked; native conversation bubbles
-                // remain the opt-in fallback without showing two bubbles when overlay succeeds.
-                if (!floating && enabled(c, "notifyBubbles", false)) {
-                    builder.setBubbleMetadata(bubble(c, shortcut))
-                }
+                // One notification renderer: the custom sender bubble is never stacked with
+                // a second OS bubble. MessagingStyle remains in the shade for OEM fallback.
             }
         }
 
