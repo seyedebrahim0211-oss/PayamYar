@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import '../app_settings.dart';
 import '../app_store.dart';
 import '../chat_theme.dart';
 import '../jalali.dart';
 import '../message_logic.dart';
+import '../message_search.dart';
 import '../sms_bridge.dart';
 import '../smart_assistant.dart';
 import '../conversation_insights.dart';
@@ -22,7 +24,9 @@ class ConversationScreen extends StatefulWidget {
   final String address;
   /// Draft placed in the composer, e.g. from an sms: link or the phone's Contacts app.
   final String initialText;
-  const ConversationScreen({super.key, required this.store, required this.address, this.initialText = ''});
+  final String initialSearch;
+  const ConversationScreen({super.key, required this.store, required this.address,
+    this.initialText = '', this.initialSearch = ''});
   @override
   State<ConversationScreen> createState() => _ConversationScreenState();
 }
@@ -38,6 +42,11 @@ class _Entry {
 class _ConversationScreenState extends State<ConversationScreen> with WidgetsBindingObserver {
   late final input = TextEditingController(text: widget.initialText);
   final focus = FocusNode();
+  final _searchController = TextEditingController();
+  final _itemScroll = ItemScrollController();
+  bool _searchVisible = false;
+  String _searchQuery = '';
+  int _matchIndex = 0;
   bool sending = false;
   final Set<String> _revealedAmounts = {};
   AppStore get store => widget.store;
@@ -51,6 +60,10 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
   @override
   void initState() {
     super.initState();
+    _searchQuery = widget.initialSearch;
+    _searchVisible = _searchQuery.trim().isNotEmpty;
+    _searchController.text = _searchQuery;
+    if (_searchVisible) _scrollToMatch();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _markRead());
     store.addListener(_onStoreChanged);
@@ -79,6 +92,7 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
     WidgetsBinding.instance.removeObserver(this);
     store.removeListener(_onStoreChanged);
     input.dispose();
+    _searchController.dispose();
     focus.dispose();
     super.dispose();
   }
@@ -252,6 +266,51 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
     );
   }
 
+  void _toggleSearch() {
+    setState(() {
+      _searchVisible = !_searchVisible;
+      if (!_searchVisible) {
+        _searchQuery = '';
+        _searchController.clear();
+        _matchIndex = 0;
+      }
+    });
+  }
+
+  void _changeSearch(String value) {
+    setState(() {
+      _searchQuery = value;
+      _matchIndex = 0;
+    });
+    _scrollToMatch();
+  }
+
+  void _moveMatch(int direction) {
+    final messages = store.conversationFor(widget.address)?.messages ?? const <MessageRecord>[];
+    final matches = MessageSearch.withinConversation(messages, _searchQuery);
+    if (matches.isEmpty) return;
+    setState(() => _matchIndex = (_matchIndex + direction + matches.length) % matches.length);
+    _scrollToMatch();
+  }
+
+  void _scrollToMatch() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_searchVisible) return;
+      final messages = store.conversationFor(widget.address)?.messages ?? const <MessageRecord>[];
+      final matches = MessageSearch.withinConversation(messages, _searchQuery);
+      if (matches.isEmpty) return;
+      final selected = matches[_matchIndex.clamp(0, matches.length - 1)];
+      final key = store.key(widget.address);
+      final pending = store.pendingSends.where((p) => store.key(p.to) == key).toList();
+      final entries = _entries(messages, pending);
+      final index = entries.indexWhere((entry) => identical(entry.message, selected));
+      if (index >= 0 && _itemScroll.isAttached) {
+        _itemScroll.scrollTo(index: index, duration: const Duration(milliseconds: 280),
+          alignment: .42, curve: Curves.easeInOutCubic);
+      }
+    });
+  }
+
   Future<void> _menu(String value) async {
     final c = store.conversationFor(widget.address);
     switch (value) {
@@ -311,6 +370,8 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
         final key = store.key(widget.address);
         final pending = store.pendingSends.where((p) => store.key(p.to) == key).toList();
         final items = _entries(messages, pending);
+        final matches = _searchVisible ? MessageSearch.withinConversation(messages, _searchQuery) : const <MessageRecord>[];
+        final selectedMatch = matches.isEmpty ? null : matches[_matchIndex.clamp(0, matches.length - 1)];
         final quickReplies = settings.smartReplies && messages.isNotEmpty && !messages.first.outgoing &&
                 MessageLogic.category(messages.first) == MessageCategory.personal
             ? SmartAssistant.suggestReplies(messages.first.body)
@@ -344,6 +405,10 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
               ])),
             ])),
             actions: [
+              IconButton(
+                tooltip: 'جست‌وجو در همین گفتگو',
+                icon: Icon(_searchVisible ? Icons.search_off_rounded : Icons.search_rounded),
+                onPressed: _toggleSearch),
               if (isPhone)
                 IconButton(tooltip: 'تماس', icon: const Icon(Icons.call_outlined),
                   onPressed: () => launchUrl(Uri(scheme: 'tel', path: SmsBridge.normalizeNumber(widget.address)))),
@@ -373,6 +438,41 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
             child: CustomPaint(
               painter: look.pattern,
               child: Column(children: [
+                if (_searchVisible)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                    child: TextField(
+                      controller: _searchController,
+                      autofocus: widget.initialSearch.isEmpty,
+                      onChanged: _changeSearch,
+                      textInputAction: TextInputAction.search,
+                      decoration: InputDecoration(
+                        prefixIcon: const Icon(Icons.search_rounded),
+                        hintText: 'جست‌وجوی کلمه در پیام‌های این گفتگو',
+                        isDense: true,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                        suffixIcon: IconButton(
+                          tooltip: 'پاک کردن جست‌وجو',
+                          icon: const Icon(Icons.close_rounded),
+                          onPressed: () { _searchController.clear(); _changeSearch(''); }),
+                      ),
+                    ),
+                  ),
+                if (_searchVisible && _searchQuery.trim().isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                    child: Row(children: [
+                      Expanded(child: Text(matches.isEmpty ? 'پیامی با این عبارت پیدا نشد'
+                        : 'نتیجه ${Jalali.digits(_matchIndex.clamp(0, matches.length - 1) + 1)} از ${Jalali.digits(matches.length)}',
+                        style: TextStyle(color: scheme.primary, fontSize: 12))),
+                      IconButton(tooltip: 'نتیجه جدیدتر',
+                        icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                        onPressed: matches.isEmpty ? null : () => _moveMatch(-1)),
+                      IconButton(tooltip: 'نتیجه قدیمی‌تر',
+                        icon: const Icon(Icons.keyboard_arrow_up_rounded),
+                        onPressed: matches.isEmpty ? null : () => _moveMatch(1)),
+                    ]),
+                  ),
                 if (pinnedMessage != null)
                   Material(
                     color: scheme.primaryContainer.withValues(alpha: .7),
@@ -390,7 +490,8 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
                   ),
                 Expanded(child: items.isEmpty
                     ? const EmptyState(icon: Icons.chat_outlined, title: 'هنوز پیامی نیست', subtitle: 'اولین پیام را بنویسید.')
-                    : ListView.builder(
+                    : ScrollablePositionedList.builder(
+                        itemScrollController: _itemScroll,
                         reverse: true,
                         padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
                         itemCount: items.length,
@@ -413,7 +514,9 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
                                 time: ''),
                             );
                           }
-                          return _bubbleFor(e.message!, pinnedId, look);
+                          return _bubbleFor(e.message!, pinnedId, look,
+                            searchHit: _searchVisible && _searchQuery.trim().isNotEmpty && MessageSearch.matches(e.message!.body, _searchQuery),
+                            selectedHit: identical(e.message, selectedMatch));
                         })),
                 if (canReply && quickReplies.isNotEmpty)
                   SizedBox(height: 45, child: ListView(
@@ -473,7 +576,7 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
 
   bool _sameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
 
-  Widget _bubbleFor(MessageRecord m, int? pinnedId, ChatLook look) {
+  Widget _bubbleFor(MessageRecord m, int? pinnedId, ChatLook look, {bool searchHit = false, bool selectedHit = false}) {
     String? status;
     IconData? icon;
     if (m.outgoing) {
@@ -507,6 +610,8 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
       textSize: settings.bubbleText,
       failed: m.type == 5,
       pinned: m.id != null && m.id == pinnedId,
+      searchHit: searchHit,
+      selectedHit: selectedHit,
       warning: !m.outgoing && MessageLogic.suspicious(m.body),
       time: Jalali.time(m.date),
       status: status,
@@ -683,6 +788,8 @@ class _Bubble extends StatelessWidget {
   final bool failed;
   final bool warning;
   final bool pinned;
+  final bool searchHit;
+  final bool selectedHit;
   final String time;
   final String? status;
   final IconData? statusIcon;
@@ -695,7 +802,8 @@ class _Bubble extends StatelessWidget {
   final ValueChanged<String>? onPhoneMessage;
   const _Bubble({required this.text, required this.outgoing, required this.time, required this.look,
     this.textSize = 15.5, this.status, this.statusIcon,
-    this.failed = false, this.warning = false, this.pinned = false, this.trailing, this.onLongPress,
+    this.failed = false, this.warning = false, this.pinned = false,
+    this.searchHit = false, this.selectedHit = false, this.trailing, this.onLongPress,
     this.onTap, this.sensitive = false, this.onPhoneMessage});
 
   @override
@@ -715,7 +823,9 @@ class _Bubble extends StatelessWidget {
             margin: const EdgeInsets.symmetric(vertical: 3.5),
             padding: const EdgeInsets.fromLTRB(14, 9, 14, 7),
             decoration: base.copyWith(
-              border: pinned ? Border.all(color: const Color(0xFFD4A94E), width: 1.6) : base.border,
+              border: selectedHit ? Border.all(color: const Color(0xFF009688), width: 2.5)
+                : searchHit ? Border.all(color: const Color(0xFF5BB5A9), width: 1.5)
+                : pinned ? Border.all(color: const Color(0xFFD4A94E), width: 1.6) : base.border,
               borderRadius: BorderRadiusDirectional.only(
                 topStart: r, topEnd: r,
                 bottomStart: outgoing ? r : const Radius.circular(5),
@@ -723,6 +833,8 @@ class _Bubble extends StatelessWidget {
               ),
             ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+              if (selectedHit) const Padding(padding: EdgeInsets.only(bottom: 4),
+                child: Text('نتیجه جست‌وجو', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700))),
               if (warning)
                 InkWell(
                   onTap: () {
