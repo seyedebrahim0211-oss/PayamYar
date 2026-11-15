@@ -123,35 +123,84 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
               icon: const Icon(Icons.edit_rounded),
               label: const Text('پیام جدید'))
           : null,
-      bottomNavigationBar: ClipRRect(
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(
-            sigmaX: widget.settings.reduceEffects ? 0 : 14,
-            sigmaY: widget.settings.reduceEffects ? 0 : 14),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface.withValues(alpha: .78),
-              border: Border(top: BorderSide(
-                color: Theme.of(context).colorScheme.primary.withValues(alpha: .18))),
-            ),
-            child: NavigationBar(
-        elevation: 0,
-        height: 73,
-        backgroundColor: Colors.transparent,
-        indicatorColor: Theme.of(context).colorScheme.primary.withValues(alpha: .18),
-        selectedIndex: tab,
-        onDestinationSelected: (v) => setState(() => tab = v),
-        destinations: [
-          NavigationDestination(
-            icon: Badge(isLabelVisible: unread > 0, label: Text(Jalali.digits(unread)), child: const Icon(Icons.chat_bubble_outline_rounded)),
-            selectedIcon: const Icon(Icons.chat_bubble_rounded),
-            label: 'گفتگوها'),
-          const NavigationDestination(icon: Icon(Icons.contacts_outlined), selectedIcon: Icon(Icons.contacts_rounded), label: 'مخاطبین'),
-          const NavigationDestination(icon: Icon(Icons.groups_outlined), selectedIcon: Icon(Icons.groups_rounded), label: 'گروه‌ها'),
-          const NavigationDestination(icon: Icon(Icons.insights_outlined), selectedIcon: Icon(Icons.insights_rounded), label: 'گزارش‌ها'),
-          const NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings_rounded), label: 'تنظیمات'),
-        ],
+      bottomNavigationBar: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: .13),
+                blurRadius: 26,
+                spreadRadius: -6,
+                offset: const Offset(0, 7),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(
+                sigmaX: widget.settings.reduceEffects ? 0 : 22,
+                sigmaY: widget.settings.reduceEffects ? 0 : 22,
+              ),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topRight,
+                    end: Alignment.bottomLeft,
+                    colors: [
+                      Theme.of(context).colorScheme.surface.withValues(alpha: .91),
+                      Theme.of(context).colorScheme.surfaceContainerHigh.withValues(alpha: .84),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.primary.withValues(alpha: .18),
+                  ),
+                ),
+                child: NavigationBar(
+                  elevation: 0,
+                  height: 70,
+                  backgroundColor: Colors.transparent,
+                  surfaceTintColor: Colors.transparent,
+                  indicatorColor: Theme.of(context).colorScheme.primary.withValues(alpha: .16),
+                  selectedIndex: tab,
+                  onDestinationSelected: (v) => setState(() => tab = v),
+                  destinations: [
+                    NavigationDestination(
+                      icon: Badge(
+                        isLabelVisible: unread > 0,
+                        label: Text(Jalali.digits(unread)),
+                        child: const Icon(Icons.chat_bubble_outline_rounded),
+                      ),
+                      selectedIcon: const Icon(Icons.chat_bubble_rounded),
+                      label: 'گفتگوها',
+                    ),
+                    const NavigationDestination(
+                      icon: Icon(Icons.contacts_outlined),
+                      selectedIcon: Icon(Icons.contacts_rounded),
+                      label: 'مخاطبین',
+                    ),
+                    const NavigationDestination(
+                      icon: Icon(Icons.groups_outlined),
+                      selectedIcon: Icon(Icons.groups_rounded),
+                      label: 'گروه‌ها',
+                    ),
+                    const NavigationDestination(
+                      icon: Icon(Icons.insights_outlined),
+                      selectedIcon: Icon(Icons.insights_rounded),
+                      label: 'گزارش‌ها',
+                    ),
+                    const NavigationDestination(
+                      icon: Icon(Icons.settings_outlined),
+                      selectedIcon: Icon(Icons.settings_rounded),
+                      label: 'تنظیمات',
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
