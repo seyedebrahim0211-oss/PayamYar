@@ -422,7 +422,10 @@ private class GlassSurface(
             else if (bright) Color.argb(effectiveAlpha, 255, 255, 255)
             else shade(.94f)
         val bottom = if (paper) 0xFFF0F2F0.toInt()
-            else if (bright) Color.argb(effectiveAlpha, 238, 248, 247)
+            else if (bright) Color.argb(effectiveAlpha,
+                (238 * 9 + Color.red(tint)) / 10,
+                (248 * 9 + Color.green(tint)) / 10,
+                (247 * 9 + Color.blue(tint)) / 10)
             else shade(.48f)
         paint.shader = LinearGradient(0f, 0f, rect.width(), rect.height(),
             top, bottom, Shader.TileMode.CLAMP)
@@ -440,7 +443,8 @@ private class GlassSurface(
                 rect.width() * (.025f + .007f * (i % 3)), paint)
             paint.style = Paint.Style.FILL
         }
-        paint.color = if (bright) 0x44087F81 else 0x70FFFFFF
+        paint.color = if (bright) Color.argb(80,
+            Color.red(tint), Color.green(tint), Color.blue(tint)) else 0x70FFFFFF
         paint.style = Paint.Style.STROKE; paint.strokeWidth = 1.5f
         canvas.drawRoundRect(RectF(rect.left + 1f, rect.top + 1f, rect.right - 1f, rect.bottom - 1f),
             radius, radius, paint)
