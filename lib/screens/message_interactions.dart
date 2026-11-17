@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../contacts/contacts_data.dart';
-import '../sms_bridge.dart';
 import 'contact_action_card.dart';
 
 /// Shared contact actions for ordinary SMS and the optional provider inbox.
