@@ -195,7 +195,9 @@ Future<void> _showContactDetails(
       future: details,
       builder: (ctx, snap) {
         final c = snap.data;
-        return Padding(
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(sheet).height * .75),
+          child: SingleChildScrollView(child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 30),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Icon(Icons.account_circle_rounded, size: 68,
@@ -228,6 +230,7 @@ Future<void> _showContactDetails(
                 Padding(padding: const EdgeInsets.all(12), child: SelectableText(c.note)),
             ],
           ]),
+          )),
         );
       },
     ),
