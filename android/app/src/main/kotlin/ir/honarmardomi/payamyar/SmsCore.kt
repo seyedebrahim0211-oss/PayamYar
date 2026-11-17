@@ -356,14 +356,39 @@ object SmsCore {
         }
         return affected
     }
+    /** Resolve address book labels for incoming SMS in local and international form. */
     fun contactName(c: Context, address: String): String? {
         if (ContextCompat.checkSelfPermission(c, Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return null
         if (address.none { it.isDigit() }) return null
-        return try {
-            val uri = Uri.withAppendedPath(android.provider.ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(address))
-            c.contentResolver.query(uri, arrayOf(android.provider.ContactsContract.PhoneLookup.DISPLAY_NAME), null, null, null)?.use {
-                if (it.moveToFirst()) it.getString(0) else null
+        val variants = linkedSetOf(address)
+        val digits = buildString {
+            for (ch in address) {
+                val digit = Character.digit(ch, 10)
+                if (digit >= 0) append(digit)
             }
+        }
+        val local = when {
+            digits.length == 11 && digits.startsWith("09") -> digits
+            digits.length == 12 && digits.startsWith("989") -> "0" + digits.takeLast(10)
+            digits.length == 14 && digits.startsWith("00989") -> "0" + digits.takeLast(10)
+            else -> null
+        }
+        if (local != null) {
+            variants.add(local)
+            variants.add("+98" + local.drop(1))
+            variants.add("0098" + local.drop(1))
+        }
+        return try {
+            for (number in variants) {
+                val uri = Uri.withAppendedPath(android.provider.ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(number))
+                c.contentResolver.query(uri, arrayOf(android.provider.ContactsContract.PhoneLookup.DISPLAY_NAME), null, null, null)?.use {
+                    if (it.moveToFirst()) {
+                        val name = it.getString(0)
+                        if (!name.isNullOrBlank()) return name
+                    }
+                }
+            }
+            null
         } catch (_: Exception) { null }
     }
     fun notify(c: Context, id: Int, title: String, text: String) {
