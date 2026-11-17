@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../app_store.dart';
 import '../jalali.dart';
 import '../templates.dart';
+import '../message_search.dart';
 import '../text_polish.dart';
 
 /// "۴۵ نویسه مانده • ۲ پیامک" under a message field.
@@ -39,6 +40,7 @@ class _TemplatesSheet extends StatefulWidget {
 
 class _TemplatesSheetState extends State<_TemplatesSheet> {
   static const mine = 'پیام‌های من';
+  String templateFilter = '';
   late String group = widget.store.templates.isEmpty ? builtInTemplates.keys.first : mine;
 
   @override
@@ -48,13 +50,34 @@ class _TemplatesSheetState extends State<_TemplatesSheet> {
       listenable: store,
       builder: (context, _) {
         final groups = [mine, ...builtInTemplates.keys];
-        final items = group == mine ? store.templates : builtInTemplates[group]!;
+        final allInGroup = group == mine ? store.templates : builtInTemplates[group]!;
+        // Searching spans all categories; no server request or access to SMS contents.
+        final items = templateFilter.trim().isEmpty
+            ? allInGroup
+            : <String>{
+                ...store.templates.where((t) => MessageSearch.matches(t, templateFilter)),
+                for (final category in builtInTemplates.values)
+                  ...category.where((t) => MessageSearch.matches(t, templateFilter)),
+              }.toList(growable: false);
         final canSave = widget.currentText.trim().isNotEmpty && !store.templates.contains(widget.currentText.trim());
         return SizedBox(
           height: MediaQuery.sizeOf(context).height * .72,
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Padding(padding: const EdgeInsets.fromLTRB(20, 0, 20, 8), child: Text('پیام‌های آماده',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800))),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: TextField(
+                onChanged: (text) => setState(() => templateFilter = text),
+                textInputAction: TextInputAction.search,
+                decoration: InputDecoration(
+                  isDense: true,
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  hintText: 'جست‌وجوی تمام پیام‌های آماده',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(18)),
+                ),
+              ),
+            ),
             SizedBox(height: 46, child: ListView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -65,8 +88,10 @@ class _TemplatesSheetState extends State<_TemplatesSheet> {
                     onSelected: (_) => setState(() => group = g))),
               ])),
             Expanded(child: items.isEmpty
-                ? const Center(child: Padding(padding: EdgeInsets.all(24),
-                    child: Text('هنوز پیامی ذخیره نکرده‌اید. متن دلخواه را بنویسید و «ذخیره متن فعلی» را بزنید.', textAlign: TextAlign.center)))
+                ? Center(child: Padding(padding: const EdgeInsets.all(24),
+                    child: Text(templateFilter.isNotEmpty
+                      ? 'پیام آماده‌ای با این عبارت پیدا نشد.'
+                      : 'هنوز پیامی در این دسته نیست.', textAlign: TextAlign.center)))
                 : ListView.separated(
                     padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
                     itemCount: items.length,
@@ -74,7 +99,7 @@ class _TemplatesSheetState extends State<_TemplatesSheet> {
                     itemBuilder: (context, i) => Card(child: ListTile(
                       title: Text(items[i]),
                       onTap: () => Navigator.pop(context, items[i]),
-                      trailing: group == mine
+                      trailing: group == mine && templateFilter.isEmpty
                           ? IconButton(tooltip: 'حذف', icon: const Icon(Icons.close_rounded), onPressed: () => store.removeTemplate(items[i]))
                           : null)))),
             if (canSave)

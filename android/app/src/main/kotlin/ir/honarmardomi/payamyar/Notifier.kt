@@ -52,7 +52,7 @@ import androidx.core.graphics.drawable.IconCompat
 object Notifier {
     // V2 uses fresh channels; Android never updates sound on an existing channel.
     const val INCOMING_CHANNEL = "incoming_sms_v4"
-    const val OVERLAY_CHANNEL = "incoming_sms_floating_v1"
+    const val OVERLAY_CHANNEL = "incoming_sms_floating_v2"
     const val SENT_CHANNEL = "sent_sms_v2"
     private const val CHANNEL = INCOMING_CHANNEL
     const val ACTION_REPLY = "ir.honarmardomi.payamyar.NOTIFY_REPLY"
@@ -240,10 +240,13 @@ object Notifier {
             lockscreenVisibility = android.app.Notification.VISIBILITY_PRIVATE
             if (Build.VERSION.SDK_INT >= 29) setAllowBubbles(true)
         })
-        manager.createNotificationChannel(NotificationChannel(OVERLAY_CHANNEL, "پیام‌ها هنگام حباب شناور", NotificationManager.IMPORTANCE_DEFAULT).apply {
-            description = "صدای پیام و سابقه در نوار اعلان؛ کارت شیشه‌ای توسط حباب شناور نمایش داده می‌شود"
-            setSound(sound, audio)
-            enableVibration(true)
+        manager.createNotificationChannel(NotificationChannel(OVERLAY_CHANNEL, "پیام‌ها هنگام حباب شناور", NotificationManager.IMPORTANCE_LOW).apply {
+            // A real glass overlay is the sole visual heads-up. Keep a quiet Android
+            // MessagingStyle entry in the shade for reliable delivery/history and
+            // OEM devices that reject overlay windows. Do not present two pop-ups.
+            description = "سابقه بی‌صدا در نوار اعلان؛ اعلان شیشه‌ای جداگانه نمایش داده می‌شود"
+            setSound(null, null)
+            enableVibration(false)
             lockscreenVisibility = android.app.Notification.VISIBILITY_PRIVATE
         })
         manager.createNotificationChannel(NotificationChannel(SENT_CHANNEL, "تأیید ارسال پیام", NotificationManager.IMPORTANCE_DEFAULT).apply {

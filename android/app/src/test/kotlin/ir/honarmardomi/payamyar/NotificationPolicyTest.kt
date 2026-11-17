@@ -4,6 +4,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class NotificationPolicyTest {
+    @Test fun callRelatedCarrierFailuresHaveSpecificDiagnostic() {
+        for (code in listOf(121, 123)) {
+            assertTrue(SmsSendDiagnostic.describe(code).contains("تماس"))
+            assertTrue(SmsSendDiagnostic.describe(code).contains("دستی"))
+        }
+        assertTrue(SmsSendDiagnostic.describe(4).contains("شبکه"))
+        assertTrue(SmsSendDiagnostic.describe(120).contains("سیم‌کارت"))
+        assertTrue(SmsSendDiagnostic.describe(999).contains("999"))
+    }
     @Test fun cardsFitPhoneTabletLandscapeAndSplitScreen() {
         for (width in listOf(160, 240, 320, 360, 1080, 2400)) {
             for (desired in listOf(280, 360, 520, 1560)) {

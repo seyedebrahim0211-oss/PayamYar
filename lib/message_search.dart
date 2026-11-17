@@ -36,13 +36,19 @@ class MessageSearch {
     return buffer.toString().replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
-  /// Supports individual words and multiword searches regardless of word order.
-  static bool matches(String source, String query) {
+  /// Terms are normalized once per search, while inbox text is indexed only
+  /// when the underlying message revision changes. The index stays on-device.
+  static List<String> terms(String query) {
     final needle = normalize(query);
-    if (needle.isEmpty) return false;
-    final haystack = normalize(source);
-    return needle.split(' ').every(haystack.contains);
+    return needle.isEmpty ? const <String>[] : needle.split(' ');
   }
+
+  static bool containsTerms(String normalizedSource, List<String> terms) =>
+      terms.isNotEmpty && terms.every(normalizedSource.contains);
+
+  /// Supports individual words and multiword searches regardless of word order.
+  static bool matches(String source, String query) =>
+      containsTerms(normalize(source), terms(query));
 
   static List<MessageRecord> withinConversation(
     List<MessageRecord> messages, String query,

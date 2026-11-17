@@ -243,6 +243,18 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
               Navigator.pop(ctx);
               store.togglePinMessage(widget.address, m.id!);
             }),
+        if (m.outgoing && m.type == 5)
+          ListTile(
+            leading: const Icon(Icons.refresh_rounded),
+            title: const Text('آماده‌سازی ارسال مجدد'),
+            subtitle: const Text('ارسال خودکار انجام نمی‌شود تا پیام تکراری به گیرنده نرسد.'),
+            onTap: () {
+              Navigator.pop(ctx);
+              input.text = m.body;
+              focus.requestFocus();
+              store.onNotice?.call('متن برای ارسال مجدد آماده شد؛ پیش از ارسال، شبکه و سابقه پیام را بررسی کنید.');
+            },
+          ),
         ListTile(leading: const Icon(Icons.forward_rounded), title: const Text('بازارسال'), onTap: () {
           Navigator.pop(ctx);
           Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ComposeScreen(store: store, initialBody: m.body)));
