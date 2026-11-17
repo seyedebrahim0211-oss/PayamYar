@@ -8,12 +8,12 @@ void main() {
   testWidgets('phone number in an SMS opens action card without sending', (tester) async {
     await tester.pumpWidget(const MaterialApp(
       home: Scaffold(body: Center(
-        child: InteractiveMessageText(text: 'شماره: 09916010265'),
+        child: InteractiveMessageText(text: 'شماره: 09100000000'),
       )),
     ));
     await tester.pumpAndSettle();
-    expect(find.text('09916010265'), findsOneWidget);
-    await tester.tap(find.text('09916010265'));
+    expect(find.text('09100000000'), findsOneWidget);
+    await tester.tap(find.text('09100000000'));
     await tester.pumpAndSettle();
     expect(find.text('تماس'), findsOneWidget);
     expect(find.text('اطلاعات'), findsOneWidget);
@@ -25,14 +25,14 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: Scaffold(
       body: Builder(builder: (context) => TextButton(
         onPressed: () => showPhoneActions(
-          context, '09916010265', displayName: 'سعیدرضا'),
+          context, '09100000000', displayName: 'مخاطب آزمایشی'),
         child: const Text('نمایش کارت'),
       )),
     )));
     await tester.tap(find.text('نمایش کارت'));
     await tester.pumpAndSettle();
-    expect(find.text('سعیدرضا'), findsOneWidget);
-    expect(find.text('09916010265'), findsOneWidget);
+    expect(find.text('مخاطب آزمایشی'), findsOneWidget);
+    expect(find.text('09100000000'), findsOneWidget);
     expect(find.text('پیام'), findsOneWidget);
   });
 
