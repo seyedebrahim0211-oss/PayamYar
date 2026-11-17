@@ -14,6 +14,15 @@ void main() {
     expect(MessageSearch.containsTerms(docs.first, const []), isFalse);
   });
 
+  test('every term is found despite punctuation, half-spaces and Arabic marks', () {
+    expect(MessageSearch.matches('پرداخت-موفق؛ مبلغ: ۱۲٬۳۴۵ ریال', 'پرداخت موفق'), isTrue);
+    expect(MessageSearch.matches('کدِ تأیید: ١٢٣٤٥', 'تایید 12345'), isTrue);
+    expect(MessageSearch.matches('پیام\u200cهای بانک ملّي', 'پیام های بانک ملی'), isTrue);
+    expect(MessageSearch.matches('سفارش (۱۲۳-۴۵۶) تحویل شد.', 'سفارش 123 456'), isTrue);
+    expect(MessageSearch.matches('تماس با ۰۹۱۲ ۱۲۳ ۴۵۶۷', '0912 123'), isTrue);
+    expect(MessageSearch.matches('پرداخت انجام شد', 'پرداخت لغو'), isFalse);
+  });
+
   test('Persian and Arabic text is normalized', () {
     expect(MessageSearch.matches('نامه‌ای درباره کتاب', 'كتاب'), isTrue);
     expect(MessageSearch.matches('آزمون شماره ۱۲۳', '123'), isTrue);
