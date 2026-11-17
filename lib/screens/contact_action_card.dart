@@ -262,17 +262,23 @@ Future<void> _saveContact(BuildContext context, String number) async {
       access = await ContactsBridge.permissions();
     }
     if (access['write'] != true) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('اجازه ذخیره مخاطب در تنظیمات گوشی فعال نیست.')));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('اجازه ذخیره مخاطب در تنظیمات گوشی فعال نیست.')));
+      }
       return;
     }
     await ContactsBridge.save(name: label, phones: [LabeledValue(number)]);
     ContactNameLookup.invalidate(number);
-    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('مخاطب ذخیره شد.')));
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('مخاطب ذخیره شد.')));
+    }
   } catch (_) {
-    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('ذخیره مخاطب انجام نشد.')));
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ذخیره مخاطب انجام نشد.')));
+    }
   } finally {
     input.dispose();
   }
