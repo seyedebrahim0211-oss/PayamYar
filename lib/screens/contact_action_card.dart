@@ -1,36 +1,76 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../contacts/contacts_data.dart';
 import '../sms_bridge.dart';
 
-/// Local-only lookup. Keep a bounded cache so long conversation lists do not
-/// repeatedly query Android's Contacts provider.
+/// Local-only lookup, batched so even a long conversation queries the Android
+/// Contacts provider once per frame rather than once per visible phone number.
 class ContactNameLookup {
-  static final Map<String, Future<String?>> _cache = {};
+  static final Map<String, _NameCacheEntry> _cache = {};
+  static final Map<String, Completer<String?>> _queued = {};
+  static bool _flushing = false;
 
   static Future<String?> resolve(String raw) {
     final key = phoneKey(raw);
     if (!SmsBridge.supported || !RegExp(r'^09[0-9]{9}$').hasMatch(key)) {
       return Future<String?>.value(null);
     }
-    if (_cache.length >= 256) _cache.clear();
-    return _cache.putIfAbsent(key, () async {
-      try {
-        final names = await SmsBridge.contactNames([key]);
-        for (final entry in names.entries) {
-          if (phoneKey(entry.key) == key && entry.value.trim().isNotEmpty) {
-            return entry.value.trim();
+    final now = DateTime.now();
+    final previous = _cache[key];
+    if (previous != null &&
+        now.difference(previous.created) < const Duration(minutes: 2)) {
+      return previous.result;
+    }
+    final pending = Completer<String?>();
+    if (_cache.length >= 256) _cache.remove(_cache.keys.first);
+    _cache[key] = _NameCacheEntry(now, pending.future);
+    _queued[key] = pending;
+    _queueFlush();
+    return pending.future;
+  }
+
+  static void _queueFlush() {
+    if (_flushing) return;
+    _flushing = true;
+    scheduleMicrotask(() { unawaited(_flush()); });
+  }
+
+  static Future<void> _flush() async {
+    final batch = Map<String, Completer<String?>>.from(_queued);
+    _queued.clear();
+    try {
+      final names = await SmsBridge.contactNames(batch.keys.toList());
+      for (final request in batch.entries) {
+        String? name = names[request.key];
+        if (name == null) {
+          for (final entry in names.entries) {
+            if (phoneKey(entry.key) == request.key) {
+              name = entry.value;
+              break;
+            }
           }
         }
-      } catch (_) {
-        // Reading contacts is optional and must never block SMS rendering.
+        request.value.complete(name?.trim().isNotEmpty == true ? name!.trim() : null);
       }
-      return null;
-    });
+    } catch (_) {
+      for (final request in batch.values) {
+        request.complete(null);
+      }
+    } finally {
+      _flushing = false;
+      if (_queued.isNotEmpty) _queueFlush();
+    }
   }
 
   static void invalidate(String raw) => _cache.remove(phoneKey(raw));
+}
+
+class _NameCacheEntry {
+  final DateTime created;
+  final Future<String?> result;
+  const _NameCacheEntry(this.created, this.result);
 }
 
 Future<void> showContactActionCard(BuildContext context, String raw,
