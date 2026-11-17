@@ -36,6 +36,12 @@ class Insight {
 class PeriodInsight {
   final int received;
   final int sent;
+  /// Outgoing rows that have not yet been accepted by the radio.
+  final int awaiting;
+  /// Explicit radio send failures, not undelivered recipient reports.
+  final int failed;
+  /// Accepted by the network but recipient delivery report failed.
+  final int deliveryFailed;
   final int prevReceived;
   final int prevSent;
   /// Conversation key → message count, personal contacts only, most active first.
@@ -68,6 +74,9 @@ class PeriodInsight {
   const PeriodInsight({
     required this.received,
     required this.sent,
+    this.awaiting = 0,
+    this.failed = 0,
+    this.deliveryFailed = 0,
     this.prevReceived = 0,
     this.prevSent = 0,
     this.topContacts = const [],
@@ -167,6 +176,7 @@ class _Acc {
   final DateTime start;
   final DateTime prevStart;
   int received = 0, sent = 0, prevReceived = 0, prevSent = 0;
+  int awaiting = 0, failed = 0, deliveryFailed = 0;
   int deposits = 0, withdrawals = 0, prevDeposits = 0, prevWithdrawals = 0;
   int otp = 0, suspicious = 0;
   final contacts = <String, int>{};
@@ -250,6 +260,9 @@ ReportResult buildReportAt(List<MessageRecord> messages, DateTime now) {
         if (m.date.isAfter(since30)) recent.add(entry);
       }
     }
+    final isFailedSend = m.outgoing && m.type == 5;
+    final isAwaitingSend = m.outgoing && (m.type == 3 || m.type == 4 || m.type == 6);
+    final isSentToNetwork = m.outgoing && !isFailedSend && !isAwaitingSend;
     final key = ConversationLogic.normalize(m.sender);
     final weekday = (m.date.weekday + 1) % 7; // Saturday = 0
     final isOtp = !m.outgoing && MessageLogic.otp(m.body) != null;
@@ -260,9 +273,9 @@ ReportResult buildReportAt(List<MessageRecord> messages, DateTime now) {
       if (!m.date.isAfter(a.prevStart)) continue;
       if (!m.date.isAfter(a.start)) {
         // The window before: only totals, for the "compared with the previous period" arrows.
-        if (m.outgoing) {
+        if (isSentToNetwork) {
           a.prevSent++;
-        } else {
+        } else if (!m.outgoing) {
           a.prevReceived++;
         }
         if (entry != null) {
@@ -274,8 +287,13 @@ ReportResult buildReportAt(List<MessageRecord> messages, DateTime now) {
         }
         continue;
       }
-      if (m.outgoing) {
+      if (isSentToNetwork) {
         a.sent++;
+        if (m.delivery >= 64) a.deliveryFailed++;
+      } else if (isFailedSend) {
+        a.failed++;
+      } else if (isAwaitingSend) {
+        a.awaiting++;
       } else {
         a.received++;
       }
@@ -286,9 +304,9 @@ ReportResult buildReportAt(List<MessageRecord> messages, DateTime now) {
       if (isScam) a.suspicious++;
       final b = bucket(p, m.date);
       if (b != null) {
-        if (m.outgoing) {
+        if (isSentToNetwork) {
           a.trendOut[b]++;
-        } else {
+        } else if (!m.outgoing) {
           a.trendIn[b]++;
         }
       }
@@ -339,6 +357,9 @@ ReportResult buildReportAt(List<MessageRecord> messages, DateTime now) {
         return PeriodInsight(
           received: a.received,
           sent: a.sent,
+          awaiting: a.awaiting,
+          failed: a.failed,
+          deliveryFailed: a.deliveryFailed,
           prevReceived: a.prevReceived,
           prevSent: a.prevSent,
           topContacts: top(a.contacts, 8),
