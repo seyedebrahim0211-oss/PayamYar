@@ -226,6 +226,22 @@ class _ConversationsPageState extends State<ConversationsPage> {
   String? folder;
   Timer? _searchDebounce;
   final search = TextEditingController();
+  int _indexedRevision = -1;
+  final Map<String, List<String>> _normalizedMessages = {};
+
+  /// Rebuild the normalized SMS search corpus only when messages change.
+  /// Each keystroke filters already-normalized strings instead of re-parsing
+  /// the entire SMS history (including Persian and Arabic digits) repeatedly.
+  void _ensureSearchIndex() {
+    if (_indexedRevision == store.revision) return;
+    _normalizedMessages
+      ..clear()
+      ..addEntries(store.conversations.map((c) => MapEntry(
+        store.key(c.address),
+        [for (final m in c.messages) MessageSearch.normalize(m.body)],
+      )));
+    _indexedRevision = store.revision;
+  }
 
   AppStore get store => widget.store;
 
@@ -237,16 +253,19 @@ class _ConversationsPageState extends State<ConversationsPage> {
   }
 
   List<Conversation> _filtered() {
-    final q = query.trim();
+    final searchTerms = MessageSearch.terms(query);
     final all = store.visible(archive: widget.archive);
-    if (!unreadOnly && category == null && folder == null && q.isEmpty) return all;
+    if (!unreadOnly && category == null && folder == null && searchTerms.isEmpty) return all;
+    if (searchTerms.isNotEmpty) _ensureSearchIndex();
     return all.where((c) {
       if (folder != null && store.folders.forAddress(c.address) != folder) return false;
       if (unreadOnly && store.unreadCount(c) == 0) return false;
       if (category != null && store.categoryOf(c) != category) return false;
-      if (q.isEmpty) return true;
-      if (MessageSearch.matches(store.displayName(c.address), q) || MessageSearch.matches(c.address, q)) return true;
-      return c.messages.any((m) => MessageSearch.matches(m.body, q));
+      if (searchTerms.isEmpty) return true;
+      if (MessageSearch.containsTerms(MessageSearch.normalize(store.displayName(c.address)), searchTerms) ||
+          MessageSearch.containsTerms(MessageSearch.normalize(c.address), searchTerms)) return true;
+      return (_normalizedMessages[store.key(c.address)] ?? const <String>[])
+          .any((body) => MessageSearch.containsTerms(body, searchTerms));
     }).toList();
   }
 
