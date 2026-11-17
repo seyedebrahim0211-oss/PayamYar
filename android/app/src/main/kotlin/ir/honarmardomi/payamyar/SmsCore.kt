@@ -270,7 +270,8 @@ object SmsCore {
             delivered && deliveryFailure -> "delivery_failed"
             delivered && accepted.size == count -> "delivered"
             delivered -> previous
-            code != Activity.RESULT_OK && code != Activity.RESULT_CANCELED -> "send_failed:$code"
+            code != Activity.RESULT_OK && code != Activity.RESULT_CANCELED ->
+                "send_failed:${SmsSendDiagnostic.describe(code)}"
             previous.startsWith("send_failed") || previous == "delivery_failed" -> previous
             acks.size < count -> if (code == Activity.RESULT_CANCELED && previous == "pending") {
                 "send_unconfirmed"
@@ -294,7 +295,8 @@ object SmsCore {
             Notifier.sent(c, id)
         }
         if (next.startsWith("send_failed") && next != previous)
-            notify(c, id.hashCode(), "ارسال پیامک ناموفق بود", "شبکه ارسال را رد کرد؛ سیم‌کارت و وضعیت پیام را بررسی کنید.")
+            notify(c, id.hashCode(), "ارسال پیامک ناموفق بود",
+                next.substringAfter(':', "شبکه ارسال را رد کرد؛ سیم‌کارت و وضعیت پیام را بررسی کنید."))
         else if (next == "delivered" && previous.startsWith("send_failed"))
             c.getSystemService(NotificationManager::class.java).cancel(id.hashCode())
     }
