@@ -7,8 +7,7 @@ class MessageSearch {
   static final RegExp _marks = RegExp(r'[\u064B-\u065F\u0670\u06D6-\u06ED\u0640]');
   static const String _fa = '۰۱۲۳۴۵۶۷۸۹';
   static const String _ar = '٠١٢٣٤٥٦٧٨٩';
-  static const String _separators =
-      '.,،؛;:!?؟/\\|()[]{}<>"\'\`_+*=٪%#@&^~\\$-–—«»…،\u00a0';
+  static const String _separators = r""".,،؛;:!?؟/\\|()[]{}<>"'`_+*=٪%#@&^~$-–—«»…""" ;
 
   /// Produces a comparable text corpus while retaining spaces between words.
   static String normalize(String input) {
