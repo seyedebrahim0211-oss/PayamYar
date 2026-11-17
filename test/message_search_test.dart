@@ -20,6 +20,8 @@ void main() {
     expect(MessageSearch.matches('پیام\u200cهای بانک ملّي', 'پیام های بانک ملی'), isTrue);
     expect(MessageSearch.matches('سفارش (۱۲۳-۴۵۶) تحویل شد.', 'سفارش 123 456'), isTrue);
     expect(MessageSearch.matches('تماس با ۰۹۱۲ ۱۲۳ ۴۵۶۷', '0912 123'), isTrue);
+    expect(MessageSearch.matches('واریز ۱۲٬۳۴۵ ریال', '12345'), isTrue);
+    expect(MessageSearch.matches('پیام‌های جدید', 'پیامها'), isTrue);
     expect(MessageSearch.matches('پرداخت انجام شد', 'پرداخت لغو'), isFalse);
   });
 
