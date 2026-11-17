@@ -7,7 +7,7 @@ class MessageSearch {
   static final RegExp _marks = RegExp(r'[\u064B-\u065F\u0670\u06D6-\u06ED\u0640]');
   static const String _fa = '۰۱۲۳۴۵۶۷۸۹';
   static const String _ar = '٠١٢٣٤٥٦٧٨٩';
-  static const String _separators = r""".,،؛;:!?؟/\\|()[]{}<>"'`_+*=٪%#@&^~$-–—«»…""" ;
+  static const String _separators = r""".,،؛;:!?؟/\\|()[]{}<>"'`_+*=٪%#@&^~$-–—«»…٬٫""" ;
 
   /// Produces a comparable text corpus while retaining spaces between words.
   static String normalize(String input) {
@@ -57,8 +57,15 @@ class MessageSearch {
     return needle.isEmpty ? const <String>[] : needle.split(' ');
   }
 
-  static bool containsTerms(String normalizedSource, List<String> terms) =>
-      terms.isNotEmpty && terms.every(normalizedSource.contains);
+  static bool containsTerms(String normalizedSource, List<String> terms) {
+    if (terms.isEmpty) return false;
+    final missing = terms.where((term) => !normalizedSource.contains(term)).toList();
+    if (missing.isEmpty) return true;
+    // Tolerate grouped numbers (۱۲٬۳۴۵ vs 12345) and joined Persian words
+    // (پیام‌ها vs پیامها) without introducing cloud/fuzzy network lookup.
+    final compact = normalizedSource.replaceAll(' ', '');
+    return missing.every(compact.contains);
+  }
 
   static bool matches(String source, String query) =>
       containsTerms(normalize(source), terms(query));
