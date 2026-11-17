@@ -50,8 +50,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      widget.store.checkPermissions();
-      widget.store.refresh();
+      unawaited(widget.store.checkPermissions());
+      unawaited(widget.store.refresh());
+      unawaited(widget.store.refreshContactNames(force: true));
       unawaited(widget.store.resumePendingUpdate());
       final now = DateTime.now();
       if (_lastUpdateCheck == null ||
