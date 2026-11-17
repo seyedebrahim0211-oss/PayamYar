@@ -69,7 +69,9 @@ class _InviteFriendsScreenState extends State<InviteFriendsScreen> {
   Future<void> _share() async {
     try {
       if (await SmsBridge.shareText(invitation,
-          subject: 'دعوت به پیام‌یار', title: 'معرفی پیام‌یار به دوستان')) return;
+          subject: 'دعوت به پیام‌یار', title: 'معرفی پیام‌یار به دوستان')) {
+        return;
+      }
     } catch (_) {}
     await Clipboard.setData(const ClipboardData(text: invitation));
     _notice('متن دعوت کپی شد. می‌توانید برای دوستان بفرستید.');
