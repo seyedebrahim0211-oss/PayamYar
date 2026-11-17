@@ -10,6 +10,7 @@ import '../message_logic.dart';
 import '../message_search.dart';
 import '../sms_bridge.dart';
 import '../smart_assistant.dart';
+import '../smart/smart_sms_engine.dart';
 import '../conversation_insights.dart';
 import 'compose_screen.dart';
 import 'compose_tools.dart';
@@ -153,6 +154,12 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
     final summary = ConversationInsights.summarize(messages);
     final tasks = ConversationInsights.actionItems(messages);
     final warnings = ConversationInsights.securityWarnings(messages);
+    final recentIncoming = messages.where((m) => !m.outgoing).take(300).toList();
+    final insights = recentIncoming.map((m) => SmartSmsEngine.analyze(m.sender, m.body)).toList();
+    final suspiciousCount = insights.where((a) => a.needsReview).length;
+    final verificationCount = insights.where((a) => a.containsOneTimeCode).length;
+    final expiredCodeCount = recentIncoming.where((m) =>
+      SmartSmsEngine.isOldVerification(m.sender, m.body, m.date)).length;
     if (!mounted) return;
     await showModalBottomSheet<void>(
       context: context, showDragHandle: true, isScrollControlled: true,
@@ -162,6 +169,17 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
           Text('دستیار آفلاین گفتگو', style: Theme.of(ctx).textTheme.titleLarge),
           const SizedBox(height: 8),
           const Text('تحلیل قاعده‌محور روی همین گوشی؛ هیچ پیامکی ارسال یا به سرور منتقل نمی‌شود. این تحلیل ممکن است دقیق نباشد.'),
+          const SizedBox(height: 12),
+          Wrap(spacing: 8, runSpacing: 4, children: [
+            Chip(avatar: const Icon(Icons.gpp_maybe_outlined, size: 18),
+              label: Text('مشکوک: ' + Jalali.digits(suspiciousCount))),
+            Chip(avatar: const Icon(Icons.key_outlined, size: 18),
+              label: Text('رمز یک‌بارمصرف: ' + Jalali.digits(verificationCount))),
+            Chip(avatar: const Icon(Icons.history_outlined, size: 18),
+              label: Text('رمزهای قدیمی: ' + Jalali.digits(expiredCodeCount))),
+          ]),
+          const SizedBox(height: 8),
+          const Text('تحلیل پیام‌های دریافتی اخیر به‌صورت آفلاین انجام می‌شود؛ هیچ رمز یا پیامکی به سرور فرستاده نمی‌شود. حذف رمزهای قدیمی فقط به انتخاب کاربر است.'),
           const SizedBox(height: 16),
           Text('مرور پیام‌های اخیر', style: Theme.of(ctx).textTheme.titleMedium),
           SelectableText(summary),
