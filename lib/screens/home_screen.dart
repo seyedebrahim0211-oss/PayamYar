@@ -270,11 +270,11 @@ class _ConversationsPageState extends State<ConversationsPage> {
         return true;
       }
       final sender = MessageSearch.normalize(
-          store.displayName(c.address) + ' ' + c.address + ' ' + store.key(c.address));
+          '${store.displayName(c.address)} ${c.address} ${store.key(c.address)}');
       if (MessageSearch.containsTerms(sender, searchTerms)) return true;
       // A query can combine the contact's name and a word inside a message.
       return (_normalizedMessages[store.key(c.address)] ?? const <String>[])
-          .any((body) => MessageSearch.containsTerms(sender + ' ' + body, searchTerms));
+          .any((body) => MessageSearch.containsTerms('$sender $body', searchTerms));
     }).toList();
   }
 
