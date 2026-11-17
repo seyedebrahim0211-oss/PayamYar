@@ -239,7 +239,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
       ..clear()
       ..addEntries(store.conversations.map((c) => MapEntry(
         store.key(c.address),
-        [for (final m in c.messages) MessageSearch.normalize(m.body)],
+        [for (final m in c.messages) MessageSearch.indexedBody(m)],
       )));
     _indexedRevision = store.revision;
   }
