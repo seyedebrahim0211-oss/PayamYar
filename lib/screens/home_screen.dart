@@ -263,7 +263,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
       if (category != null && store.categoryOf(c) != category) return false;
       if (searchTerms.isEmpty) return true;
       if (MessageSearch.containsTerms(MessageSearch.normalize(store.displayName(c.address)), searchTerms) ||
-          MessageSearch.containsTerms(MessageSearch.normalize(c.address), searchTerms)) return true;
+          MessageSearch.containsTerms(MessageSearch.normalize(c.address), searchTerms)) { return true; }
       return (_normalizedMessages[store.key(c.address)] ?? const <String>[])
           .any((body) => MessageSearch.containsTerms(body, searchTerms));
     }).toList();
