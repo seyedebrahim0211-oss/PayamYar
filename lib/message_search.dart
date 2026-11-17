@@ -45,6 +45,12 @@ class MessageSearch {
     return buffer.toString().replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
+  // MessageRecord.body is immutable; weak keys release this cache when SMS
+  // history is refreshed. Inbox tiles and per-chat search share one index.
+  static final Expando<String> _indexedBodies = Expando<String>('sms-search');
+  static String indexedBody(MessageRecord message) =>
+      _indexedBodies[message] ??= normalize(message.body);
+
   /// Every query word must occur; word order and punctuation are irrelevant.
   static List<String> terms(String query) {
     final needle = normalize(query);
@@ -64,6 +70,6 @@ class MessageSearch {
     final tokens = terms(query);
     if (tokens.isEmpty) return const [];
     return [for (final message in messages)
-      if (containsTerms(normalize(message.body), tokens)) message];
+      if (containsTerms(indexedBody(message), tokens)) message];
   }
 }
