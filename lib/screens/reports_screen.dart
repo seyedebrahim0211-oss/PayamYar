@@ -235,6 +235,19 @@ class _ReportsScreenState extends State<ReportsScreen> with WidgetsBindingObserv
                 ],
               ),
               const SizedBox(height: 6),
+              if (p.awaiting > 0 || p.failed > 0 || p.deliveryFailed > 0) ...[
+                Row(children: [
+                  Expanded(child: _MiniStat(icon: Icons.hourglass_top_rounded,
+                    label: 'در انتظار', value: p.awaiting, color: scheme.tertiary)),
+                  const SizedBox(width: 8),
+                  Expanded(child: _MiniStat(icon: Icons.error_outline_rounded,
+                    label: 'ارسال ناموفق', value: p.failed, color: scheme.error)),
+                  const SizedBox(width: 8),
+                  Expanded(child: _MiniStat(icon: Icons.mark_email_unread_outlined,
+                    label: 'تحویل ناموفق', value: p.deliveryFailed, color: scheme.error)),
+                ]),
+                const SizedBox(height: 6),
+              ],
               Text('مقایسه با ${reportPeriodNames[period]} قبل • میانگین ${Jalali.digits(p.perDay.toStringAsFixed(1))} پیام در روز • '
                   '${Jalali.digits(p.people)} مخاطب فعال',
                   textAlign: TextAlign.center, style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant)),
