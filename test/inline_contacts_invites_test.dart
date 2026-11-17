@@ -43,6 +43,8 @@ void main() {
     expect(find.text('معرفی به دوستان'), findsOneWidget);
     expect(find.text('دعوت با پیامک'), findsOneWidget);
     expect(find.text('اشتراک‌گذاری در برنامه‌های دیگر'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('کپی لینک دانلود'), 160);
+    await tester.pumpAndSettle();
     expect(find.text('کپی لینک دانلود'), findsOneWidget);
   });
 }
