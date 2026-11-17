@@ -112,7 +112,7 @@ object SmsCore {
         val id = UUID.randomUUID().toString()
         val item = JSONObject().put("to", to).put("body", body).put("sim", subscriptionId)
             .put("due", System.currentTimeMillis() + delayMs).put("scheduled", delayMs > 10000)
-        check(prefs(c).edit().putString("queue:$id", item.toString()).putString("status:$id", "queued").commit())
+        check(prefs(c).edit().putString("queue:$id", SecureVault.encryptQueue(item.toString())).putString("status:$id", "queued").commit())
         if (delayMs > 0) arm(c, id, item.getLong("due"))
         return id
     }
@@ -149,7 +149,7 @@ object SmsCore {
     }
     @Synchronized fun cancel(c: Context, id: String): Boolean {
         if (status(c, id) != "queued") return false
-        val item = JSONObject(prefs(c).getString("queue:$id", "{}")!!)
+        val item = runCatching { JSONObject(SecureVault.decryptQueue(prefs(c).getString("queue:$id", "{}")!!)) }.getOrNull() ?: return false
         if (System.currentTimeMillis() >= item.optLong("due")) return false
         prefs(c).edit().remove("queue:$id").putString("status:$id", "cancelled").commit()
         c.getSystemService(AlarmManager::class.java).cancel(alarmIntent(c, id))
@@ -174,7 +174,7 @@ object SmsCore {
         val now = System.currentTimeMillis()
         prefs(c).all.keys.filter { it.startsWith("queue:") }.forEach { key ->
             val id = key.removePrefix("queue:")
-            val entry = runCatching { JSONObject(prefs(c).getString(key, "{}")!!) }.getOrNull()
+            val entry = runCatching { JSONObject(SecureVault.decryptQueue(prefs(c).getString(key, "{}")!!)) }.getOrNull()
             if (entry != null && entry.optBoolean("scheduled") && entry.optLong("due") > now + 5000) {
                 arm(c, id, entry.getLong("due"))
             } else {
@@ -188,7 +188,7 @@ object SmsCore {
             val id = key.removePrefix("queue:")
             if (status(c, id) != "queued") return@mapNotNull null
             try {
-                val item = JSONObject(prefs(c).getString(key, "{}")!!)
+                val item = JSONObject(SecureVault.decryptQueue(prefs(c).getString(key, "{}")!!))
                 mapOf("id" to id, "to" to item.getString("to"), "body" to item.getString("body"),
                     "due" to item.getLong("due"), "scheduled" to item.optBoolean("scheduled"))
             } catch (_: Exception) { null }
@@ -196,7 +196,13 @@ object SmsCore {
     @Synchronized fun dispatch(c: Context, id: String) {
         val raw = prefs(c).getString("queue:$id", null) ?: return
         if (status(c, id) != "queued") return
-        val item = JSONObject(raw)
+        val item = try {
+            JSONObject(SecureVault.decryptQueue(raw))
+        } catch (_: Exception) {
+            // A missing Keystore key or tampered queue must never send an SMS.
+            prefs(c).edit().remove("queue:$id").putString("status:$id", "queue_unreadable").commit()
+            return
+        }
         if (System.currentTimeMillis() < item.getLong("due")) { arm(c, id, item.getLong("due")); return }
         // Commit before the radio call: never automatically retry an ambiguous send.
         prefs(c).edit().remove("queue:$id").putString("status:$id", "pending").commit()
@@ -356,14 +362,39 @@ object SmsCore {
         }
         return affected
     }
+    /** Resolve address book labels for incoming SMS in local and international form. */
     fun contactName(c: Context, address: String): String? {
         if (ContextCompat.checkSelfPermission(c, Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) return null
         if (address.none { it.isDigit() }) return null
-        return try {
-            val uri = Uri.withAppendedPath(android.provider.ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(address))
-            c.contentResolver.query(uri, arrayOf(android.provider.ContactsContract.PhoneLookup.DISPLAY_NAME), null, null, null)?.use {
-                if (it.moveToFirst()) it.getString(0) else null
+        val variants = linkedSetOf(address)
+        val digits = buildString {
+            for (ch in address) {
+                val digit = Character.digit(ch, 10)
+                if (digit >= 0) append(digit)
             }
+        }
+        val local = when {
+            digits.length == 11 && digits.startsWith("09") -> digits
+            digits.length == 12 && digits.startsWith("989") -> "0" + digits.takeLast(10)
+            digits.length == 14 && digits.startsWith("00989") -> "0" + digits.takeLast(10)
+            else -> null
+        }
+        if (local != null) {
+            variants.add(local)
+            variants.add("+98" + local.drop(1))
+            variants.add("0098" + local.drop(1))
+        }
+        return try {
+            for (number in variants) {
+                val uri = Uri.withAppendedPath(android.provider.ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(number))
+                c.contentResolver.query(uri, arrayOf(android.provider.ContactsContract.PhoneLookup.DISPLAY_NAME), null, null, null)?.use {
+                    if (it.moveToFirst()) {
+                        val name = it.getString(0)
+                        if (!name.isNullOrBlank()) return name
+                    }
+                }
+            }
+            null
         } catch (_: Exception) { null }
     }
     fun notify(c: Context, id: Int, title: String, text: String) {

@@ -50,8 +50,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      widget.store.checkPermissions();
-      widget.store.refresh();
+      unawaited(widget.store.checkPermissions());
+      unawaited(widget.store.refresh());
+      unawaited(widget.store.refreshContactNames(force: true));
       unawaited(widget.store.resumePendingUpdate());
       final now = DateTime.now();
       if (_lastUpdateCheck == null ||
@@ -238,7 +239,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
       ..clear()
       ..addEntries(store.conversations.map((c) => MapEntry(
         store.key(c.address),
-        [for (final m in c.messages) MessageSearch.normalize(m.body)],
+        [for (final m in c.messages) MessageSearch.indexedBody(m)],
       )));
     _indexedRevision = store.revision;
   }
@@ -254,18 +255,26 @@ class _ConversationsPageState extends State<ConversationsPage> {
 
   List<Conversation> _filtered() {
     final searchTerms = MessageSearch.terms(query);
-    final all = store.visible(archive: widget.archive);
+    // Global search includes archived conversations and is not limited
+    // by the inbox's unread/category/folder chips.
+    final all = searchTerms.isNotEmpty && !widget.archive
+        ? [...store.visible(archive: false), ...store.visible(archive: true)]
+        : store.visible(archive: widget.archive);
     if (!unreadOnly && category == null && folder == null && searchTerms.isEmpty) return all;
     if (searchTerms.isNotEmpty) _ensureSearchIndex();
     return all.where((c) {
-      if (folder != null && store.folders.forAddress(c.address) != folder) return false;
-      if (unreadOnly && store.unreadCount(c) == 0) return false;
-      if (category != null && store.categoryOf(c) != category) return false;
-      if (searchTerms.isEmpty) return true;
-      if (MessageSearch.containsTerms(MessageSearch.normalize(store.displayName(c.address)), searchTerms) ||
-          MessageSearch.containsTerms(MessageSearch.normalize(c.address), searchTerms)) { return true; }
+      if (searchTerms.isEmpty) {
+        if (folder != null && store.folders.forAddress(c.address) != folder) return false;
+        if (unreadOnly && store.unreadCount(c) == 0) return false;
+        if (category != null && store.categoryOf(c) != category) return false;
+        return true;
+      }
+      final sender = MessageSearch.normalize(
+          '${store.displayName(c.address)} ${c.address} ${store.key(c.address)}');
+      if (MessageSearch.containsTerms(sender, searchTerms)) return true;
+      // A query can combine the contact's name and a word inside a message.
       return (_normalizedMessages[store.key(c.address)] ?? const <String>[])
-          .any((body) => MessageSearch.containsTerms(body, searchTerms));
+          .any((body) => MessageSearch.containsTerms('$sender $body', searchTerms));
     }).toList();
   }
 
@@ -429,7 +438,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
                   },
                   textInputAction: TextInputAction.search,
                   decoration: InputDecoration(
-                    hintText: 'جستجو در نام‌ها و پیام‌ها',
+                    hintText: 'جست‌وجو در همه پیام‌ها، نام‌ها و شماره‌ها',
                     isDense: true,
                     prefixIcon: const Icon(Icons.search_rounded),
                     suffixIcon: query.isEmpty ? null : IconButton(

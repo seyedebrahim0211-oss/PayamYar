@@ -74,6 +74,27 @@ object SecureVault {
         prefs(c).edit().remove("v:$name").remove("fail:$name").remove("until:$name").remove("mono:$name").remove("boot:$name").commit()
     }
 
+    /** Encrypt queued SMS data without changing any existing PIN or vault records. */
+    @Synchronized fun encryptQueue(plainText: String): String {
+        require(plainText.length <= 4096)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, key())
+        return "v2:" + Base64.encodeToString(
+            cipher.iv + cipher.doFinal(plainText.toByteArray(Charsets.UTF_8)),
+            Base64.NO_WRAP)
+    }
+
+    /** Transparently accepts pre-upgrade plaintext queue records.
+     *  Authentication failure is fatal: never treat tampered ciphertext as SMS. */
+    @Synchronized fun decryptQueue(value: String): String {
+        if (!value.startsWith("v2:")) return value
+        val data = Base64.decode(value.removePrefix("v2:"), Base64.NO_WRAP)
+        require(data.size >= 28) { "Encrypted SMS record is incomplete" }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, data, 0, 12))
+        return String(cipher.doFinal(data, 12, data.size - 12), Charsets.UTF_8)
+    }
+
     private fun pbkdf2(pin: String, salt: ByteArray): ByteArray {
         val spec = PBEKeySpec(pin.toCharArray(), salt, 120_000, 256)
         // HMAC-SHA1 is the PBKDF2 variant available on every supported Android (7+), so a hash

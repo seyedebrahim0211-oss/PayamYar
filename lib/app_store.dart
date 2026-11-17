@@ -196,7 +196,14 @@ class AppStore extends ChangeNotifier {
     if (!android) return;
     try {
       available = await SmsBridge.available();
+      final hadContacts = permissions.contacts;
       permissions = await SmsBridge.status();
+      if (!permissions.contacts) {
+        names.clear();
+        _lastNamesLoad = null;
+      } else if (!hadContacts) {
+        unawaited(_loadNames(force: true));
+      }
       if (!permissions.isDefault) {
         // Stop any in-flight SMS page aggregation after default-role revocation.
         _generation++;
@@ -424,19 +431,40 @@ class AppStore extends ChangeNotifier {
     }
   }
 
-  Future<void> _loadNames() async {
-    if (!permissions.contacts) return;
-    final missing = conversations.map((c) => c.address)
-        .where((a) => !names.containsKey(a) && RegExp(r'\d{5}').hasMatch(a)).toList();
-    if (missing.isEmpty) return;
+  bool _loadingNames = false;
+  DateTime? _lastNamesLoad;
+
+  /// Refreshes saved contact names after returning from the phonebook.
+  /// Empty/missing results are not cached permanently.
+  Future<void> refreshContactNames({bool force = false}) => _loadNames(force: force);
+
+  Future<void> _loadNames({bool force = false}) async {
+    if (!permissions.contacts || _loadingNames) return;
+    final all = conversations.map((c) => c.address)
+        .where((a) => RegExp(r'\d{5}').hasMatch(a)).toSet().toList();
+    if (all.isEmpty) return;
+    final now = DateTime.now();
+    final refreshAll = force || _lastNamesLoad == null ||
+        now.difference(_lastNamesLoad!) >= const Duration(minutes: 2);
+    final requested = refreshAll ? all : all.where((a) => !names.containsKey(a)).toList();
+    if (requested.isEmpty) return;
+    _loadingNames = true;
     try {
-      final found = await SmsBridge.contactNames(missing);
-      for (final a in missing) {
-        names[a] = found[a] ?? '';
+      final found = await SmsBridge.contactNames(requested);
+      var changed = false;
+      for (final address in requested) {
+        final updated = found[address] ?? '';
+        final canonical = key(address);
+        if (names[address] != updated || names[canonical] != updated) changed = true;
+        names[address] = updated;
+        names[canonical] = updated; // +98 / 0098 / 09 share the same name
       }
-      notifyListeners();
+      _lastNamesLoad = now;
+      if (changed) notifyListeners();
     } catch (_) {
-      // Names are optional; numbers are shown instead.
+      // Keep existing names if the contacts provider is temporarily unavailable.
+    } finally {
+      _loadingNames = false;
     }
   }
 
@@ -481,8 +509,10 @@ class AppStore extends ChangeNotifier {
   }
 
   String displayName(String address) {
-    final name = names[address];
-    return name == null || name.isEmpty ? address : name;
+    final direct = names[address];
+    if (direct != null && direct.isNotEmpty) return direct;
+    final canonical = names[key(address)];
+    return canonical == null || canonical.isEmpty ? address : canonical;
   }
 
   String key(String address) => _keyCache[address] ??= ConversationLogic.normalize(address);
