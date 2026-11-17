@@ -19,6 +19,7 @@ import 'birthdays_screen.dart';
 import 'notification_style_screen.dart';
 import 'support_pages.dart';
 import 'support_inbox_screen.dart';
+import 'invite_friends_screen.dart';
 import 'privacy_disclosure_screen.dart';
 
 /// Settings hub: a short, friendly list of sections; each opens its own page.
@@ -204,6 +205,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               SettingsTile(icon: Icons.support_agent_rounded, color: const Color(0xFF087F81),
                 title: 'پشتیبانی و پیگیری پاسخ‌ها', subtitle: 'گفتگوی محرمانه با مدیر، بدون شماره تماس',
                 onTap: () => _open(const SupportInboxScreen())),
+              SettingsTile(icon: Icons.group_add_rounded, color: const Color(0xFF087F81),
+                title: 'معرفی پیام‌یار به دوستان',
+                subtitle: 'دعوت با پیامک، اشتراک‌گذاری و لینک دانلود',
+                onTap: () => _open(InviteFriendsScreen(store: store))),
               SettingsTile(icon: Icons.chat_outlined, color: scheme.primary,
                 title: 'ارتباط با ما', onTap: () => _open(const ContactPage())),
               SettingsTile(icon: Icons.info_outline_rounded, color: scheme.primary,
