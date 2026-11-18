@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import '../app_settings.dart';
 import '../app_store.dart';
 import '../jalali.dart';
@@ -23,13 +25,15 @@ class BannerHost extends StatefulWidget {
 
 class _BannerHostState extends State<BannerHost> {
   late final OverlayEntry _app = OverlayEntry(builder: (context) => widget.child);
-  late final OverlayEntry _layer =
-      OverlayEntry(builder: (context) => _BannerLayer(store: widget.store, settings: widget.settings));
+  late final OverlayEntry _layer = OverlayEntry(
+    builder: (context) => _BannerLayer(store: widget.store, settings: widget.settings),
+  );
 
   @override
   void didUpdateWidget(BannerHost oldWidget) {
     super.didUpdateWidget(oldWidget);
     _app.markNeedsBuild();
+    _layer.markNeedsBuild();
   }
 
   @override
@@ -46,8 +50,11 @@ class _BannerLayer extends StatefulWidget {
 }
 
 class _BannerLayerState extends State<_BannerLayer> with SingleTickerProviderStateMixin {
-  late final AnimationController _show = AnimationController(vsync: this,
-      duration: const Duration(milliseconds: 460), reverseDuration: const Duration(milliseconds: 240));
+  late final AnimationController _show = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 220),
+    reverseDuration: const Duration(milliseconds: 140),
+  );
   IncomingBanner? _banner;
   Timer? _timer;
   bool _typing = false;
@@ -82,7 +89,11 @@ class _BannerLayerState extends State<_BannerLayer> with SingleTickerProviderSta
       _drag = 0;
     });
     HapticFeedback.lightImpact();
-    _show.forward(from: 0);
+    if (widget.settings.reduceEffects || MediaQuery.disableAnimationsOf(context)) {
+      _show.value = 1;
+    } else {
+      _show.forward(from: 0);
+    }
     _restartTimer();
   }
 
@@ -97,7 +108,11 @@ class _BannerLayerState extends State<_BannerLayer> with SingleTickerProviderSta
     if (!mounted || _banner == null) return;
     final generation = ++_bannerGeneration;
     final dismissed = _banner;
-    await _show.reverse();
+    if (widget.settings.reduceEffects || MediaQuery.disableAnimationsOf(context)) {
+      _show.value = 0;
+    } else {
+      await _show.reverse();
+    }
     if (!mounted || generation != _bannerGeneration) return;
     setState(() {
       _banner = null;
@@ -166,39 +181,60 @@ class _BannerLayerState extends State<_BannerLayer> with SingleTickerProviderSta
     if (b == null) return const SizedBox.shrink();
     final top = widget.settings.bannerTop;
     final media = MediaQuery.of(context);
-    final slide = Tween<Offset>(begin: Offset(0, top ? -1.4 : 1.4), end: Offset.zero).animate(
-        CurvedAnimation(parent: _show, curve: Curves.easeOutBack, reverseCurve: Curves.easeInCubic));
-    return Stack(children: [
-      Positioned(
-        left: 10,
-        right: 10,
-        top: top ? media.padding.top + 8 : null,
-        bottom: top ? null : media.viewInsets.bottom + media.padding.bottom + 12,
-        child: Align(
-          alignment: top ? Alignment.topCenter : Alignment.bottomCenter,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: widget.settings.bannerMaxWidth),
-            child: SlideTransition(
-              position: slide,
-              child: FadeTransition(
-                opacity: _show,
-                child: GestureDetector(
-                  onVerticalDragUpdate: (d) => _dragUpdate(d, top),
-                  onVerticalDragEnd: (d) => _dragEnd(d, top),
-                  child: Transform.translate(
-                    offset: Offset(0, _drag),
-                    child: GlassBannerCard(
-                      key: ValueKey(b),
-                      banner: b,
-                      settings: widget.settings,
-                      onTap: _open,
-                      onClose: _dismiss,
-                      onReply: _reply,
-                      onCopy: _copy,
-                      onTyping: (typing) {
-                        _typing = typing;
-                        _restartTimer();
-                      },
+    final slide = Tween<Offset>(
+      begin: Offset(0, top ? -1.4 : 1.4),
+      end: Offset.zero,
+    ).chain(CurveTween(curve: Curves.easeOutCubic)).animate(_show);
+    final tilt = Tween<double>(begin: top ? -.04 : .04, end: 0).animate(_show);
+    return Stack(
+      children: [
+        Positioned(
+          left: 10,
+          right: 10,
+          top: top ? media.padding.top + 8 : null,
+          bottom: top ? null : media.viewInsets.bottom + media.padding.bottom + 12,
+          child: Align(
+            alignment: top ? Alignment.topCenter : Alignment.bottomCenter,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: widget.settings.bannerMaxWidth,
+                maxHeight: math.max(
+                  1.0,
+                  media.size.height - media.viewInsets.bottom - media.padding.vertical - 24,
+                ),
+              ),
+              child: SlideTransition(
+                position: slide,
+                child: FadeTransition(
+                  opacity: _show,
+                  child: AnimatedBuilder(
+                    animation: tilt,
+                    builder: (context, child) => Transform(
+                      alignment: top ? Alignment.topCenter : Alignment.bottomCenter,
+                      transform: Matrix4.identity()
+                        ..setEntry(3, 2, .001)
+                        ..rotateX(tilt.value),
+                      child: child,
+                    ),
+                    child: GestureDetector(
+                      onVerticalDragUpdate: (d) => _dragUpdate(d, top),
+                      onVerticalDragEnd: (d) => _dragEnd(d, top),
+                      child: Transform.translate(
+                        offset: Offset(0, _drag),
+                        child: GlassBannerCard(
+                          key: ValueKey(b),
+                          banner: b,
+                          settings: widget.settings,
+                          onTap: _open,
+                          onClose: _dismiss,
+                          onReply: _reply,
+                          onCopy: _copy,
+                          onTyping: (typing) {
+                            _typing = typing;
+                            _restartTimer();
+                          },
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -206,8 +242,8 @@ class _BannerLayerState extends State<_BannerLayer> with SingleTickerProviderSta
             ),
           ),
         ),
-      ),
-    ]);
+      ],
+    );
   }
 }
 
@@ -222,24 +258,36 @@ class GlassBannerCard extends StatefulWidget {
   final ValueChanged<String>? onCopy;
   final ValueChanged<bool>? onTyping;
 
-  const GlassBannerCard({super.key, required this.banner, required this.settings, this.interactive = true,
-      this.onTap, this.onClose, this.onReply, this.onCopy, this.onTyping});
+  const GlassBannerCard({
+    super.key,
+    required this.banner,
+    required this.settings,
+    this.interactive = true,
+    this.onTap,
+    this.onClose,
+    this.onReply,
+    this.onCopy,
+    this.onTyping,
+  });
 
   @override
   State<GlassBannerCard> createState() => _GlassBannerCardState();
 }
 
 class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProviderStateMixin {
-  late final AnimationController _bubbles =
-      AnimationController(vsync: this, duration: const Duration(seconds: 8));
+  late final AnimationController _bubbles = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1400),
+  );
   final _reply = TextEditingController();
   final _focus = FocusNode();
   bool _expanded = false;
+  bool _writing = false;
 
   @override
   void initState() {
     super.initState();
-    _focus.addListener(() => widget.onTyping?.call(_focus.hasFocus));
+    _focus.addListener(() => widget.onTyping?.call(_expanded || _focus.hasFocus));
   }
 
   @override
@@ -256,9 +304,12 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
   }
 
   void _syncBubbles() {
-    final on = widget.settings.bannerBubbles && !MediaQuery.of(context).disableAnimations;
-    if (on && !_bubbles.isAnimating) {
-      _bubbles.repeat();
+    final on =
+        widget.settings.bannerBubbles &&
+        !widget.settings.reduceEffects &&
+        !MediaQuery.disableAnimationsOf(context);
+    if (on && !_bubbles.isAnimating && !_bubbles.isCompleted) {
+      _bubbles.forward();
     } else if (!on && _bubbles.isAnimating) {
       _bubbles.stop();
     }
@@ -284,216 +335,220 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
   Widget build(BuildContext context) {
     final s = widget.settings;
     final b = widget.banner;
-    final scheme = Theme.of(context).colorScheme;
-    final tint = s.bannerColor;
-    final minimal = s.bannerStyle == BannerStyle.minimal;
-    final glass = s.bannerStyle == BannerStyle.glass;
-    final fg = minimal ? const Color(0xFF172E33) : Colors.white;
-    final soft = fg.withValues(alpha: .72);
+    final tint = s.bannerSourceColors && b.sourceColor != null ? Color(b.sourceColor!) : s.bannerColor;
+    final rim = 2 + 4 * s.bannerEdge;
     final radius = BorderRadius.circular(s.bannerCorner);
+    final inner = BorderRadius.circular(s.bannerCorner - rim);
+    final alpha = .65 + .35 * s.bannerOpacity;
+    final luma = (54 * tint.r + 183 * tint.g + 19 * tint.b) * 255 / 256;
+    final topScale = math.min(.82, 70 / math.max(1.0, luma));
+    final clock = Jalali.digits(
+      '${b.time.hour.toString().padLeft(2, '0')}:${b.time.minute.toString().padLeft(2, '0')}',
+    );
+    final code = b.otp;
+    final chipCode = code != null && s.notifyOtpCopy;
+    final showReply = _expanded && widget.interactive && b.canReply && s.notifyQuickReply;
+    final reduce = s.reduceEffects || MediaQuery.disableAnimationsOf(context);
 
-    final Decoration decoration;
-    if (minimal) {
-      decoration = BoxDecoration(
-        color: scheme.surface.withValues(alpha: .97),
-        borderRadius: radius,
-        border: Border.all(color: scheme.outlineVariant),
-      );
-    } else if (glass) {
-      decoration = BoxDecoration(
-        borderRadius: radius,
-        gradient: LinearGradient(
-          begin: AlignmentDirectional.topStart,
-          end: AlignmentDirectional.bottomEnd,
-          colors: [
-            Color.lerp(tint, const Color(0xFF075B60), .65)!.withValues(alpha: s.bannerOpacity),
-            const Color(0xFF063B44).withValues(alpha: s.bannerOpacity),
-          ],
-        ),
-        border: Border.all(color: const Color(0xFFB3E7DA).withValues(alpha: s.bannerEdge), width: 1.1 + s.bannerEdge),
-      );
-    } else {
-      decoration = BoxDecoration(
-        borderRadius: radius,
-        gradient: LinearGradient(
-          begin: AlignmentDirectional.topStart,
-          end: AlignmentDirectional.bottomEnd,
-          colors: [Color.lerp(tint, Colors.white, .12)!, Color.lerp(tint, Colors.black, .35)!],
-        ),
-      );
+    void toggle() {
+      setState(() {
+        _expanded = !_expanded;
+        _writing = false;
+      });
+      if (!_expanded) _focus.unfocus();
+      widget.onTyping?.call(_expanded);
     }
 
-    final hour = b.time.hour.toString().padLeft(2, '0');
-    final minute = b.time.minute.toString().padLeft(2, '0');
-    final clock = Jalali.digits('$hour:$minute');
-    final showReply = b.canReply && s.notifyQuickReply;
-    final code = b.otp;
-    final codeLabel = code == null ? '' : Jalali.digits(code);
-
-    Widget card = DecoratedBox(
-      decoration: decoration,
-      child: Stack(children: [
-        if (s.bannerBubbles && !minimal)
-          Positioned.fill(
-            child: IgnorePointer(
-              child: AnimatedBuilder(
-                animation: _bubbles,
-                builder: (context, child) => CustomPaint(painter: _BubblesPainter(_bubbles.value)),
+    final messageText = Text(
+      b.body,
+      maxLines: _expanded ? null : 2,
+      overflow: _expanded ? null : TextOverflow.ellipsis,
+      style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.55),
+    );
+    Widget face = DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+          colors: [
+            Color.lerp(tint, Colors.black, 1 - topScale)!.withValues(alpha: alpha),
+            Color.lerp(tint, Colors.black, 1 - topScale * .66)!.withValues(alpha: alpha),
+          ],
+        ),
+      ),
+      child: Stack(
+        children: [
+          if (s.bannerBubbles)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: RepaintBoundary(child: CustomPaint(painter: _BubblesPainter(_bubbles))),
               ),
             ),
-          ),
-        if (!minimal)
           Positioned(
+            top: 0,
             left: 0,
             right: 0,
-            top: 0,
-            height: 46,
+            height: 36,
             child: IgnorePointer(
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [Colors.white.withValues(alpha: s.bannerShine * .48), Colors.white.withValues(alpha: 0)],
+                    colors: [
+                      Colors.white.withValues(alpha: s.bannerShine * .10),
+                      Colors.transparent,
+                    ],
                   ),
                 ),
               ),
             ),
           ),
-        Padding(
-          padding: EdgeInsets.fromLTRB(14, s.bannerCompact ? 8 : 12, 14, s.bannerCompact ? 8 : 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(children: [
-                _GlassAvatar(name: b.name, tint: tint, glass: !minimal),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(b.name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: fg, fontSize: 15, fontWeight: FontWeight.w800, height: 1.4)),
-                    Text('پیامیار • $clock', style: TextStyle(color: soft, fontSize: 11.5, height: 1.4)),
-                  ]),
-                ),
-                if (_expanded && widget.interactive)
-                  IconButton(
-                    onPressed: widget.onClose,
-                    visualDensity: VisualDensity.compact,
-                    tooltip: 'بستن اعلان',
-                    icon: Icon(Icons.close_rounded, color: soft, size: 18),
-                  ),
-                IconButton(
-                  onPressed: widget.interactive
-                      ? () => setState(() => _expanded = !_expanded) : null,
-                  visualDensity: VisualDensity.compact,
-                  tooltip: _expanded ? 'جمع کردن اعلان' : 'نمایش متن کامل',
-                  icon: Icon(_expanded ? Icons.keyboard_arrow_up_rounded
-                      : Icons.keyboard_arrow_down_rounded, color: soft, size: 27),
-                ),
-              ]),
-              const SizedBox(height: 8),
-              ConstrainedBox(
-                constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * .3),
-                child: SingleChildScrollView(
-                  child: Text(b.body,
-                    maxLines: _expanded || !s.bannerCompact ? null : 2,
-                    overflow: _expanded || !s.bannerCompact
-                        ? TextOverflow.visible : TextOverflow.ellipsis,
-                    style: TextStyle(color: fg, fontSize: 14, height: 1.65)),
-                ),
-              ),
-              if (code != null && s.notifyOtpCopy && (_expanded || !s.bannerCompact)) ...[
-                const SizedBox(height: 8),
-                Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: _GlassChip(
-                    label: 'کپی کد $codeLabel',
-                    icon: Icons.copy_rounded,
-                    fg: fg,
-                    minimal: minimal,
-                    onTap: widget.interactive ? () => widget.onCopy?.call(code) : null,
-                  ),
-                ),
-              ],
-              if (showReply && (_expanded || !s.bannerCompact)) ...[
-                const SizedBox(height: 10),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(children: [
-                    for (final r in s.quickReplies)
-                      Padding(
-                        padding: const EdgeInsetsDirectional.only(end: 6),
-                        child: _GlassChip(label: r, fg: fg, minimal: minimal,
-                            onTap: widget.interactive ? () => _send(r) : null),
+          SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    _GlassAvatar(
+                      name: b.name,
+                      tint: tint,
+                      glass: s.notifyGlassAvatar,
+                      square: s.notifyAvatarShape == 1,
+                    ),
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            b.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 15.5,
+                              height: 1.38,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          Text(
+                            'پیام‌یار · $clock',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Color(0xF2FFFFFF), fontSize: 12, height: 1.4),
+                          ),
+                        ],
                       ),
-                  ]),
+                    ),
+                    if (widget.interactive)
+                      IconButton(
+                        onPressed: toggle,
+                        tooltip: _expanded ? 'جمع کردن اعلان' : 'نمایش متن کامل',
+                        icon: Icon(
+                          _expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                          color: Colors.white,
+                        ),
+                      ),
+                  ],
                 ),
-                if (widget.interactive && (_expanded || !s.bannerCompact)) ...[
-                  const SizedBox(height: 8),
+                const SizedBox(height: 6),
+                if (!_expanded) messageText,
+                if (chipCode || _expanded) ...[
+                  const SizedBox(height: 5),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 2,
+                    children: [
+                      if (chipCode)
+                        _GlassChip(
+                          label: 'کپی کد ${Jalali.digits(code)}',
+                          icon: Icons.copy_rounded,
+                          onTap: widget.interactive ? () => widget.onCopy?.call(code) : null,
+                        ),
+                      if (showReply && !_writing)
+                        _GlassChip(
+                          label: 'پاسخ',
+                          icon: Icons.reply_rounded,
+                          onTap: () {
+                            setState(() => _writing = true);
+                            _focus.requestFocus();
+                          },
+                        ),
+                      if (_expanded && widget.interactive) ...[
+                        _GlassChip(label: 'گفتگو', icon: Icons.chat_bubble_outline_rounded, onTap: widget.onTap),
+                        _GlassChip(label: 'بستن', icon: Icons.close_rounded, onTap: widget.onClose),
+                      ],
+                    ],
+                  ),
+                ],
+                if (showReply && _writing) ...[
+                  const SizedBox(height: 6),
                   TextField(
                     controller: _reply,
                     focusNode: _focus,
-                    textInputAction: TextInputAction.send,
                     onSubmitted: _send,
+                    textInputAction: TextInputAction.send,
                     minLines: 1,
                     maxLines: 3,
-                    style: TextStyle(color: fg, fontSize: 14),
-                    cursorColor: fg,
+                    style: const TextStyle(color: Colors.white, fontSize: 15),
+                    cursorColor: Colors.white,
                     decoration: InputDecoration(
-                      isDense: true,
-                      filled: true,
-                      fillColor: minimal ? scheme.surfaceContainerHighest
-                           : glass ? tint.withValues(alpha: .09)
-                           : Colors.white.withValues(alpha: .16),
                       hintText: 'پاسخ سریع…',
-                      hintStyle: TextStyle(color: soft),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
+                      hintStyle: const TextStyle(color: Color(0xDDFFFFFF)),
+                      filled: true,
+                      fillColor: const Color(0x33000000),
                       suffixIcon: IconButton(
                         onPressed: _send,
                         tooltip: 'ارسال',
-                        icon: Icon(Icons.send_rounded, color: fg),
+                        icon: const Icon(Icons.send_rounded, color: Colors.white),
                       ),
                     ),
                   ),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 2,
+                    children: [
+                      for (final reply in s.quickReplies) _GlassChip(label: reply, onTap: () => _send(reply)),
+                    ],
+                  ),
                 ],
+                if (_expanded) messageText,
               ],
-            ],
+            ),
           ),
-        ),
-      ]),
+        ],
+      ),
     );
-
-    if (glass && s.bannerBlur > 0 && !s.reduceEffects) {
-      card = BackdropFilter(filter: ImageFilter.blur(sigmaX: s.bannerBlur, sigmaY: s.bannerBlur), child: card);
+    if (s.bannerBlur > 0 && !reduce && widget.interactive) {
+      face = BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: s.bannerBlur / 2, sigmaY: s.bannerBlur / 2),
+        child: face,
+      );
     }
-
-    return Material(
-      type: MaterialType.transparency,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: radius,
-          boxShadow: [
-            BoxShadow(color: const Color(0xFF07535A).withValues(alpha: .28),
-                blurRadius: 26, offset: const Offset(0, 10)),
-          ],
-        ),
-        child: DecoratedBox(
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Material(
+        type: MaterialType.transparency,
+        child: Container(
+          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * .65),
           decoration: BoxDecoration(
             borderRadius: radius,
-            gradient: glass ? LinearGradient(
-              begin: Alignment.topRight, end: Alignment.bottomLeft,
-              colors: [Color.lerp(tint, const Color(0xFFCBEBDA), .65)!,
-                const Color(0xFFD2E0BF), Color.lerp(tint, const Color(0xFF62AFA9), .4)!],
-            ) : null,
+            boxShadow: [
+              if (!reduce)
+                BoxShadow(color: tint.withValues(alpha: .22), blurRadius: 12, offset: const Offset(0, 4)),
+            ],
           ),
-          child: Padding(
-            padding: EdgeInsets.all(glass ? 2 + s.bannerEdge * 4 : 0),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(glass ? s.bannerCorner - 5 : s.bannerCorner),
-              child: InkWell(onTap: widget.interactive ? widget.onTap : null, child: card),
+          child: CustomPaint(
+            painter: _GlassRim(tint, s.bannerCorner, rim),
+            child: Padding(
+              padding: EdgeInsets.all(rim),
+              child: ClipRRect(
+                borderRadius: inner,
+                child: InkWell(onTap: widget.interactive ? widget.onTap : null, child: face),
+              ),
             ),
           ),
         ),
@@ -502,52 +557,63 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
   }
 }
 
+class _GlassRim extends CustomPainter {
+  final Color tint;
+  final double radius;
+  final double inset;
+  const _GlassRim(this.tint, this.radius, this.inset);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final bounds = Offset.zero & size;
+    final outer = RRect.fromRectAndRadius(bounds, Radius.circular(radius));
+    final paint = Paint()
+      ..shader = LinearGradient(
+        colors: [
+          Color.lerp(tint, Colors.white, .59)!,
+          Color.lerp(tint, const Color(0xFFF5E8C8), .83)!,
+          Color.lerp(tint, Colors.white, .34)!,
+        ],
+      ).createShader(bounds);
+    canvas.drawDRRect(outer, outer.deflate(inset), paint);
+  }
+
+  @override
+  bool shouldRepaint(_GlassRim old) => old.tint != tint || old.radius != radius || old.inset != inset;
+}
+
 class _GlassAvatar extends StatelessWidget {
   final String name;
   final Color tint;
   final bool glass;
-  const _GlassAvatar({required this.name, required this.tint, required this.glass});
+  final bool square;
+  const _GlassAvatar({required this.name, required this.tint, required this.glass, required this.square});
 
   @override
   Widget build(BuildContext context) {
-    final trimmed = name.trim();
-    final first = trimmed.isEmpty ? '' : trimmed.characters.first;
-    final letter = RegExp(r'[0-9+۰-۹]').hasMatch(first) ? '' : first;
-    return Container(
-      width: 44,
-      height: 44,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color.lerp(tint, Colors.white, .35)!, Color.lerp(tint, Colors.black, .2)!],
-        ),
-        border: Border.all(color: Colors.white.withValues(alpha: .75), width: 1.6),
-      ),
-      child: Stack(alignment: Alignment.center, children: [
-        if (glass)
-          Positioned(
-            top: 2,
-            left: 6,
-            right: 6,
-            height: 18,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.white.withValues(alpha: .55), Colors.white.withValues(alpha: 0)],
-                ),
-              ),
-            ),
+    final initial = name.trim().characters.firstOrNull;
+    return ExcludeSemantics(
+      child: Container(
+        width: 42,
+        height: 42,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(square ? 12 : 22),
+          border: Border.all(color: const Color(0xCBFFFFFF), width: 1.3),
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color.lerp(tint, Colors.white, glass ? .32 : .04)!, Color.lerp(tint, Colors.black, .3)!],
           ),
-        if (letter.isEmpty)
-          const Icon(Icons.person_rounded, color: Colors.white, size: 24)
-        else
-          Text(letter, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
-      ]),
+        ),
+        child: initial == null || RegExp(r'^[+\d۰-۹٠-٩]').hasMatch(initial)
+            ? const Icon(Icons.chat_bubble_rounded, color: Colors.white, size: 20)
+            : Text(
+                initial,
+                textScaler: TextScaler.noScaling,
+                style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.bold),
+              ),
+      ),
     );
   }
 }
@@ -555,73 +621,49 @@ class _GlassAvatar extends StatelessWidget {
 class _GlassChip extends StatelessWidget {
   final String label;
   final IconData? icon;
-  final Color fg;
-  final bool minimal;
   final VoidCallback? onTap;
-  const _GlassChip({required this.label, required this.fg, required this.minimal, this.icon, this.onTap});
+  const _GlassChip({required this.label, this.icon, this.onTap});
 
   @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Material(
-      color: minimal ? scheme.secondaryContainer
-          : fg == const Color(0xFF172E33) ? const Color(0x15087F81)
-          : Colors.white.withValues(alpha: .18),
-      shape: StadiumBorder(
-          side: BorderSide(color: minimal ? Colors.transparent
-              : fg == const Color(0xFF172E33) ? const Color(0x44087F81)
-              : Colors.white.withValues(alpha: .35))),
-      child: InkWell(
-        customBorder: const StadiumBorder(),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            if (icon != null) ...[
-              Icon(icon, size: 15, color: minimal ? scheme.onSecondaryContainer : fg),
-              const SizedBox(width: 6),
-            ],
-            Text(label,
-                style: TextStyle(
-                    color: minimal ? scheme.onSecondaryContainer : fg, fontSize: 12.5, fontWeight: FontWeight.w600)),
-          ]),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => TextButton(
+    onPressed: onTap,
+    style: TextButton.styleFrom(
+      foregroundColor: Colors.white,
+      disabledForegroundColor: Colors.white,
+      backgroundColor: const Color(0x28FFFFFF),
+      side: const BorderSide(color: Color(0x66FFFFFF)),
+      minimumSize: const Size(48, 36),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      tapTargetSize: MaterialTapTargetSize.padded,
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (icon != null) ...[Icon(icon, size: 17), const SizedBox(width: 6)],
+        Flexible(child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis)),
+      ],
+    ),
+  );
 }
 
-/// Soft soap bubbles rising behind the glass.
+/// Only the seven rings repaint during the brief entry motion.
 class _BubblesPainter extends CustomPainter {
-  final double t;
-  _BubblesPainter(this.t);
-
-  static final List<List<double>> _seeds = List.generate(14, (i) {
-    final r = math.Random(i * 7919 + 13);
-    return [r.nextDouble(), r.nextDouble(), 3 + r.nextDouble() * 9, .6 + r.nextDouble() * .8];
-  });
+  final Animation<double> motion;
+  _BubblesPainter(this.motion) : super(repaint: motion);
 
   @override
   void paint(Canvas canvas, Size size) {
-    final fill = Paint()..style = PaintingStyle.fill;
     final ring = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-    for (final s in _seeds) {
-      final p = (t * s[3] + s[1]) % 1.0;
-      final radius = s[2];
-      final x = s[0] * size.width + math.sin((p + s[0]) * math.pi * 2) * 10;
-      final y = size.height + radius - p * (size.height + radius * 2);
-      final fade = math.sin(p * math.pi);
-      fill.color = Colors.white.withValues(alpha: .08 * fade);
-      ring.color = Colors.white.withValues(alpha: .38 * fade);
-      canvas.drawCircle(Offset(x, y), radius, fill);
-      canvas.drawCircle(Offset(x, y), radius, ring);
-      fill.color = Colors.white.withValues(alpha: .55 * fade);
-      canvas.drawCircle(Offset(x - radius * .35, y - radius * .35), radius * .22, fill);
+      ..strokeWidth = 1
+      ..color = const Color(0x33FFFFFF);
+    for (var i = 0; i < 7; i++) {
+      final x = size.width * ((i * 37 + 9) % 100) / 100;
+      final y = size.height * ((i * 29 + 13) % 100) / 100;
+      canvas.drawCircle(Offset(x, y + (1 - motion.value) * 4), 5.0 + i % 3 * 2, ring);
     }
   }
 
   @override
-  bool shouldRepaint(_BubblesPainter oldDelegate) => oldDelegate.t != t;
+  bool shouldRepaint(_BubblesPainter old) => old.motion != motion;
 }

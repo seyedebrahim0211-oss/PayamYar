@@ -79,6 +79,24 @@ class AppSettings extends ChangeNotifier {
   bool bannerCompact = false;
   double bannerMaxWidth = 360;
   bool bannerBubbles = true;
+  bool bannerSourceColors = true;
+  Map<String, int> bannerSenderTints = {};
+
+  static Map<String, int> _senderTints(Object? raw) {
+    if (raw is! String) return {};
+    try {
+      final data = jsonDecode(raw);
+      if (data is Map) {
+        return {
+          for (final key in const ['EITAA', 'BALE', 'TELEGRAM', 'WHATSAPP'])
+            if (data[key] is int) key: 0xff000000 | ((data[key] as int) & 0xffffff),
+        };
+      }
+    } on FormatException {
+      return {};
+    }
+    return {};
+  }
   bool notifyGlassAvatar = true;
   int notifyAvatarShape = 0; // 0 = circle, 1 = soft square
   bool notifyBubbles = false;
@@ -146,9 +164,11 @@ class AppSettings extends ChangeNotifier {
     bannerOpacity = (p.getDouble('bannerOpacity') ?? .9).clamp(.78, 1).toDouble();
     bannerTop = p.getBool('bannerTop') ?? true;
     bannerSeconds = (p.getInt('bannerSeconds') ?? 6).clamp(2, 15).toInt();
-    bannerCompact = false; // Never truncate the glass popup.
+    bannerCompact = false; // Legacy flag. The card always starts folded and can expand.
     bannerMaxWidth = (p.getDouble('bannerMaxWidth') ?? 360).clamp(280, 520).toDouble();
     bannerBubbles = p.getBool('bannerBubbles') ?? true;
+    bannerSourceColors = p.getBool('bannerSourceColors') ?? true;
+    bannerSenderTints = _senderTints(p.getString('bannerSenderTints'));
     notifyGlassAvatar = p.getBool('notifyGlassAvatar') ?? true;
     notifyAvatarShape = (p.getInt('notifyAvatarShape') ?? 0).clamp(0, 1).toInt();
     notifyBubbles = false; // No competing OS bubble when one floating style is selected.
@@ -233,7 +253,7 @@ class AppSettings extends ChangeNotifier {
   Future<void> updateNotify({bool? notifyInApp, BannerStyle? bannerStyle, int? bannerTint, double? bannerHue, double? bannerBlur,
       double? bannerEdge, double? bannerShine, double? bannerCorner,
       double? bannerOpacity, bool? bannerTop, int? bannerSeconds, bool? bannerCompact,
-      double? bannerMaxWidth, bool? bannerBubbles, bool? notifyGlassAvatar,
+      double? bannerMaxWidth, bool? bannerBubbles, bool? bannerSourceColors, Map<String, int>? bannerSenderTints, bool? notifyGlassAvatar,
       int? notifyAvatarShape, bool? notifyBubbles, bool? notifyQuickReply, bool? notifyOtpCopy,
       List<String>? quickReplies}) async {
     this.notifyInApp = notifyInApp ?? this.notifyInApp;
@@ -250,6 +270,8 @@ class AppSettings extends ChangeNotifier {
     this.bannerCompact = false;
     this.bannerMaxWidth = (bannerMaxWidth ?? this.bannerMaxWidth).clamp(280, 520).toDouble();
     this.bannerBubbles = bannerBubbles ?? this.bannerBubbles;
+    this.bannerSourceColors = bannerSourceColors ?? this.bannerSourceColors;
+    if (bannerSenderTints != null) this.bannerSenderTints = Map.of(bannerSenderTints);
     this.notifyGlassAvatar = notifyGlassAvatar ?? this.notifyGlassAvatar;
     this.notifyAvatarShape = (notifyAvatarShape ?? this.notifyAvatarShape).clamp(0, 1).toInt();
     this.notifyBubbles = false;
@@ -270,27 +292,19 @@ class AppSettings extends ChangeNotifier {
   }
 
   Future<void> _saveNotify(SharedPreferences p) async {
-    await p.setBool('notifyInApp', notifyInApp);
-    await p.setInt('bannerStyle', bannerStyle.index);
-    await p.setInt('bannerTint', bannerTint);
-    await p.setDouble('bannerHue', bannerHue);
-    await p.setDouble('bannerEdge', bannerEdge);
-    await p.setDouble('bannerShine', bannerShine);
-    await p.setDouble('bannerCorner', bannerCorner);
-    await p.setDouble('bannerBlur', bannerBlur);
-    await p.setDouble('bannerOpacity', bannerOpacity);
-    await p.setBool('bannerTop', bannerTop);
-    await p.setInt('bannerSeconds', bannerSeconds);
-    await p.setBool('bannerCompact', bannerCompact);
-    await p.setDouble('bannerMaxWidth', bannerMaxWidth);
-    await p.setBool('bannerBubbles', bannerBubbles);
-    await p.setBool('notifyGlassAvatar', notifyGlassAvatar);
-    await p.setInt('notifyAvatarShape', notifyAvatarShape);
-    await p.setBool('notifyBubbles', notifyBubbles);
-    await p.setBool('notifyQuickReply', notifyQuickReply);
-    await p.setBool('notifyOtpCopy', notifyOtpCopy);
-    await p.setString('notifyQuickReplies', quickReplies.join('\n'));
-    await p.setInt('notifyAccent', bannerColor.toARGB32());
+    final values = {...notifyJson(), 'notifyQuickReplies': quickReplies.join('\n'),
+      'notifyAccent': bannerColor.toARGB32()}..remove('quickReplies');
+    final writes = <Future<bool>>[];
+    for (final entry in values.entries) {
+      final key = entry.key;
+      final value = entry.value;
+      if (p.get(key) == value) continue;
+      if (value is bool) writes.add(p.setBool(key, value));
+      if (value is int) writes.add(p.setInt(key, value));
+      if (value is double) writes.add(p.setDouble(key, value));
+      if (value is String) writes.add(p.setString(key, value));
+    }
+    await Future.wait(writes);
   }
 
   Map<String, Object> notifyJson() => {
@@ -298,7 +312,8 @@ class AppSettings extends ChangeNotifier {
     'bannerHue': bannerHue, 'bannerEdge': bannerEdge, 'bannerShine': bannerShine, 'bannerCorner': bannerCorner,
     'bannerBlur': bannerBlur, 'bannerOpacity': bannerOpacity, 'bannerTop': bannerTop,
     'bannerSeconds': bannerSeconds, 'bannerCompact': bannerCompact,
-    'bannerMaxWidth': bannerMaxWidth, 'bannerBubbles': bannerBubbles, 'notifyGlassAvatar': notifyGlassAvatar,
+    'bannerMaxWidth': bannerMaxWidth, 'bannerBubbles': bannerBubbles, 'bannerSourceColors': bannerSourceColors,
+    'bannerSenderTints': jsonEncode(bannerSenderTints), 'notifyGlassAvatar': notifyGlassAvatar,
     'notifyAvatarShape': notifyAvatarShape, 'notifyBubbles': notifyBubbles,
     'notifyQuickReply': notifyQuickReply, 'notifyOtpCopy': notifyOtpCopy, 'quickReplies': quickReplies,
   };
@@ -316,7 +331,8 @@ class AppSettings extends ChangeNotifier {
       bannerEdge: d('bannerEdge'), bannerShine: d('bannerShine'), bannerCorner: d('bannerCorner'), bannerOpacity: d('bannerOpacity'),
       bannerTop: b('bannerTop'), bannerSeconds: i('bannerSeconds'),
       bannerCompact: b('bannerCompact'), bannerMaxWidth: d('bannerMaxWidth'),
-      bannerBubbles: b('bannerBubbles'),
+      bannerBubbles: b('bannerBubbles'), bannerSourceColors: b('bannerSourceColors'),
+      bannerSenderTints: j.containsKey('bannerSenderTints') ? _senderTints(j['bannerSenderTints']) : null,
       notifyGlassAvatar: b('notifyGlassAvatar'), notifyAvatarShape: i('notifyAvatarShape'),
       notifyBubbles: b('notifyBubbles'), notifyQuickReply: b('notifyQuickReply'), notifyOtpCopy: b('notifyOtpCopy'),
       quickReplies: replies is List ? [for (final r in replies) if (r is String) r] : null,

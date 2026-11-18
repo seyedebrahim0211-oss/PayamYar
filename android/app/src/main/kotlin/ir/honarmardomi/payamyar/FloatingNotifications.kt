@@ -5,11 +5,16 @@ import android.content.*
 import android.content.res.Configuration
 import android.content.pm.ServiceInfo
 import android.graphics.*
-import android.graphics.drawable.Drawable
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
+import android.content.res.ColorStateList
+import android.text.TextUtils
+import androidx.core.graphics.ColorUtils
 import android.net.Uri
 import android.os.*
 import android.provider.Settings
 import android.view.*
+import android.view.accessibility.AccessibilityManager
 import android.widget.*
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -27,6 +32,8 @@ class FloatingNotifications : Service() {
         fun allowed(c: Context) = Settings.canDrawOverlays(c)
         fun enabled(c: Context) = prefs(c).getBoolean("enabled", false)
         fun status(c: Context): Map<String, Any> = mapOf(
+            "sources" to MessengerSender.values().map { mapOf("key" to it.name, "title" to it.title,
+                "color" to (it.color.toLong() and 0xffffffffL)) },
             "permission" to allowed(c), "enabled" to enabled(c), "running" to (instance != null),
             "bubbleSize" to prefs(c).getInt("bubbleSize", 56),
             "textSize" to prefs(c).getInt("textSize", 15),
@@ -58,65 +65,113 @@ class FloatingNotifications : Service() {
         fun refresh() { instance?.let { service -> service.main.post { service.refreshViews() } } }
         fun clear(address: String) { instance?.let { service -> service.main.post {
             service.messages.remove(address)
-            if (service.shown?.address == address) { service.hideCard(); service.shown = null }
-            service.renderBubble()
-            if (service.messages.isEmpty()) service.stopSelf()
+            if (service.shown?.address == address) service.dismissCard()
+            else if (service.messages.isEmpty() && service.shown == null) service.stopSelf()
+            else if (service.card == null) service.renderBubble()
         } } }
         /**
          * Start a *short-lived* foreground service only for an actual arriving message.
          * Every SMS still gets a regular system notification as the delivery fallback.
          */
-        fun show(c: Context, address: String, name: String, body: String, sample: Boolean = false): Boolean {
-            if (!enabled(c) || !allowed(c) || (!sample && SentSound.quietNow(c))) return false
-            if (!sample && MainActivity.foregroundChannel != null) return false
-            val service = instance
-            if (service != null) return service.display(address, name, body, sample)
+        fun show(c: Context, address: String, name: String, body: String, sample: Boolean = false,
+                 time: Long = System.currentTimeMillis(), sampleSource: String? = null, onDisplayed: (Boolean) -> Unit = {}): Boolean {
+            val eligible = enabled(c) && allowed(c) &&
+                !c.getSystemService(KeyguardManager::class.java).isKeyguardLocked &&
+                c.getSystemService(PowerManager::class.java).isInteractive &&
+                (sample || (MainActivity.foregroundChannel == null && !SentSound.quietNow(c)))
+            if (!eligible) { onDisplayed(false); return false }
+            instance?.let { service ->
+                val visible = service.display(address, name, body, sample, time, sampleSource)
+                onDisplayed(visible)
+                return visible
+            }
+            val handler = Handler(Looper.getMainLooper())
+            var completed = false
+            fun finish(visible: Boolean) {
+                if (completed) return
+                completed = true
+                onDisplayed(visible)
+            }
+            val timeout = Runnable { finish(false) }
+            val receiver = object : ResultReceiver(handler) {
+                override fun onReceiveResult(resultCode: Int, resultData: Bundle?) {
+                    handler.removeCallbacks(timeout)
+                    finish(resultCode == 1)
+                }
+            }
             return try {
+                val deadline = SystemClock.elapsedRealtime() + 2000L
                 ContextCompat.startForegroundService(c, Intent(c, FloatingNotifications::class.java)
                     .setAction(SHOW).putExtra("address", address).putExtra("name", name)
-                    .putExtra("body", body).putExtra("sample", sample))
+                    .putExtra("body", body).putExtra("sample", sample).putExtra("time", time)
+                    .putExtra("sampleSource", sampleSource).putExtra("deadline", deadline).putExtra("result", receiver))
+                handler.postDelayed(timeout, 2000L)
                 true
             } catch (_: RuntimeException) {
-                // Android/OEM background-launch restrictions: native MessagingStyle remains available.
+                finish(false)
                 false
             }
         }
     }
-    private data class Message(val address: String, val name: String, val body: String, val sample: Boolean)
+    private data class Message(val address: String, val name: String, val body: String, val sample: Boolean, val time: Long, val source: MessengerSender?)
     private val main = Handler(Looper.getMainLooper())
     private lateinit var wm: WindowManager
     private val messages = linkedMapOf<String, Message>()
     private var shown: Message? = null
     private var bubble: TextView? = null
     private var card: View? = null
-    private val hide = Runnable { hideCard(); if (shown?.sample == true) { shown = null; stopSelf() } }
+    private var expandedCard = false
+    private var replyField: EditText? = null
+    private val hide = Runnable { dismissCard() }
     private val expireBubble = Runnable {
         hideCard(); removeBubble(); messages.clear(); shown = null; stopSelf()
     }
     private val settings by lazy { getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE) }
-    private val changed = SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> main.post {
-        // Never retain previously visible private text after enabling a privacy switch.
-        if (privateContent()) { messages.clear(); shown = null; hideCard() }
-        refreshViews()
-    } }
+    private val redraw = Runnable { refreshViews() }
+    private val changed = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == "flutter.appLock" || key == "flutter.notifyPreview") {
+            if (privateContent()) {
+                messages.clear()
+                shown = null
+                hideCard()
+                removeBubble()
+                stopSelf()
+            }
+        } else if (key?.startsWith("flutter.banner") == true || key?.startsWith("flutter.notify") == true ||
+            key == "flutter.reduceEffects") {
+            main.removeCallbacks(redraw)
+            main.post(redraw)
+        }
+    }
     private val screen = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
             if (i.action == Intent.ACTION_SCREEN_OFF) {
-                hideCard(); removeBubble(); shown = null; messages.clear()
+                hideCard(); removeBubble(); shown = null; messages.clear(); stopSelf()
             } else refreshViews()
         }
     }
     private fun flag(key: String, default: Boolean = true) = settings.getBoolean("flutter.$key", default)
     private fun number(key: String, default: Long) = (settings.all["flutter.$key"] as? Number)?.toLong() ?: default
-    private fun privateContent() = flag("appLock", false) || !flag("notifyPreview")
+    private fun privateContent() = flag("appLock", false) || !flag("notifyPreview", false)
     private fun locked() = getSystemService(KeyguardManager::class.java).isKeyguardLocked ||
         !getSystemService(PowerManager::class.java).isInteractive
     private fun dp(n: Int) = (n * resources.displayMetrics.density).roundToInt()
+    private val cardFont by lazy {
+        try { Typeface.createFromAsset(assets, "flutter_assets/assets/fonts/Vazirmatn.ttf") }
+        catch (_: RuntimeException) { Typeface.DEFAULT }
+    }
+    private val boldCardFont by lazy { Typeface.create(cardFont, Typeface.BOLD) }
+    private fun cardTimeout(pinned: Boolean): Long {
+        val base = if (pinned) 60000 else number("bannerSeconds", 6).coerceIn(2, 15).toInt() * 1000
+        if (Build.VERSION.SDK_INT < 29) return base.toLong()
+        return getSystemService(AccessibilityManager::class.java).getRecommendedTimeoutMillis(base,
+            AccessibilityManager.FLAG_CONTENT_TEXT or AccessibilityManager.FLAG_CONTENT_ICONS or
+                AccessibilityManager.FLAG_CONTENT_CONTROLS).toLong()
+    }
+
     private fun tint() = number("notifyAccent", 0xFF087F81).toInt()
-    private fun opacity() = ((settings.all["flutter.bannerOpacity"] as? Number)?.toFloat() ?: .9f).coerceIn(.78f, 1f)
-    private fun cardStyle() = 0 // Unified teal-glass design, including migrated installs.
-    private fun surfaceFloat(key: String, default: Float): Float =
-        (settings.all["flutter.$key"] as? Number)?.toFloat() ?: default
+    private fun surfaceFloat(key: String, default: Float) =
+        NotificationPolicy.flutterFloat(settings.all["flutter.$key"], default)
     private fun bubbleColor() = prefs(this).getInt("bubbleColor", tint())
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onCreate() {
@@ -146,20 +201,26 @@ class FloatingNotifications : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        if (!enabled(this) || !allowed(this)) { stopSelf(); return START_NOT_STICKY }
         if (intent?.action == SHOW) {
+            @Suppress("DEPRECATION")
+            val result = intent.getParcelableExtra<ResultReceiver>("result")
             val address = intent.getStringExtra("address").orEmpty()
-            if (address.isNotBlank()) display(address, intent.getStringExtra("name").orEmpty(),
-                intent.getStringExtra("body").orEmpty(), intent.getBooleanExtra("sample", false))
-            else stopSelf()
-        } else if (messages.isEmpty()) stopSelf()
+            val timely = SystemClock.elapsedRealtime() < intent.getLongExtra("deadline", 0)
+            val visible = timely && address.isNotBlank() &&
+                display(address, intent.getStringExtra("name").orEmpty(),
+                    intent.getStringExtra("body").orEmpty(), intent.getBooleanExtra("sample", false),
+                    intent.getLongExtra("time", System.currentTimeMillis()), intent.getStringExtra("sampleSource"))
+            result?.send(if (visible) 1 else 0, null)
+            if (!visible && messages.isEmpty() && card == null) stopSelf(startId)
+        } else if (messages.isEmpty()) stopSelf(startId)
         return START_NOT_STICKY
     }
-    private fun display(address: String, name: String, body: String, sample: Boolean): Boolean {
+    private fun display(address: String, name: String, body: String, sample: Boolean, time: Long, sampleSource: String?): Boolean {
         if (locked() || !allowed(this) || !enabled(this) ||
             (!sample && MainActivity.foregroundChannel != null)) { stopSelf(); return false }
-        val message = if (privateContent()) Message(address, "پیام‌یار", "پیام جدید", sample)
-                      else Message(address, name.ifBlank { address }, body, sample)
+        val source = if (sample) MessengerSender.fromKey(sampleSource) else MessengerSender.fromAddress(address)
+        val message = if (privateContent()) Message(address, "پیام‌یار", "پیام جدید", sample, time, null)
+                      else Message(address, name.ifBlank { address }, body, sample, time, source)
         if (!sample) {
             messages.remove(address)
             messages[address] = message
@@ -167,12 +228,8 @@ class FloatingNotifications : Service() {
         }
         shown = message
         main.removeCallbacks(expireBubble)
-        if (!sample) {
-            renderBubble()
-            main.postDelayed(expireBubble, prefs(this).getInt("bubbleSeconds", 18).coerceIn(8, 60) * 1000L)
-        }
         val visible = renderCard(message)
-        if (sample) main.postDelayed({ if (messages.isEmpty()) stopSelf() }, 17000)
+        if (!visible) dismissCard()
         return visible
     }
     override fun onDestroy() {
@@ -186,10 +243,15 @@ class FloatingNotifications : Service() {
     override fun onConfigurationChanged(newConfig: Configuration) { super.onConfigurationChanged(newConfig); refreshViews() }
     private fun refreshViews() {
         if (!allowed(this) || !enabled(this)) { stopSelf(); return }
-        if (locked() || MainActivity.foregroundChannel != null) { hideCard(); removeBubble(); return }
-        val hadCard = card != null
-        renderBubble()
-        if (hadCard) shown?.let { renderCard(it) }
+        if (locked() || (MainActivity.foregroundChannel != null && shown?.sample != true)) {
+            hideCard(); removeBubble()
+            if (messages.isEmpty()) stopSelf() else scheduleBubbleExpiry()
+            return
+        }
+        if (card != null) {
+            // Keep the editor, selection and undo callback intact while the keyboard is open.
+            if (replyField == null) shown?.let { renderCard(it, pinned = expandedCard, expanded = expandedCard) }
+        } else renderBubble()
     }
     private fun area(): Rect {
         if (Build.VERSION.SDK_INT >= 30) {
@@ -213,10 +275,22 @@ class FloatingNotifications : Service() {
             }
         }
     private fun removeBubble() { bubble?.let { try { wm.removeView(it) } catch (_: RuntimeException) { } }; bubble = null }
-    private fun hideCard() { main.removeCallbacks(hide); card?.let { try { wm.removeView(it) } catch (_: RuntimeException) { } }; card = null }
+    private fun hideCard() { main.removeCallbacks(hide); card?.let { try { wm.removeView(it) } catch (_: RuntimeException) { } }; card = null; replyField = null }
+    private fun scheduleBubbleExpiry() {
+        main.removeCallbacks(expireBubble)
+        main.postDelayed(expireBubble, prefs(this).getInt("bubbleSeconds", 18).coerceIn(8, 60) * 1000L)
+    }
+    private fun dismissCard() {
+        hideCard()
+        shown = null
+        if (messages.isEmpty()) stopSelf() else {
+            renderBubble()
+            scheduleBubbleExpiry()
+        }
+    }
     private fun renderBubble() {
         removeBubble()
-        if (locked() || !allowed(this) || MainActivity.foregroundChannel != null || messages.isEmpty()) return
+        if (card != null || locked() || !allowed(this) || MainActivity.foregroundChannel != null || messages.isEmpty()) return
         val bounds = area()
         val size = dp(prefs(this).getInt("bubbleSize", 56))
         val p = params(size, size)
@@ -230,12 +304,12 @@ class FloatingNotifications : Service() {
             text = if (messages.size > 1) "$initial\n${messages.size}" else initial
             textSize = if (messages.size > 1) 15f else 22f
             gravity = Gravity.CENTER
-            setTextColor(if (prefs(this@FloatingNotifications).getInt("bubbleStyle", 0) == 0)
-                0xFF17383D.toInt() else Color.WHITE)
-            typeface = Typeface.DEFAULT_BOLD
-            background = GlassSurface(bubbleColor(), prefs(this@FloatingNotifications).getInt("bubbleShape", 0) == 0,
+            setTextColor(Color.WHITE)
+            typeface = boldCardFont
+            background = GlassSurface(bubbleColor(), resources.displayMetrics.density, 16f,
                 prefs(this@FloatingNotifications).getInt("bubbleStyle", 0) == 0,
-                prefs(this@FloatingNotifications).getFloat("bubbleOpacity", .92f), 0)
+                prefs(this@FloatingNotifications).getFloat("bubbleOpacity", .92f), .72f, .55f,
+                avatar = true, round = prefs(this@FloatingNotifications).getInt("bubbleShape", 0) == 0)
             contentDescription = "حباب پیام‌یار، ${messages.size} گفتگو؛ بکشید تا جابه‌جا شود، لمس کنید تا باز شود"
             elevation = dp(4).toFloat()
         }
@@ -271,104 +345,147 @@ class FloatingNotifications : Service() {
         }
         try { wm.addView(view, p); bubble = view } catch (_: RuntimeException) { stopSelf() }
     }
-    private fun label(text: String, size: Float, bold: Boolean = false) = TextView(this).apply {
-        this.text = text; textSize = size
-        setTextColor(if (cardStyle() == 2) 0xFF172D33.toInt() else Color.WHITE)
-        textDirection = View.TEXT_DIRECTION_FIRST_STRONG; gravity = Gravity.START
-        if (bold) typeface = Typeface.DEFAULT_BOLD
-        setPadding(dp(3), dp(3), dp(3), dp(3))
+    private fun label(value: String, size: Float, bold: Boolean = false) = TextView(this).apply {
+        text = value
+        textSize = size
+        setTextColor(Color.WHITE)
+        textDirection = View.TEXT_DIRECTION_FIRST_STRONG_RTL
+        gravity = Gravity.RIGHT or Gravity.CENTER_VERTICAL
+        includeFontPadding = false
+        typeface = if (bold) boldCardFont else cardFont
     }
-    private fun button(text: String, action: () -> Unit) = label(text, 13f, true).apply {
-        minHeight = dp(48); gravity = Gravity.CENTER; setPadding(dp(10), dp(4), dp(10), dp(4))
-        background = android.graphics.drawable.GradientDrawable().apply {
-            cornerRadius = dp(18).toFloat()
-            setColor(if (cardStyle() == 2) 0x19087F81 else 0x33FFFFFF)
-            setStroke(dp(1), if (cardStyle() == 2) 0x44087F81 else 0x65FFFFFF)
+    private fun button(text: String, icon: Int = 0, action: () -> Unit) = label(text, 13f, true).apply {
+        minHeight = dp(48)
+        gravity = Gravity.CENTER
+        maxLines = 2
+        ellipsize = TextUtils.TruncateAt.END
+        setPadding(dp(12), dp(4), dp(12), dp(4))
+        background = RippleDrawable(ColorStateList.valueOf(0x32FFFFFF), GradientDrawable().apply {
+            cornerRadius = dp(24).toFloat()
+            setColor(0x28FFFFFF)
+            setStroke(dp(1), 0x66FFFFFF)
+        }, null)
+        if (icon != 0) {
+            setCompoundDrawablesRelativeWithIntrinsicBounds(icon, 0, 0, 0)
+            compoundDrawablePadding = dp(6)
         }
         setOnClickListener { action() }
     }
-    /** Teal frosted notification: sender avatar, complete message and accessible scrollable actions. */
+    /** Fit actions at their measured text size, wrapping before the edge in RTL. */
+    private fun addActionRows(parent: LinearLayout, chips: List<View>, available: Int) {
+        val limit = available.coerceAtLeast(1)
+        var row: LinearLayout? = null
+        var used = 0
+        for (chip in chips) {
+            chip.measure(View.MeasureSpec.makeMeasureSpec(limit, View.MeasureSpec.AT_MOST),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+            val width = chip.measuredWidth.coerceAtMost(limit)
+            if (row == null || used + dp(6) + width > limit) {
+                row = LinearLayout(this).apply { gravity = Gravity.RIGHT; layoutDirection = View.LAYOUT_DIRECTION_RTL }
+                parent.addView(row, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+                used = 0
+            }
+            val gap = if (used == 0) 0 else dp(6)
+            row.addView(chip, LinearLayout.LayoutParams(width, -2).apply { marginStart = gap })
+            used += gap + width
+        }
+    }
+    private fun String.codePointsCompatInitial(): String? {
+        val clean = trim()
+        if (clean.isEmpty()) return null
+        val code = clean.codePointAt(0)
+        return if (Character.isLetter(code)) String(Character.toChars(code)) else null
+    }
+    private fun persianDigits(value: String) = value.map { if (it in '0'..'9') '۰' + (it - '0') else it }.joinToString("")
+
     private fun renderCard(message: Message, pinned: Boolean = false,
-                           expanded: Boolean = true, replying: Boolean = false): Boolean {
+                           expanded: Boolean = false, replying: Boolean = false): Boolean {
         hideCard()
+        removeBubble()
+        main.removeCallbacks(expireBubble)
         if (locked() || !allowed(this) || !enabled(this)) return false
+        expandedCard = expanded
         val bounds = area()
         val width = NotificationPolicy.cardWidth(bounds.width(),
-            dp(number("bannerMaxWidth", 360).toInt().coerceIn(280, 520)), dp(8))
-        val maxHeight = (bounds.height() * .65f).toInt().coerceAtLeast(1)
+            dp(surfaceFloat("bannerMaxWidth", 360f).coerceIn(280f, 520f).roundToInt()), dp(8))
+        val maxHeight = NotificationPolicy.cardHeight(bounds.height(), Int.MAX_VALUE)
         val private = privateContent()
-        val phone = message.address.replace(Regex("[\\s()-]"), "")
-        val canReplyHere = !private && !message.sample &&
-            flag("notifyQuickReply") && SmsCore.isDefault(this) &&
-            Regex("^\\+?[0-9]{7,15}$").matches(phone)
-        var editor: EditText? = null
+        val source = if (private) null else message.source
+        val accent = if (flag("bannerSourceColors")) source?.selectedColor(settings) ?: tint() else tint()
+        val name = if (message.name == message.address && source != null) source.title else message.name
+        val phone = message.address.replace(Regex("""[\s()-]"""), "")
+        val dialable = !private && !message.sample && Regex("""^\+?[0-9]{7,15}$""").matches(phone)
+        val canReplyHere = dialable && flag("notifyQuickReply") && SmsCore.isDefault(this)
+        val density = resources.displayMetrics.density
+        val reduce = flag("reduceEffects", false)
+        val edge = surfaceFloat("bannerEdge", .72f).coerceIn(.15f, 1f)
+        val shine = surfaceFloat("bannerShine", .55f).coerceIn(0f, 1f)
+        val corner = surfaceFloat("bannerCorner", 26f).coerceIn(16f, 36f)
+        val surface = GlassSurface(accent, density, corner, flag("bannerBubbles"),
+            surfaceFloat("bannerOpacity", .9f).coerceIn(.78f, 1f), edge, shine)
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutDirection = View.LAYOUT_DIRECTION_RTL
-            setPadding(dp(14), dp(10), dp(14), dp(11))
-            background = GlassSurface(tint(), false, flag("bannerBubbles"), opacity(), cardStyle(),
-                surfaceFloat("bannerEdge", .72f), surfaceFloat("bannerShine", .55f),
-                surfaceFloat("bannerCorner", 26f))
+            setPadding(dp(18), dp(12), dp(18), dp(12))
         }
         val header = LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL
             layoutDirection = View.LAYOUT_DIRECTION_RTL
-            minimumHeight = dp(66)
         }
-        val avatar = TextView(this).apply {
-            text = if (private) "پ" else message.name.trim().take(1).ifBlank { "پ" }
-            textSize = 20f
+        val badge = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(
+            ColorUtils.blendARGB(accent, Color.WHITE, if (flag("notifyGlassAvatar")) .32f else .04f),
+            ColorUtils.blendARGB(accent, Color.BLACK, .30f))).apply {
+            cornerRadius = dp(if (number("notifyAvatarShape", 0) == 0L) 23 else 12).toFloat()
+            setStroke(dp(1), 0xCBFFFFFF.toInt())
+        }
+        val initial = name.codePointsCompatInitial()
+        val avatar = if (initial == null) ImageView(this).apply {
+            setImageResource(R.drawable.ic_glass_chat)
+            scaleType = ImageView.ScaleType.CENTER
+        } else label(initial, 19f, true).apply {
             gravity = Gravity.CENTER
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.WHITE)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(tint() or 0xFF000000.toInt())
-                setStroke(dp(2), 0xFFCF9B62.toInt())
-            }
-            contentDescription = "تصویر فرستنده"
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 19f)
         }
-        header.addView(avatar, LinearLayout.LayoutParams(dp(42), dp(42)).apply { marginEnd = dp(10) })
-        val mainText = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        mainText.addView(label(if (private) "پیام‌یار" else message.name, 15.5f, true))
-        val summary = if (private) "پیام جدید؛ برای مشاهده، برنامه را باز کنید"
-            else if (message.sample) "پیش‌نمایش اعلان پیام‌یار"
-            else message.body.replace("\n", " ")
-        mainText.addView(label(summary, 13f).apply {
-            maxLines = if (expanded) 3 else 2
-            ellipsize = android.text.TextUtils.TruncateAt.END
-        })
-        header.addView(mainText, LinearLayout.LayoutParams(0, -2, 1f))
-        val chevron = TextView(this).apply {
-            text = if (expanded) "⌃" else "⌄"
-            textSize = 25f; gravity = Gravity.CENTER
-            setTextColor(if (cardStyle() == 2) 0xFF1F343B.toInt() else Color.WHITE)
-            contentDescription = if (expanded) "جمع کردن اعلان" else "باز کردن متن کامل اعلان"
-            minWidth = dp(48); minHeight = dp(48)
-            setOnClickListener { renderCard(message, pinned = true, expanded = !expanded) }
-        }
-        header.addView(chevron, LinearLayout.LayoutParams(dp(48), dp(48)))
-        header.setOnClickListener { renderCard(message, pinned = true, expanded = !expanded) }
-        layout.addView(header)
-        if (expanded) {
-            layout.addView(label(if (private) "پیام جدید؛ برای مشاهده برنامه را باز کنید" else message.body,
-                prefs(this).getInt("textSize", 15).toFloat()).apply {
-                setPadding(dp(4), dp(8), dp(4), dp(12))
+        avatar.background = badge
+        avatar.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        header.addView(avatar, LinearLayout.LayoutParams(dp(42), dp(42)).apply { marginEnd = dp(9) })
+        val title = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        title.addView(label(name, 15.5f, true).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END })
+        val clock = java.text.SimpleDateFormat("HH:mm", java.util.Locale.ROOT).format(java.util.Date(message.time))
+        title.addView(label("پیام‌یار · ${persianDigits(clock)}", 12f).apply { setTextColor(0xF2FFFFFF.toInt()) })
+        header.addView(title, LinearLayout.LayoutParams(0, -2, 1f))
+        val toggle = ImageButton(this).apply {
+            setImageResource(R.drawable.ic_glass_expand)
+            rotation = if (expanded) 180f else 0f
+            background = RippleDrawable(ColorStateList.valueOf(0x38FFFFFF), null, GradientDrawable().apply {
+                shape = GradientDrawable.OVAL; setColor(Color.WHITE)
             })
-            val actions = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-            if (!private && flag("notifyOtpCopy")) Notifier.otp(message.body)?.let { code ->
-                actions.addView(button("کپی کد $code") {
-                    getSystemService(ClipboardManager::class.java)
-                        .setPrimaryClip(ClipData.newPlainText("کد تأیید", code))
-                    Toast.makeText(this, "کد کپی شد", Toast.LENGTH_SHORT).show()
-                    hideCard()
-                })
-            }
+            contentDescription = if (expanded) "جمع کردن اعلان" else "نمایش متن کامل"
+            setOnClickListener { renderCard(message, pinned = !expanded, expanded = !expanded) }
+        }
+        header.addView(toggle, LinearLayout.LayoutParams(dp(48), dp(48)))
+        layout.addView(header)
+        val body = label(if (private) "یک پیام جدید دارید" else message.body, prefs(this).getInt("textSize", 15).toFloat()).apply {
+            if (!expanded) { maxLines = 2; ellipsize = TextUtils.TruncateAt.END }
+            setPadding(0, dp(6), 0, dp(3))
+            setLineSpacing(dp(2).toFloat(), 1f)
+        }
+        if (!expanded) layout.addView(body)
+        layout.setOnClickListener { open(if (private || message.sample) null else message.address) }
+        val actions = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val chips = mutableListOf<View>()
+        if (!private && flag("notifyOtpCopy")) Notifier.otp(message.body)?.let { code ->
+            chips.add(button("کپی کد ${persianDigits(code)}", R.drawable.ic_glass_copy) {
+                getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("کد تأیید", code))
+                Toast.makeText(this, "کد کپی شد", Toast.LENGTH_SHORT).show()
+                dismissCard()
+            })
+        }
+        if (expanded) {
             if (canReplyHere) {
                 if (replying) {
-                    main.removeCallbacks(expireBubble)
-                    main.postDelayed(expireBubble, 60000)
                     val input = EditText(this).apply {
+                        typeface = cardFont
                         hint = "پاسخ به ${message.name}…"
                         textSize = 15f
                         setTextColor(Color.WHITE)
@@ -386,7 +503,7 @@ class FloatingNotifications : Service() {
                             setStroke(dp(1), 0x88B3E7DA.toInt())
                         }
                     }
-                    editor = input
+                    replyField = input
                     actions.addView(input, LinearLayout.LayoutParams(-1, -2))
                     val rawSims = try { SmsCore.subscriptions(this) }
                                   catch (_: RuntimeException) { emptyList() }
@@ -400,7 +517,7 @@ class FloatingNotifications : Service() {
                         selection = (selection + 1) % sims.size
                         chooseSim.text = "سیم‌کارت: ${sims[selection]["label"]}"
                     }
-                    actions.addView(chooseSim)
+                    if (sims.size > 1) chips.add(chooseSim)
                     val send = button("ارسال با فرصت لغو ۵ ثانیه") { }
                     send.setOnClickListener {
                         val typed = input.text.toString().trim()
@@ -418,7 +535,7 @@ class FloatingNotifications : Service() {
                                     val cancelled = SmsCore.cancel(this, id)
                                     Toast.makeText(this, if (cancelled) "ارسال لغو شد"
                                         else "مهلت لغو تمام شده است", Toast.LENGTH_SHORT).show()
-                                    if (cancelled) { hideCard(); renderBubble() }
+                                    if (cancelled) dismissCard()
                                 }
                                 main.postDelayed({
                                     if (card != null) {
@@ -432,18 +549,23 @@ class FloatingNotifications : Service() {
                             }
                         }
                     }
-                    actions.addView(send)
+                    chips.add(send)
                 } else {
-                    actions.addView(button("پاسخ سریع در همین پنجره") {
+                    chips.add(button("پاسخ") {
                         renderCard(message, pinned = true, expanded = true, replying = true)
                     })
                 }
-                actions.addView(button("علامت‌گذاری خوانده‌شده") {
-                    try { SmsCore.markAddressRead(this, phone) }
-                    catch (_: SecurityException) { }
+            }
+            if (!private && !message.sample && SmsCore.isDefault(this)) chips.add(button("خواندم") {
+                try {
+                    SmsCore.markAddressRead(this, message.address)
                     Notifier.cancel(this, message.address)
-                })
-                actions.addView(button("تماس با فرستنده") {
+                } catch (_: SecurityException) {
+                    Toast.makeText(this, "مجوز تغییر وضعیت پیام در دسترس نیست", Toast.LENGTH_SHORT).show()
+                }
+            })
+            if (dialable) {
+                chips.add(button("تماس") {
                     val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(phone)))
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     try { startActivity(intent) }
@@ -452,17 +574,20 @@ class FloatingNotifications : Service() {
                     }
                 })
             }
-            actions.addView(button(if (private) "باز کردن برنامه" else "باز کردن گفتگو / پاسخ") {
-                open(if (message.sample) null else message.address)
+            chips.add(button(if (private) "باز کردن برنامه" else "گفتگو") {
+                open(if (private || message.sample) null else message.address)
             })
-            if (messages.size > 1 && !message.sample) actions.addView(button("گفتگوی بعدی (${messages.size})") {
+            if (messages.size > 1 && !message.sample) chips.add(button("گفتگوی بعدی (${messages.size})") {
                 val list = messages.values.toList()
                 val next = list[(list.indexOf(message) + 1).mod(list.size)]
                 shown = next
                 renderCard(next, pinned = true, expanded = true)
             })
-            layout.addView(actions)
+            chips.add(button("بستن") { dismissCard() })
         }
+        addActionRows(actions, chips, width - dp(8) - layout.paddingLeft - layout.paddingRight)
+        layout.addView(actions)
+        if (expanded) layout.addView(body)
         val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onDown(e: MotionEvent): Boolean = true
             override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float,
@@ -480,40 +605,61 @@ class FloatingNotifications : Service() {
             isFillViewport = false
             isVerticalScrollBarEnabled = expanded
             clipToOutline = true
-            background = layout.background
-            layout.background = null
+            background = surface
+            elevation = if (reduce) 0f else dp(3).toFloat()
             outlineProvider = ViewOutlineProvider.BACKGROUND
             addView(layout, ViewGroup.LayoutParams(-1, -2))
-            setOnTouchListener { _, e ->
-                if (e.actionMasked == MotionEvent.ACTION_DOWN) main.removeCallbacks(hide)
-                detector.onTouchEvent(e)
-                false
-            }
         }
-        scroll.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+        val window = object : FrameLayout(this) {
+            override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+                if (event.actionMasked == MotionEvent.ACTION_DOWN) main.removeCallbacks(hide)
+                if (!replying) detector.onTouchEvent(event)
+                val handled = super.dispatchTouchEvent(event)
+                if (card === this && (event.actionMasked == MotionEvent.ACTION_UP ||
+                    event.actionMasked == MotionEvent.ACTION_CANCEL)) {
+                    main.removeCallbacks(hide)
+                    main.postDelayed(hide, cardTimeout(pinned || replying))
+                }
+                return handled
+            }
+        }.apply {
+            setPadding(dp(4), dp(2), dp(4), dp(6))
+            clipChildren = false
+            clipToPadding = false
+            addView(scroll, FrameLayout.LayoutParams(-1, -2))
+        }
+        window.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(maxHeight, View.MeasureSpec.AT_MOST))
-        val p = params(width, NotificationPolicy.cardHeight(bounds.height(), scroll.measuredHeight), replying)
+        val p = params(width, NotificationPolicy.cardHeight(bounds.height(), window.measuredHeight), replying)
         p.x = bounds.left + (bounds.width() - width) / 2
-        p.y = if (flag("bannerTop")) bounds.top + dp(8) else bounds.bottom - p.height - dp(8)
+        p.y = if (flag("bannerTop")) bounds.top + dp(4) else bounds.bottom - p.height - dp(4)
         return try {
-            wm.addView(scroll, p)
-            card = scroll
+            wm.addView(window, p)
+            card = window
+            if (expanded && !replying) scroll.post { if (card === window) scroll.scrollTo(0, 0) }
+            if (!pinned && !reduce && (Build.VERSION.SDK_INT < 26 || android.animation.ValueAnimator.areAnimatorsEnabled())) {
+                scroll.cameraDistance = 1600f * density
+                scroll.rotationX = if (flag("bannerTop")) -2.5f else 2.5f
+                scroll.alpha = .86f
+                scroll.translationY = dp(if (flag("bannerTop")) -4 else 4).toFloat()
+                scroll.animate().alpha(1f).translationY(0f).rotationX(0f).setDuration(140L).start()
+            }
             if (replying) {
-                val field = editor
+                val field = replyField
                 main.postDelayed({
-                    if (card === scroll && field != null) {
+                    if (card === window && field != null) {
                         field.requestFocus()
                         getSystemService(android.view.inputmethod.InputMethodManager::class.java)
                             .showSoftInput(field, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
                     }
                 }, 180)
             }
-            if (!pinned && !replying) main.postDelayed(hide, number("bannerSeconds", 6).coerceIn(2, 15) * 1000)
+            main.postDelayed(hide, cardTimeout(pinned || replying))
             true
         } catch (_: RuntimeException) { false }
     }
     private fun open(address: String?) {
-        hideCard()
+        dismissCard()
         val intent = Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         if (address != null) intent.setAction("ir.honarmardomi.payamyar.OPEN_CONVERSATION")
             .setData(Uri.parse("payamyar:open/" + Uri.encode(address)))
@@ -522,66 +668,4 @@ class FloatingNotifications : Service() {
             Toast.makeText(this, "برای مشاهده پیام، پیام‌یار را باز کنید", Toast.LENGTH_SHORT).show()
         }
     }
-}
-
-/** Theme-aware, high-contrast overlay surface. The OS cannot provide cross-app backdrop blur. */
-private class GlassSurface(
-    private val tint: Int, private val round: Boolean, private val bubbles: Boolean,
-    private val opacity: Float, private val style: Int,
-    private val edge: Float = .72f, private val shine: Float = .55f,
-    private val corner: Float = 26f
-) : Drawable() {
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-    override fun draw(canvas: Canvas) {
-        val rect = RectF(bounds)
-        val radius = if (round) rect.width() / 2 else min(rect.width(), rect.height()) * (corner.coerceIn(16f, 36f) / 145f)
-        val path = Path().apply { addRoundRect(rect, radius, radius, Path.Direction.CW) }
-        canvas.save(); canvas.clipPath(path)
-        // Reference palette: luminous emerald outer edge and deep teal card.
-        // A firm alpha floor keeps white typography legible on bright wallpapers.
-        val paper = style == 2
-        val bright = paper
-        val effectiveAlpha = if (paper) 255
-            else (opacity.coerceIn(.82f, 1f) * 255).toInt()
-        fun shade(f: Float) = Color.argb(effectiveAlpha,
-            (Color.red(tint) * f).toInt().coerceIn(0, 255),
-            (Color.green(tint) * f).toInt().coerceIn(0, 255),
-            (Color.blue(tint) * f).toInt().coerceIn(0, 255))
-        val top = if (paper) 0xFFFDFCF8.toInt()
-            else if (style == 0) shade(.88f)
-            else shade(.98f)
-        val bottom = if (paper) 0xFFF0F2F0.toInt()
-            else if (style == 0) shade(.43f)
-            else shade(.47f)
-        paint.shader = LinearGradient(0f, 0f, rect.width(), rect.height(),
-            top, bottom, Shader.TileMode.CLAMP)
-        canvas.drawRect(rect, paint); paint.shader = null
-        if (!bright) {
-            paint.shader = LinearGradient(0f, 0f, 0f, rect.height() * .5f,
-                Color.argb((shine.coerceIn(0f, 1f) * 88f).toInt(), 255, 255, 255),
-                0x00FFFFFF, Shader.TileMode.CLAMP)
-            canvas.drawRect(rect, paint); paint.shader = null
-        }
-        if (bubbles && !paper) {
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 1.5f; paint.color = if (bright) 0x16087F81 else 0x2CFFFFFF
-            for (i in 0..5) canvas.drawCircle(rect.width() * ((i * 37 + 9) % 100) / 100f,
-                rect.height() * ((i * 29 + 13) % 100) / 100f,
-                rect.width() * (.025f + .007f * (i % 3)), paint)
-            paint.style = Paint.Style.FILL
-        }
-        paint.color = if (paper) 0x66087F81 else Color.argb((edge.coerceIn(.15f, 1f) * 255).toInt(), 146, 207, 194)
-        paint.style = Paint.Style.STROKE; paint.strokeWidth = 1.5f
-        canvas.drawRoundRect(RectF(rect.left + 1f, rect.top + 1f, rect.right - 1f, rect.bottom - 1f),
-            radius, radius, paint)
-        paint.style = Paint.Style.FILL
-        canvas.restore()
-    }
-    override fun getOutline(outline: Outline) {
-        outline.setRoundRect(bounds, if (round) bounds.width() / 2f
-            else min(bounds.width(), bounds.height()) * (corner.coerceIn(16f, 36f) / 145f))
-    }
-    override fun setAlpha(alpha: Int) { }
-    override fun setColorFilter(filter: ColorFilter?) { }
-    @Deprecated("Deprecated in Java") override fun getOpacity() = PixelFormat.TRANSLUCENT
 }

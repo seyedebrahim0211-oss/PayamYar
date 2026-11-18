@@ -13,6 +13,21 @@ class NotificationPolicyTest {
         assertTrue(SmsSendDiagnostic.describe(120).contains("سیم‌کارت"))
         assertTrue(SmsSendDiagnostic.describe(999).contains("999"))
     }
+    @Test fun floatingSettingsReadPersistedFlutterDoublesAndNumericLegacyValues() {
+        assertEquals(420f, NotificationPolicy.flutterFloat("VGhpcyBpcyB0aGUgcHJlZml4IGZvciBEb3VibGUu420.0", 360f), 0f)
+        assertEquals(.81f, NotificationPolicy.flutterFloat(.81f, .9f), .0001f)
+        assertEquals(26f, NotificationPolicy.flutterFloat("invalid", 26f), 0f)
+        assertEquals(26f, NotificationPolicy.flutterFloat(Double.NaN, 26f), 0f)
+    }
+    @Test fun onlyExactMessagingSenderIdsSelectAServiceColor() {
+        assertEquals(MessengerSender.TELEGRAM, MessengerSender.fromAddress(" Telegram "))
+        assertEquals(MessengerSender.BALE, MessengerSender.fromAddress("بله"))
+        assertEquals(MessengerSender.EITAA, MessengerSender.fromAddress("eitaa"))
+        assertEquals(MessengerSender.WHATSAPP, MessengerSender.fromAddress("WhatsApp"))
+        assertEquals(4, MessengerSender.values().map { it.color }.toSet().size)
+        assertNull(MessengerSender.fromAddress("Telegram Support"))
+        assertNull(MessengerSender.fromAddress("+989000000000"))
+    }
     @Test fun cardsFitPhoneTabletLandscapeAndSplitScreen() {
         for (width in listOf(160, 240, 320, 360, 1080, 2400)) {
             for (desired in listOf(280, 360, 520, 1560)) {

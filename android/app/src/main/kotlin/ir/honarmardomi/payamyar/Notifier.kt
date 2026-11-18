@@ -59,6 +59,7 @@ object Notifier {
     const val ACTION_READ = "ir.honarmardomi.payamyar.NOTIFY_READ"
     const val ACTION_COPY = "ir.honarmardomi.payamyar.NOTIFY_COPY"
     const val KEY_REPLY = "reply_text"
+    internal const val PREVIEW_ADDRESS = "payamyar-preview"
     private const val BRAND = 0xFF087F81.toInt()
     private const val AVATAR = 160
     private val COLORS = intArrayOf(0xFF087F81.toInt(), 0xFF305F91.toInt(), 0xFF75539A.toInt(), 0xFF9F5369.toInt(),
@@ -325,8 +326,9 @@ object Notifier {
     fun incoming(c: Context, address: String, contact: String?, body: String, time: Long, forceSystem: Boolean = false) {
         if (!enabled(c, "notifyIncoming")) return
         val appLocked = enabled(c, "appLock", false)
-        val preview = enabled(c, "notifyPreview") && !appLocked
-        val name = if (appLocked) "پیام‌یار" else contact?.takeIf { it.isNotBlank() } ?: address
+        val preview = enabled(c, "notifyPreview", false) && !appLocked
+        val source = if (preview) MessengerSender.fromAddress(address) else null
+        val name = if (appLocked) "پیام‌یار" else contact?.takeIf { it.isNotBlank() } ?: source?.title ?: address
         val text = if (preview) body else "پیامک جدید"
         val code = if (preview && enabled(c, "notifyOtpCopy")) otp(body) else null
         val reply = canReply(address) && enabled(c, "notifyQuickReply") && !appLocked
@@ -334,7 +336,7 @@ object Notifier {
         val front = MainActivity.foregroundChannel
         if (!forceSystem && front != null && enabled(c, "notifyInApp")) {
             val payload = mapOf("address" to address, "name" to name, "body" to text, "time" to time,
-                "otp" to code, "canReply" to reply)
+                "otp" to code, "canReply" to reply, "sourceColor" to source?.selectedColor(prefs(c))?.toLong()?.and(0xffffffffL))
             Handler(Looper.getMainLooper()).post {
                 try {
                     front.invokeMethod("incomingBanner", payload, object : MethodChannel.Result {
@@ -357,15 +359,26 @@ object Notifier {
     }
 
     private fun systemIncoming(c: Context, address: String, name: String, text: String,
-                               time: Long, code: String?, reply: Boolean) {
+                               time: Long, code: String?, reply: Boolean, sample: Boolean = false, sampleSource: MessengerSender? = null) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
-            Handler(Looper.getMainLooper()).post { systemIncoming(c.applicationContext, address, name, text, time, code, reply) }
+            Handler(Looper.getMainLooper()).post { systemIncoming(c.applicationContext, address, name, text, time, code, reply, sample, sampleSource) }
             return
         }
         configureChannels(c)
+        if (!NotificationManagerCompat.from(c).areNotificationsEnabled()) return
+        FloatingNotifications.show(c, address, name, text, sample, time, sampleSource?.name) { visible ->
+            if (enabled(c, "notifyIncoming") && NotificationManagerCompat.from(c).areNotificationsEnabled()) {
+                val locked = enabled(c, "appLock", false)
+                val reveal = !locked && enabled(c, "notifyPreview", false)
+                postIncoming(c, address, if (locked) "پیام‌یار" else name, if (reveal) text else "پیامک جدید",
+                    time, if (reveal) code else null, reply && !locked, sample, visible, sampleSource)
+            }
+        }
+    }
+
+    private fun postIncoming(c: Context, address: String, name: String, text: String, time: Long,
+                             code: String?, reply: Boolean, sample: Boolean, floating: Boolean, sampleSource: MessengerSender?) {
         val manager = c.getSystemService(NotificationManager::class.java)
-        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(c, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
-        val floating = FloatingNotifications.show(c, address, name, text, address == "+989000000000")
         val deliveryChannel = if (floating) OVERLAY_CHANNEL else CHANNEL
         val id = idFor(address)
         val picture = if (enabled(c, "appLock", false)) styledAvatar(c, letterAvatar("پ", "private"))
@@ -375,14 +388,13 @@ object Notifier {
             .setIcon(IconCompat.createWithBitmap(picture)).setImportant(true).build()
 
         // Stack this message under earlier unread ones from the same sender.
-        val existing = if (enabled(c, "notifyPreview") && !enabled(c, "appLock", false))
+        val existing = if (enabled(c, "notifyPreview", false) && !enabled(c, "appLock", false))
             manager.activeNotifications.firstOrNull { it.id == id }?.notification else null
         val style = existing?.let { NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(it) }
             ?: NotificationCompat.MessagingStyle(Person.Builder().setName("شما").build())
         style.addMessage(text, time, sender)
 
         // A sample must never open a fictitious conversation or create a real SMS.
-        val sample = address == "+989000000000"
         val openIntent = Intent(c, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         if (!sample) openIntent.setAction("ir.honarmardomi.payamyar.OPEN_CONVERSATION")
@@ -392,7 +404,8 @@ object Notifier {
         val open = PendingIntent.getActivity(c, idFor(address), openIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
-        val color = accent(c)
+        val color = if (enabled(c, "bannerSourceColors") && enabled(c, "notifyPreview", false) && !enabled(c, "appLock", false))
+            (sampleSource ?: MessengerSender.fromAddress(address))?.selectedColor(prefs(c)) ?: accent(c) else accent(c)
         val builder = NotificationCompat.Builder(c, deliveryChannel)
             .setSmallIcon(R.drawable.ic_stat_payamyar)
             .setColor(color)
@@ -443,7 +456,7 @@ object Notifier {
 
     /** Sample Android notification. No message is sent, and it expires automatically. */
     private var sampleCounter = 0
-    fun preview(c: Context): Boolean {
+    fun preview(c: Context, sourceKey: String? = null): Boolean {
         if (!enabled(c, "notifyIncoming") || !NotificationManagerCompat.from(c).areNotificationsEnabled() ||
             (Build.VERSION.SDK_INT >= 33 &&
              ContextCompat.checkSelfPermission(c, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)) {
@@ -452,11 +465,12 @@ object Notifier {
         configureChannels(c)
         if (Build.VERSION.SDK_INT >= 26 && c.getSystemService(NotificationManager::class.java)
                 .getNotificationChannel(CHANNEL)?.importance == NotificationManager.IMPORTANCE_NONE) return false
-        val address = "+989000000000"
-        val body = "سلام! این نمونه اعلان شیشه‌ای پیام‌یار است. کد آزمایشی: 12345"
-        val showingBody = enabled(c, "notifyPreview") && !enabled(c, "appLock", false)
-        systemIncoming(c, address, "پیام‌یار", if (showingBody) body else "پیامک جدید",
-            System.currentTimeMillis(), if (showingBody && enabled(c, "notifyOtpCopy")) "12345" else null, false)
+        val address = PREVIEW_ADDRESS
+        val body = "سلام! کد تأیید آزمایشی شما ۱۲۳۴۵ است."
+        val showingBody = enabled(c, "notifyPreview", false) && !enabled(c, "appLock", false)
+        val source = if (showingBody) MessengerSender.fromKey(sourceKey) else null
+        systemIncoming(c, address, source?.title ?: "پیام‌یار", if (showingBody) body else "پیامک جدید",
+            System.currentTimeMillis(), if (showingBody && enabled(c, "notifyOtpCopy")) "12345" else null, false, sample = true, sampleSource = source)
         val token = ++sampleCounter
         Handler(Looper.getMainLooper()).postDelayed({
             if (sampleCounter == token) cancel(c, address)
@@ -498,12 +512,12 @@ class NotifyActionReceiver : BroadcastReceiver() {
                 val pending = goAsync()
                 Thread {
                     try {
-                        // The settings preview uses a reserved sample number: never send to it.
-                        if (intent.action == Notifier.ACTION_REPLY && !reply.isNullOrBlank() && address != "+989000000000") {
+                        // The settings preview uses a non-dialable sample ID: never send to it.
+                        if (intent.action == Notifier.ACTION_REPLY && !reply.isNullOrBlank() && address != Notifier.PREVIEW_ADDRESS) {
                             val id = SmsCore.queue(context, address, reply, -1, 0)
                             SmsCore.dispatch(context, id)
                         }
-                        if (address != "+989000000000") SmsCore.markAddressRead(context, address)
+                        if (address != Notifier.PREVIEW_ADDRESS) SmsCore.markAddressRead(context, address)
                         Notifier.cancel(context, address)
                     } catch (_: Exception) {
                         SmsCore.notify(context, 4, "پاسخ ارسال نشد", "پیامیار را باز کنید و دوباره تلاش کنید.")
