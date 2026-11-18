@@ -438,7 +438,7 @@ class FloatingNotifications : Service() {
         val title = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         title.addView(label(name, 15.5f, true).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END })
         val clock = java.text.SimpleDateFormat("HH:mm", java.util.Locale.ROOT).format(java.util.Date(message.time))
-        title.addView(label("پیام‌یار · ${persianDigits(clock)}", 12f).apply { setTextColor(0xE0FFFFFF.toInt()) })
+        title.addView(label("پیام‌یار · ${persianDigits(clock)}", 12f).apply { setTextColor(0xF2FFFFFF.toInt()) })
         header.addView(title, LinearLayout.LayoutParams(0, -2, 1f))
         val toggle = ImageButton(this).apply {
             setImageResource(R.drawable.ic_glass_expand)

@@ -73,11 +73,14 @@ internal class GlassSurface(
             null, Shader.TileMode.CLAMP)
         // Keep text legible over busy wallpaper, even at the lowest glass setting.
         val alpha = if (avatar) (255f * opacity).toInt() else (255f * (.65f + .35f * opacity)).toInt()
+        // Limit the brightest part of the face while keeping the chosen hue on the rim and badge.
+        val luma = (54 * Color.red(tint) + 183 * Color.green(tint) + 19 * Color.blue(tint)) / 256f
+        val topScale = min(.82f, 70f / luma.coerceAtLeast(1f))
         face = LinearGradient(inner.right, inner.top, inner.left, inner.bottom,
-            ColorUtils.setAlphaComponent(mix(Color.BLACK, .18f), alpha),
-            ColorUtils.setAlphaComponent(mix(Color.BLACK, .47f), alpha), Shader.TileMode.CLAMP)
+            ColorUtils.setAlphaComponent(mix(Color.BLACK, 1f - topScale), alpha),
+            ColorUtils.setAlphaComponent(mix(Color.BLACK, 1f - topScale * .66f), alpha), Shader.TileMode.CLAMP)
         gloss = LinearGradient(0f, inner.top, 0f, inner.top + min(inner.height(), 36 * density),
-            Color.argb((shine * 56).toInt(), 255, 255, 255), Color.TRANSPARENT, Shader.TileMode.CLAMP)
+            Color.argb((shine * 25.5f).toInt(), 255, 255, 255), Color.TRANSPARENT, Shader.TileMode.CLAMP)
     }
     override fun draw(canvas: Canvas) {
         if (inner.isEmpty) return

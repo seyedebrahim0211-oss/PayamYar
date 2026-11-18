@@ -59,6 +59,7 @@ object Notifier {
     const val ACTION_READ = "ir.honarmardomi.payamyar.NOTIFY_READ"
     const val ACTION_COPY = "ir.honarmardomi.payamyar.NOTIFY_COPY"
     const val KEY_REPLY = "reply_text"
+    internal const val PREVIEW_ADDRESS = "payamyar-preview"
     private const val BRAND = 0xFF087F81.toInt()
     private const val AVATAR = 160
     private val COLORS = intArrayOf(0xFF087F81.toInt(), 0xFF305F91.toInt(), 0xFF75539A.toInt(), 0xFF9F5369.toInt(),
@@ -464,7 +465,7 @@ object Notifier {
         configureChannels(c)
         if (Build.VERSION.SDK_INT >= 26 && c.getSystemService(NotificationManager::class.java)
                 .getNotificationChannel(CHANNEL)?.importance == NotificationManager.IMPORTANCE_NONE) return false
-        val address = "payamyar-preview"
+        val address = PREVIEW_ADDRESS
         val body = "سلام! این نمونه اعلان شیشه‌ای پیام‌یار است. کد آزمایشی: 12345"
         val showingBody = enabled(c, "notifyPreview", false) && !enabled(c, "appLock", false)
         val source = if (showingBody) MessengerSender.fromKey(sourceKey) else null
@@ -511,12 +512,12 @@ class NotifyActionReceiver : BroadcastReceiver() {
                 val pending = goAsync()
                 Thread {
                     try {
-                        // The settings preview uses a reserved sample number: never send to it.
-                        if (intent.action == Notifier.ACTION_REPLY && !reply.isNullOrBlank() && address != "+989000000000") {
+                        // The settings preview uses a non-dialable sample ID: never send to it.
+                        if (intent.action == Notifier.ACTION_REPLY && !reply.isNullOrBlank() && address != Notifier.PREVIEW_ADDRESS) {
                             val id = SmsCore.queue(context, address, reply, -1, 0)
                             SmsCore.dispatch(context, id)
                         }
-                        if (address != "+989000000000") SmsCore.markAddressRead(context, address)
+                        if (address != Notifier.PREVIEW_ADDRESS) SmsCore.markAddressRead(context, address)
                         Notifier.cancel(context, address)
                     } catch (_: Exception) {
                         SmsCore.notify(context, 4, "پاسخ ارسال نشد", "پیامیار را باز کنید و دوباره تلاش کنید.")

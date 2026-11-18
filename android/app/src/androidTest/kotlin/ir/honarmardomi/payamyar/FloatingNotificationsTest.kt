@@ -152,6 +152,19 @@ class FloatingNotificationsTest {
         assertEquals("A previous translucent ring must never change the face alpha", first, bitmap.getPixel(150, 70))
     }
 
+    @Test fun lightWallpaperAndBrightColorsKeepTheSenderReadable() {
+        val bitmap = android.graphics.Bitmap.createBitmap(300, 140, android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap)
+        for (tint in MessengerSender.values().map { it.color } + listOf(0xFF919124.toInt(), android.graphics.Color.WHITE)) {
+            bitmap.eraseColor(android.graphics.Color.WHITE)
+            val glass = GlassSurface(tint, 1f, 26f, false, .78f, .72f, 1f)
+            glass.setBounds(0, 0, 300, 140)
+            glass.draw(canvas)
+            val pixel = bitmap.getPixel(270, 9)
+            assertTrue(androidx.core.graphics.ColorUtils.calculateContrast(0xF2FFFFFF.toInt(), pixel) >= 4.5)
+        }
+    }
+
     @Test fun stoppingServiceRemovesChatHead() {
         displayWhileAppVisible("+989120000001", "مریم", "پیام", false)
         assertTrue(device.wait(Until.hasObject(By.descContains("حباب پیام‌یار")), 15000))

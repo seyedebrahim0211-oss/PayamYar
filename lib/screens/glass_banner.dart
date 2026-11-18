@@ -340,6 +340,8 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
     final radius = BorderRadius.circular(s.bannerCorner);
     final inner = BorderRadius.circular(s.bannerCorner - rim);
     final alpha = .65 + .35 * s.bannerOpacity;
+    final luma = (54 * tint.r + 183 * tint.g + 19 * tint.b) * 255 / 256;
+    final topScale = math.min(.82, 70 / math.max(1.0, luma));
     final clock = Jalali.digits(
       '${b.time.hour.toString().padLeft(2, '0')}:${b.time.minute.toString().padLeft(2, '0')}',
     );
@@ -369,8 +371,8 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
           begin: Alignment.topRight,
           end: Alignment.bottomLeft,
           colors: [
-            Color.lerp(tint, Colors.black, .18)!.withValues(alpha: alpha),
-            Color.lerp(tint, Colors.black, .47)!.withValues(alpha: alpha),
+            Color.lerp(tint, Colors.black, 1 - topScale)!.withValues(alpha: alpha),
+            Color.lerp(tint, Colors.black, 1 - topScale * .66)!.withValues(alpha: alpha),
           ],
         ),
       ),
@@ -394,7 +396,7 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Colors.white.withValues(alpha: s.bannerShine * .22),
+                      Colors.white.withValues(alpha: s.bannerShine * .10),
                       Colors.transparent,
                     ],
                   ),
@@ -436,7 +438,7 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
                             'پیام‌یار · $clock',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: Color(0xE0FFFFFF), fontSize: 12, height: 1.4),
+                            style: const TextStyle(color: Color(0xF2FFFFFF), fontSize: 12, height: 1.4),
                           ),
                         ],
                       ),

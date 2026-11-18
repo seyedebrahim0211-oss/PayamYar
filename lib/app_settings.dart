@@ -86,10 +86,12 @@ class AppSettings extends ChangeNotifier {
     if (raw is! String) return {};
     try {
       final data = jsonDecode(raw);
-      if (data is Map) return {
-        for (final key in const ['EITAA', 'BALE', 'TELEGRAM', 'WHATSAPP'])
-          if (data[key] is int) key: 0xff000000 | ((data[key] as int) & 0xffffff),
-      };
+      if (data is Map) {
+        return {
+          for (final key in const ['EITAA', 'BALE', 'TELEGRAM', 'WHATSAPP'])
+            if (data[key] is int) key: 0xff000000 | ((data[key] as int) & 0xffffff),
+        };
+      }
     } on FormatException {
       return {};
     }
