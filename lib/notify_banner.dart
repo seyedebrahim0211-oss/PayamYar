@@ -8,12 +8,13 @@ class IncomingBanner {
   final DateTime time;
   final String? otp;
   final bool canReply;
+  final int? sourceColor;
 
   /// Settings preview: nothing is opened or sent.
   final bool sample;
 
   const IncomingBanner({required this.address, required this.name, required this.body, required this.time,
-      this.otp, this.canReply = false, this.sample = false});
+      this.otp, this.sourceColor, this.canReply = false, this.sample = false});
 
   /// Payload of the native "incomingBanner" event (see Notifier.kt).
   static IncomingBanner? fromMap(Object? raw) {
@@ -28,6 +29,7 @@ class IncomingBanner {
       body: raw['body']?.toString() ?? '',
       time: DateTime.fromMillisecondsSinceEpoch(millis),
       otp: (otp == null || otp.isEmpty) ? null : otp,
+      sourceColor: (raw['sourceColor'] as num?)?.toInt(),
       canReply: raw['canReply'] == true,
     );
   }

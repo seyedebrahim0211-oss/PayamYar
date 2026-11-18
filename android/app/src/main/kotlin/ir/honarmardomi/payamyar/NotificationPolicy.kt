@@ -10,6 +10,15 @@ object NotificationPolicy {
     }
     fun remainingSeconds(deadline: Long, elapsed: Long): Long =
         ((deadline - elapsed).coerceAtLeast(0L) + 999L) / 1000L
+    // shared_preferences_android stores Dart doubles as tagged decimal strings.
+    fun flutterFloat(raw: Any?, fallback: Float): Float {
+        val value = when (raw) {
+            is Number -> raw.toFloat()
+            is String -> raw.removePrefix("VGhpcyBpcyB0aGUgcHJlZml4IGZvciBEb3VibGUu").toFloatOrNull()
+            else -> null
+        }
+        return value?.takeIf { it.isFinite() } ?: fallback
+    }
     fun cardWidth(available: Int, desired: Int, margin: Int): Int =
         minOf(desired, (available - 2 * margin).coerceAtLeast(1)).coerceAtLeast(1)
     fun cardHeight(available: Int, measured: Int): Int =

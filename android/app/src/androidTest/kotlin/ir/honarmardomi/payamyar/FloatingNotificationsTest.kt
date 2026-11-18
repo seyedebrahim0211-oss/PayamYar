@@ -59,12 +59,19 @@ class FloatingNotificationsTest {
         instrumentation.waitForIdleSync()
         device.pressHome()
     }
+    private fun expandCard() {
+        val toggle = device.wait(Until.findObject(By.desc("نمایش متن کامل")), 5000)
+        assertNotNull("Compact card must expose its expansion button", toggle)
+        toggle.click()
+        device.waitForIdle()
+    }
+
     @Before fun start() {
         device.executeShellCommand("appops set ${context.packageName} SYSTEM_ALERT_WINDOW allow")
         device.executeShellCommand("pm grant ${context.packageName} android.permission.POST_NOTIFICATIONS")
         context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).edit()
             .putBoolean("flutter.appLock", false).putBoolean("flutter.notifyPreview", true)
-            .putBoolean("flutter.bannerTop", true).putLong("flutter.bannerSeconds", 15).commit()
+            .putBoolean("flutter.bannerTop", true).putLong("flutter.bannerSeconds", 6).commit()
         scenario = ActivityScenario.launch(Intent(context, MainActivity::class.java))
         scenario!!.onActivity { assertTrue(FloatingNotifications.setEnabled(it, true)) }
         device.pressHome()
@@ -89,15 +96,19 @@ class FloatingNotificationsTest {
         val bounds = header.visibleBounds
         assertTrue(bounds.left >= 0 && bounds.right <= device.displayWidth)
         assertTrue(bounds.top >= 0 && bounds.bottom <= device.displayHeight)
-        assertTrue("Code action must be reachable by scrolling long text", scrollToAction("کپی کد 12345"))
-        assertNotNull(device.findObject(By.text("کپی کد 12345")))
-        assertTrue("Conversation action must be reachable by scrolling", scrollToAction("باز کردن گفتگو / پاسخ"))
+        assertTrue("The copy action belongs on the folded card", device.hasObject(By.text("کپی کد ۱۲۳۴۵")))
+        assertFalse(device.hasObject(By.text("گفتگو")))
+        val toggle = device.findObject(By.desc("نمایش متن کامل"))
+        assertTrue("The RTL sender must be to the right of the chevron", bounds.centerX() > toggle.visibleBounds.centerX())
+        expandCard()
+        assertTrue("Conversation action must be reachable by scrolling", scrollToAction("گفتگو"))
     }
     @Test fun appLockNeverExposesSampleOtpOrSenderInOverlay() {
         context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).edit()
             .putBoolean("flutter.appLock", true).commit()
         instrumentation.waitForIdleSync()
         displayWhileAppVisible("+989000000000", "PRIVATE_SENDER", "PRIVATE_BODY کد: 12345", true)
+        expandCard()
         assertTrue(device.wait(Until.hasObject(By.text("باز کردن برنامه")), 5000))
         assertFalse(device.hasObject(By.textContains("PRIVATE_")))
         assertFalse(device.hasObject(By.textContains("12345")))
@@ -107,23 +118,40 @@ class FloatingNotificationsTest {
         device.executeShellCommand("settings put system font_scale 1.8")
         device.waitForIdle()
         displayWhileAppVisible("+989000000000", "متن بزرگ", "پیام آزمایشی\n".repeat(60), true)
+        expandCard()
         val scroll = device.wait(Until.findObject(By.clazz("android.widget.ScrollView").pkg(context.packageName)), 5000)
         assertNotNull(scroll)
         val b = scroll.visibleBounds
         assertTrue(b.left >= 0 && b.right <= device.displayWidth)
         assertTrue(b.top >= 0 && b.bottom <= device.displayHeight)
-        assertTrue("Conversation action must be reachable by scrolling", scrollToAction("باز کردن گفتگو / پاسخ"))
+        assertTrue("Conversation action must be reachable by scrolling", scrollToAction("گفتگو"))
     }
     @Test fun senderBubbleAppearsOnlyForIncomingSms() {
         assertFalse(device.hasObject(By.descContains("حباب پیام‌یار")))
         context.getSharedPreferences("payamyar_overlay", Context.MODE_PRIVATE).edit()
             .putInt("bubbleSeconds", 8).commit()
         displayWhileAppVisible("+989120000001", "مریم", "سلام، پیام تازه", false)
-        assertTrue("A newly received message must show its sender bubble",
+        assertTrue(device.wait(Until.hasObject(By.desc("نمایش متن کامل")), 5000))
+        assertFalse("Card and chat head must never cover each other", device.hasObject(By.descContains("حباب پیام‌یار")))
+        assertTrue("A newly received message must show its sender bubble after the card closes",
             device.wait(Until.hasObject(By.descContains("حباب پیام‌یار")), 15000))
+        assertFalse(device.hasObject(By.desc("نمایش متن کامل")))
         assertTrue("The transient bubble must disappear after its configured lifetime",
             device.wait(Until.gone(By.descContains("حباب پیام‌یار")), 12000))
     }
+    @Test fun glassOpacityIsStableAcrossRedraws() {
+        val glass = GlassSurface(0xff087f81.toInt(), 1f, 26f, true, .78f, .15f, .55f)
+        glass.setBounds(0, 0, 300, 140)
+        val bitmap = android.graphics.Bitmap.createBitmap(300, 140, android.graphics.Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap)
+        glass.draw(canvas)
+        val first = bitmap.getPixel(150, 70)
+        assertTrue("The center must mask wallpaper lettering", android.graphics.Color.alpha(first) >= 230)
+        bitmap.eraseColor(android.graphics.Color.TRANSPARENT)
+        glass.draw(canvas)
+        assertEquals("A previous translucent ring must never change the face alpha", first, bitmap.getPixel(150, 70))
+    }
+
     @Test fun stoppingServiceRemovesChatHead() {
         displayWhileAppVisible("+989120000001", "مریم", "پیام", false)
         assertTrue(device.wait(Until.hasObject(By.descContains("حباب پیام‌یار")), 15000))
