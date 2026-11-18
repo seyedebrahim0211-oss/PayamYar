@@ -18,7 +18,8 @@ void main() {
 
     await tester.runAsync(() async {
       final fonts = FontLoader('Vazirmatn')..addFont(rootBundle.load('assets/fonts/Vazirmatn.ttf'));
-      await fonts.load();
+      final icons = FontLoader('MaterialIcons')..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+      await Future.wait([fonts.load(), icons.load()]);
     });
     await tester.pumpWidget(
       MaterialApp(

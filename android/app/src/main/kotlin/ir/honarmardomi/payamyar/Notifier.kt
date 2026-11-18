@@ -466,7 +466,7 @@ object Notifier {
         if (Build.VERSION.SDK_INT >= 26 && c.getSystemService(NotificationManager::class.java)
                 .getNotificationChannel(CHANNEL)?.importance == NotificationManager.IMPORTANCE_NONE) return false
         val address = PREVIEW_ADDRESS
-        val body = "سلام! این نمونه اعلان شیشه‌ای پیام‌یار است. کد آزمایشی: 12345"
+        val body = "سلام! کد تأیید آزمایشی شما ۱۲۳۴۵ است."
         val showingBody = enabled(c, "notifyPreview", false) && !enabled(c, "appLock", false)
         val source = if (showingBody) MessengerSender.fromKey(sourceKey) else null
         systemIncoming(c, address, source?.title ?: "پیام‌یار", if (showingBody) body else "پیامک جدید",

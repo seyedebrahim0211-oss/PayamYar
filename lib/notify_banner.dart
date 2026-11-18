@@ -38,7 +38,7 @@ class IncomingBanner {
         address: 'preview',
         name: sender ?? 'پیامیار',
         sourceColor: sourceColor,
-        body: 'سلام! این نمونه اعلان شیشه‌ای پیامیار است. کد آزمایشی: 12345',
+        body: 'سلام! کد تأیید آزمایشی شما ۱۲۳۴۵ است.',
         time: DateTime.now(),
         otp: '12345',
         canReply: true,
