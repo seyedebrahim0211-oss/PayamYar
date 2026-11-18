@@ -14,6 +14,7 @@ import android.net.Uri
 import android.os.*
 import android.provider.Settings
 import android.view.*
+import android.view.accessibility.AccessibilityManager
 import android.widget.*
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -155,6 +156,19 @@ class FloatingNotifications : Service() {
     private fun locked() = getSystemService(KeyguardManager::class.java).isKeyguardLocked ||
         !getSystemService(PowerManager::class.java).isInteractive
     private fun dp(n: Int) = (n * resources.displayMetrics.density).roundToInt()
+    private val cardFont by lazy {
+        try { Typeface.createFromAsset(assets, "flutter_assets/assets/fonts/Vazirmatn.ttf") }
+        catch (_: RuntimeException) { Typeface.DEFAULT }
+    }
+    private val boldCardFont by lazy { Typeface.create(cardFont, Typeface.BOLD) }
+    private fun cardTimeout(pinned: Boolean): Long {
+        val base = if (pinned) 60000 else number("bannerSeconds", 6).coerceIn(2, 15).toInt() * 1000
+        if (Build.VERSION.SDK_INT < 29) return base.toLong()
+        return getSystemService(AccessibilityManager::class.java).getRecommendedTimeoutMillis(base,
+            AccessibilityManager.FLAG_CONTENT_TEXT or AccessibilityManager.FLAG_CONTENT_ICONS or
+                AccessibilityManager.FLAG_CONTENT_CONTROLS).toLong()
+    }
+
     private fun tint() = number("notifyAccent", 0xFF087F81).toInt()
     private fun surfaceFloat(key: String, default: Float) =
         NotificationPolicy.flutterFloat(settings.all["flutter.$key"], default)
@@ -291,7 +305,7 @@ class FloatingNotifications : Service() {
             textSize = if (messages.size > 1) 15f else 22f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
-            typeface = Typeface.DEFAULT_BOLD
+            typeface = boldCardFont
             background = GlassSurface(bubbleColor(), resources.displayMetrics.density, 16f,
                 prefs(this@FloatingNotifications).getInt("bubbleStyle", 0) == 0,
                 prefs(this@FloatingNotifications).getFloat("bubbleOpacity", .92f), .72f, .55f,
@@ -338,7 +352,7 @@ class FloatingNotifications : Service() {
         textDirection = View.TEXT_DIRECTION_FIRST_STRONG_RTL
         gravity = Gravity.RIGHT or Gravity.CENTER_VERTICAL
         includeFontPadding = false
-        if (bold) typeface = Typeface.DEFAULT_BOLD
+        typeface = if (bold) boldCardFont else cardFont
     }
     private fun button(text: String, icon: Int = 0, action: () -> Unit) = label(text, 13f, true).apply {
         minHeight = dp(48)
@@ -470,8 +484,8 @@ class FloatingNotifications : Service() {
         if (expanded) {
             if (canReplyHere) {
                 if (replying) {
-                    main.postDelayed(hide, 60000)
                     val input = EditText(this).apply {
+                        typeface = cardFont
                         hint = "پاسخ به ${message.name}…"
                         textSize = 15f
                         setTextColor(Color.WHITE)
@@ -595,16 +609,20 @@ class FloatingNotifications : Service() {
             elevation = if (reduce) 0f else dp(3).toFloat()
             outlineProvider = ViewOutlineProvider.BACKGROUND
             addView(layout, ViewGroup.LayoutParams(-1, -2))
-            setOnTouchListener { _, e ->
-                if (e.actionMasked == MotionEvent.ACTION_DOWN && !replying) {
-                    main.removeCallbacks(hide)
-                    main.postDelayed(hide, if (expanded) 60000L else number("bannerSeconds", 6).coerceIn(2, 15) * 1000L)
-                }
-                detector.onTouchEvent(e)
-                false
-            }
         }
-        val window = FrameLayout(this).apply {
+        val window = object : FrameLayout(this) {
+            override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+                if (event.actionMasked == MotionEvent.ACTION_DOWN) main.removeCallbacks(hide)
+                if (!replying) detector.onTouchEvent(event)
+                val handled = super.dispatchTouchEvent(event)
+                if (card === this && (event.actionMasked == MotionEvent.ACTION_UP ||
+                    event.actionMasked == MotionEvent.ACTION_CANCEL)) {
+                    main.removeCallbacks(hide)
+                    main.postDelayed(hide, cardTimeout(pinned || replying))
+                }
+                return handled
+            }
+        }.apply {
             setPadding(dp(4), dp(2), dp(4), dp(6))
             clipChildren = false
             clipToPadding = false
@@ -618,6 +636,7 @@ class FloatingNotifications : Service() {
         return try {
             wm.addView(window, p)
             card = window
+            if (expanded && !replying) scroll.post { if (card === window) scroll.scrollTo(0, 0) }
             if (!pinned && !reduce && (Build.VERSION.SDK_INT < 26 || android.animation.ValueAnimator.areAnimatorsEnabled())) {
                 scroll.cameraDistance = 1600f * density
                 scroll.rotationX = if (flag("bannerTop")) -2.5f else 2.5f
@@ -635,8 +654,7 @@ class FloatingNotifications : Service() {
                     }
                 }, 180)
             }
-            if (!replying) main.postDelayed(hide, if (pinned) 60000L
-                else number("bannerSeconds", 6).coerceIn(2, 15) * 1000L)
+            main.postDelayed(hide, cardTimeout(pinned || replying))
             true
         } catch (_: RuntimeException) { false }
     }

@@ -70,7 +70,7 @@ jobs:
         if: always()
         with:
           name: floating-ui-test-results
-          path: android/app/build/reports/androidTests/
+          path: build/app/reports/androidTests/
           if-no-files-found: ignore
   android:
     needs: analyze

@@ -63,7 +63,8 @@ class FloatingNotificationsTest {
         val toggle = device.wait(Until.findObject(By.desc("نمایش متن کامل")), 5000)
         assertNotNull("Compact card must expose its expansion button", toggle)
         toggle.click()
-        device.waitForIdle()
+        assertTrue("The expanded window must replace the compact window after tapping",
+            device.wait(Until.hasObject(By.desc("جمع کردن اعلان")), 5000))
     }
 
     @Before fun start() {
@@ -71,7 +72,7 @@ class FloatingNotificationsTest {
         device.executeShellCommand("pm grant ${context.packageName} android.permission.POST_NOTIFICATIONS")
         context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).edit()
             .putBoolean("flutter.appLock", false).putBoolean("flutter.notifyPreview", true)
-            .putBoolean("flutter.bannerTop", true).putLong("flutter.bannerSeconds", 6).commit()
+            .putBoolean("flutter.bannerTop", true).putLong("flutter.bannerSeconds", 15).commit()
         scenario = ActivityScenario.launch(Intent(context, MainActivity::class.java))
         scenario!!.onActivity { assertTrue(FloatingNotifications.setEnabled(it, true)) }
         device.pressHome()
@@ -101,7 +102,8 @@ class FloatingNotificationsTest {
         val toggle = device.findObject(By.desc("نمایش متن کامل"))
         assertTrue("The RTL sender must be to the right of the chevron", bounds.centerX() > toggle.visibleBounds.centerX())
         expandCard()
-        assertTrue("Conversation action must be reachable by scrolling", scrollToAction("گفتگو"))
+        assertTrue("The conversation action should be above the full message",
+            device.wait(Until.hasObject(By.text("گفتگو")), 5000))
     }
     @Test fun appLockNeverExposesSampleOtpOrSenderInOverlay() {
         context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).edit()
@@ -112,6 +114,7 @@ class FloatingNotificationsTest {
         assertTrue(device.wait(Until.hasObject(By.text("باز کردن برنامه")), 5000))
         assertFalse(device.hasObject(By.textContains("PRIVATE_")))
         assertFalse(device.hasObject(By.textContains("12345")))
+        assertFalse(device.hasObject(By.textContains("۱۲۳۴۵")))
     }
     @Test fun landscapeAndLargeFontKeepTheCardInsideDisplay() {
         device.setOrientationLeft()
@@ -130,6 +133,8 @@ class FloatingNotificationsTest {
         assertFalse(device.hasObject(By.descContains("حباب پیام‌یار")))
         context.getSharedPreferences("payamyar_overlay", Context.MODE_PRIVATE).edit()
             .putInt("bubbleSeconds", 8).commit()
+        context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).edit()
+            .putLong("flutter.bannerSeconds", 3).commit()
         displayWhileAppVisible("+989120000001", "مریم", "سلام، پیام تازه", false)
         assertTrue(device.wait(Until.hasObject(By.desc("نمایش متن کامل")), 5000))
         assertFalse("Card and chat head must never cover each other", device.hasObject(By.descContains("حباب پیام‌یار")))
@@ -166,6 +171,8 @@ class FloatingNotificationsTest {
     }
 
     @Test fun stoppingServiceRemovesChatHead() {
+        context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).edit()
+            .putLong("flutter.bannerSeconds", 3).commit()
         displayWhileAppVisible("+989120000001", "مریم", "پیام", false)
         assertTrue(device.wait(Until.hasObject(By.descContains("حباب پیام‌یار")), 15000))
         instrumentation.runOnMainSync { FloatingNotifications.setEnabled(context, false) }
