@@ -17,8 +17,36 @@ class NotificationStyleScreen extends StatefulWidget {
   State<NotificationStyleScreen> createState() => _NotificationStyleScreenState();
 }
 
+typedef _SenderStyle = ({String key, String title, Color color});
+
 class _NotificationStyleScreenState extends State<NotificationStyleScreen> with WidgetsBindingObserver {
   Map<String, dynamic> _floating = {};
+  String? _sourceKey;
+  List<_SenderStyle> get _sources => [
+    for (final source in _floating['sources'] as List? ?? const [])
+      if (source case {'key': String key, 'title': String title, 'color': int color})
+        (key: key, title: title, color: Color(color)),
+  ];
+  _SenderStyle? get _selectedSender => widget.settings.bannerSourceColors
+      ? _sources.where((sender) => sender.key == _sourceKey).firstOrNull : null;
+  Color _senderColor(_SenderStyle sender) {
+    final override = widget.settings.bannerSenderTints[sender.key];
+    return override == null ? sender.color : Color(override);
+  }
+  Future<void> _setSenderColor(_SenderStyle sender, Color? color) {
+    final colors = Map.of(widget.settings.bannerSenderTints);
+    if (color == null) {
+      colors.remove(sender.key);
+    } else {
+      colors[sender.key] = color.toARGB32();
+    }
+    return widget.settings.updateNotify(bannerSenderTints: colors);
+  }
+  IncomingBanner _sample() {
+    final sender = _selectedSender;
+    return IncomingBanner.preview(sender: sender?.title, sourceColor: sender == null ? null : _senderColor(sender).toARGB32());
+  }
+
   bool _enableOnReturn = false;
   bool _floatingBusy = false;
 
@@ -118,14 +146,14 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
 
   void _testInApp() {
     _previewTimerStart('flutter');
-    currentBanner.value = IncomingBanner.preview();
+    currentBanner.value = _sample();
   }
 
   Future<void> _testAndroid() async {
     if (currentBanner.value?.sample == true) currentBanner.value = null;
     _previewTimerStart('android');
     try {
-      final visible = await SmsBridge.previewNotification();
+      final visible = await SmsBridge.previewNotification(source: _selectedSender?.key);
       if (!visible && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('اعلان واقعی مجاز نیست؛ دریافت پیام و مجوز اعلان اندروید را در تنظیمات فعال کنید.'),
@@ -175,17 +203,20 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
             final seconds = Jalali.digits(s.bannerSeconds);
             final blur = Jalali.digits(s.bannerBlur.round());
             final opacity = Jalali.digits((s.bannerOpacity * 100).round());
-            return ListView(
+            final sender = _selectedSender;
+            final selectedColor = sender == null ? s.bannerColor : _senderColor(sender);
+            final media = MediaQuery.of(context);
+            final pinPreview = media.size.height - media.viewInsets.bottom >= 620 &&
+                media.textScaler.scale(14) <= 20;
+            final preview = _activePreview == null ? _PreviewStage(settings: s, banner: _sample())
+                : Padding(padding: const EdgeInsets.all(18),
+                    child: Text(_activePreview == 'android' ? 'اعلان آزمایشی را در گوشی ببینید.' :
+                      'کارت آزمایشی روی صفحه باز است.', textAlign: TextAlign.center));
+            final controls = ListView(
               key: const PageStorageKey('notification_settings_scroll'),
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
               children: [
-                if (_activePreview == null) _PreviewStage(settings: s)
-                else Padding(
-                  padding: const EdgeInsets.all(18),
-                  child: Text(_activePreview == 'android'
-                      ? 'اعلان آزمایشی را در گوشی ببینید.'
-                      : 'کارت آزمایشی روی صفحه باز است.', textAlign: TextAlign.center),
-                ),
+                if (!pinPreview) preview,
                 const SizedBox(height: 8),
                 SizedBox(width: double.infinity, child: FilledButton.tonalIcon(
                   onPressed: _testInApp,
@@ -315,9 +346,20 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                   SwitchListTile(
                     secondary: Icon(Icons.palette_outlined, color: scheme.primary),
                     title: const Text('رنگ اختصاصی پیام‌رسان'),
-                    subtitle: const Text('پیامک‌های دارای شناسهٔ ایتا، بله، تلگرام و واتساپ با رنگ خودشان نمایش داده می‌شوند. رنگ بقیه را از اینجا انتخاب کنید.'),
+                    subtitle: const Text('پیامک‌های دارای شناسهٔ ایتا، بله، تلگرام و واتساپ با رنگ خودشان نمایش داده می‌شوند. برای تغییر رنگ، فرستنده را انتخاب کنید.'),
                     value: s.bannerSourceColors,
                     onChanged: (v) => s.updateNotify(bannerSourceColors: v),
+                  ),
+                  if (s.bannerSourceColors && _sources.isNotEmpty) ListTile(
+                    title: const Text('رنگ کارت برای'),
+                    trailing: DropdownButton<String>(
+                      value: sender?.key ?? '',
+                      items: [
+                        const DropdownMenuItem(value: '', child: Text('پیام‌یار')),
+                        for (final item in _sources) DropdownMenuItem(value: item.key, child: Text(item.title)),
+                      ],
+                      onChanged: (key) => setState(() => _sourceKey = key),
+                    ),
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
@@ -325,8 +367,9 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                       for (var i = 0; i < palettes.length; i++)
                         _ColorDot(
                           color: palettes[i],
-                          selected: s.bannerHue < 0 && s.bannerTint == i,
-                          onTap: () => s.updateNotify(bannerTint: i, bannerHue: -1),
+                          selected: selectedColor.toARGB32() == palettes[i].toARGB32(),
+                          onTap: () => sender == null ? s.updateNotify(bannerTint: i, bannerHue: -1)
+                              : _setSenderColor(sender, palettes[i]),
                         ),
                     ]),
                   ),
@@ -334,12 +377,13 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                     leading: Icon(Icons.color_lens_outlined, color: scheme.primary),
                     title: const Text('رنگ دلخواه شیشه'),
                     subtitle: const Text('تغییر زنده رنگِ پیش‌نمایش و اعلان شناور'),
-                    trailing: TextButton(onPressed: () => s.updateNotify(bannerHue: -1),
+                    trailing: TextButton(onPressed: () => sender == null ? s.updateNotify(bannerTint: 0, bannerHue: -1) : _setSenderColor(sender, null),
                         child: const Text('رنگ پیش‌فرض')),
                   ),
                   Slider(min: 0, max: 360, divisions: 72,
-                    value: s.bannerHue < 0 ? 180 : s.bannerHue,
-                    onChanged: (v) => s.updateNotify(bannerHue: v)),
+                    value: sender == null && s.bannerHue >= 0 ? s.bannerHue : HSVColor.fromColor(selectedColor).hue,
+                    onChanged: (v) => sender == null ? s.updateNotify(bannerHue: v)
+                        : _setSenderColor(sender, HSVColor.fromAHSV(1, v, .75, .57).toColor())),
                   ExpansionTile(
                     title: const Text('جزئیات شیشه و قاب'),
                     children: [
@@ -510,6 +554,11 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                 ]),
               ],
             );
+            if (!pinPreview) return controls;
+            return Column(children: [
+              Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 0), child: preview),
+              Expanded(child: controls),
+            ]);
           },
         ),
       );
@@ -518,12 +567,15 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
 /// Colourful backdrop so the frosted glass can actually be seen in the preview.
 class _PreviewStage extends StatelessWidget {
   final AppSettings settings;
-  const _PreviewStage({required this.settings});
+  final IncomingBanner banner;
+  const _PreviewStage({required this.settings, required this.banner});
 
   @override
   Widget build(BuildContext context) {
-    final tint = settings.bannerColor;
-    return ClipRRect(
+    final tint = banner.sourceColor == null ? settings.bannerColor : Color(banner.sourceColor!);
+    return RepaintBoundary(
+      key: const ValueKey('notification-style-preview'),
+      child: ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
@@ -541,11 +593,11 @@ class _PreviewStage extends StatelessWidget {
           Align(
             alignment: settings.bannerTop ? Alignment.topCenter : Alignment.bottomCenter,
             child: ConstrainedBox(constraints: BoxConstraints(maxWidth: settings.bannerMaxWidth),
-              child: GlassBannerCard(banner: IncomingBanner.preview(), settings: settings, interactive: false)),
+              child: GlassBannerCard(banner: banner, settings: settings, interactive: false)),
           ),
         ]),
       ),
-    );
+    ));
   }
 }
 
@@ -569,7 +621,9 @@ class _ColorDot extends StatelessWidget {
   const _ColorDot({required this.color, required this.selected, required this.onTap});
 
   @override
-  Widget build(BuildContext context) => InkResponse(
+  Widget build(BuildContext context) => Semantics(
+      label: const ['فیروزه‌ای', 'آبی', 'بنفش', 'اناری', 'سبز', 'کهربایی'][palettes.indexOf(color)],
+      button: true, selected: selected, child: InkResponse(
         onTap: onTap,
         radius: 24,
         child: AnimatedContainer(
@@ -585,5 +639,5 @@ class _ColorDot extends StatelessWidget {
           ),
           child: selected ? const Icon(Icons.check_rounded, color: Colors.white, size: 20) : null,
         ),
-      );
+      ));
 }

@@ -1,5 +1,6 @@
 package ir.honarmardomi.payamyar
 
+import android.content.SharedPreferences
 import android.graphics.*
 import android.graphics.drawable.Drawable
 import androidx.core.graphics.ColorUtils
@@ -13,7 +14,15 @@ internal enum class MessengerSender(val title: String, val color: Int) {
     TELEGRAM("تلگرام", 0xFF2388BD.toInt()),
     WHATSAPP("واتساپ", 0xFF398653.toInt());
 
+    fun selectedColor(settings: SharedPreferences): Int {
+        val saved = settings.getString("flutter.bannerSenderTints", null) ?: return color
+        return try {
+            org.json.JSONObject(saved).optLong(name, color.toLong()).toInt() or android.graphics.Color.BLACK
+        } catch (_: org.json.JSONException) { color }
+    }
+
     companion object {
+        fun fromKey(key: String?) = values().firstOrNull { it.name == key }
         fun fromAddress(address: String): MessengerSender? = when (address.trim().lowercase(Locale.ROOT)) {
             "eitaa", "eita", "ایتا" -> EITAA
             "bale", "بله" -> BALE

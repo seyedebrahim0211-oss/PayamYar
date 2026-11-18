@@ -28,6 +28,7 @@ void main() {
     final s = AppSettings();
     await s.updateNotify(
       bannerSourceColors: false,
+      bannerSenderTints: {'EITAA': 0xffa05326},
       bannerHue: 205,
       bannerEdge: .85,
       bannerShine: .7,
@@ -43,6 +44,7 @@ void main() {
     expect(next.bannerCompact, isFalse);
     expect(next.notifyBubbles, isFalse);
     expect(next.bannerSourceColors, isFalse);
+    expect(next.bannerSenderTints['EITAA'], 0xffa05326);
     expect(next.bannerHue, 205);
     expect(next.bannerEdge, .85);
     expect(next.bannerShine, .7);

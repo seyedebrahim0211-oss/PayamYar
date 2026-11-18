@@ -171,7 +171,7 @@ open class MainActivity : FlutterActivity() {
                         call.argument<Int>("bubbleColor"))
                     result.success(null)
                 }
-                "previewNotification" -> { result.success(Notifier.preview(this)) }
+                "previewNotification" -> { result.success(Notifier.preview(this, call.argument<String>("source"))) }
                 "openBubbleSettings" -> {
                     Notifier.configureChannels(this)
                     try {

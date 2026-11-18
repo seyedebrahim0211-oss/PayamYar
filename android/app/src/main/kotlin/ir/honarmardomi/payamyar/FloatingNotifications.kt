@@ -31,6 +31,8 @@ class FloatingNotifications : Service() {
         fun allowed(c: Context) = Settings.canDrawOverlays(c)
         fun enabled(c: Context) = prefs(c).getBoolean("enabled", false)
         fun status(c: Context): Map<String, Any> = mapOf(
+            "sources" to MessengerSender.values().map { mapOf("key" to it.name, "title" to it.title,
+                "color" to (it.color.toLong() and 0xffffffffL)) },
             "permission" to allowed(c), "enabled" to enabled(c), "running" to (instance != null),
             "bubbleSize" to prefs(c).getInt("bubbleSize", 56),
             "textSize" to prefs(c).getInt("textSize", 15),
@@ -71,14 +73,14 @@ class FloatingNotifications : Service() {
          * Every SMS still gets a regular system notification as the delivery fallback.
          */
         fun show(c: Context, address: String, name: String, body: String, sample: Boolean = false,
-                 time: Long = System.currentTimeMillis(), onDisplayed: (Boolean) -> Unit = {}): Boolean {
+                 time: Long = System.currentTimeMillis(), sampleSource: String? = null, onDisplayed: (Boolean) -> Unit = {}): Boolean {
             val eligible = enabled(c) && allowed(c) &&
                 !c.getSystemService(KeyguardManager::class.java).isKeyguardLocked &&
                 c.getSystemService(PowerManager::class.java).isInteractive &&
                 (sample || (MainActivity.foregroundChannel == null && !SentSound.quietNow(c)))
             if (!eligible) { onDisplayed(false); return false }
             instance?.let { service ->
-                val visible = service.display(address, name, body, sample, time)
+                val visible = service.display(address, name, body, sample, time, sampleSource)
                 onDisplayed(visible)
                 return visible
             }
@@ -101,7 +103,7 @@ class FloatingNotifications : Service() {
                 ContextCompat.startForegroundService(c, Intent(c, FloatingNotifications::class.java)
                     .setAction(SHOW).putExtra("address", address).putExtra("name", name)
                     .putExtra("body", body).putExtra("sample", sample).putExtra("time", time)
-                    .putExtra("deadline", deadline).putExtra("result", receiver))
+                    .putExtra("sampleSource", sampleSource).putExtra("deadline", deadline).putExtra("result", receiver))
                 handler.postDelayed(timeout, 2000L)
                 true
             } catch (_: RuntimeException) {
@@ -110,7 +112,7 @@ class FloatingNotifications : Service() {
             }
         }
     }
-    private data class Message(val address: String, val name: String, val body: String, val sample: Boolean, val time: Long)
+    private data class Message(val address: String, val name: String, val body: String, val sample: Boolean, val time: Long, val source: MessengerSender?)
     private val main = Handler(Looper.getMainLooper())
     private lateinit var wm: WindowManager
     private val messages = linkedMapOf<String, Message>()
@@ -193,17 +195,18 @@ class FloatingNotifications : Service() {
             val visible = timely && address.isNotBlank() &&
                 display(address, intent.getStringExtra("name").orEmpty(),
                     intent.getStringExtra("body").orEmpty(), intent.getBooleanExtra("sample", false),
-                    intent.getLongExtra("time", System.currentTimeMillis()))
+                    intent.getLongExtra("time", System.currentTimeMillis()), intent.getStringExtra("sampleSource"))
             result?.send(if (visible) 1 else 0, null)
             if (!visible && messages.isEmpty() && card == null) stopSelf(startId)
         } else if (messages.isEmpty()) stopSelf(startId)
         return START_NOT_STICKY
     }
-    private fun display(address: String, name: String, body: String, sample: Boolean, time: Long): Boolean {
+    private fun display(address: String, name: String, body: String, sample: Boolean, time: Long, sampleSource: String?): Boolean {
         if (locked() || !allowed(this) || !enabled(this) ||
             (!sample && MainActivity.foregroundChannel != null)) { stopSelf(); return false }
-        val message = if (privateContent()) Message(address, "پیام‌یار", "پیام جدید", sample, time)
-                      else Message(address, name.ifBlank { address }, body, sample, time)
+        val source = if (sample) MessengerSender.fromKey(sampleSource) else MessengerSender.fromAddress(address)
+        val message = if (privateContent()) Message(address, "پیام‌یار", "پیام جدید", sample, time, null)
+                      else Message(address, name.ifBlank { address }, body, sample, time, source)
         if (!sample) {
             messages.remove(address)
             messages[address] = message
@@ -393,8 +396,8 @@ class FloatingNotifications : Service() {
             dp(surfaceFloat("bannerMaxWidth", 360f).coerceIn(280f, 520f).roundToInt()), dp(8))
         val maxHeight = NotificationPolicy.cardHeight(bounds.height(), Int.MAX_VALUE)
         val private = privateContent()
-        val source = if (private) null else MessengerSender.fromAddress(message.address)
-        val accent = if (flag("bannerSourceColors")) source?.color ?: tint() else tint()
+        val source = if (private) null else message.source
+        val accent = if (flag("bannerSourceColors")) source?.selectedColor(settings) ?: tint() else tint()
         val name = if (message.name == message.address && source != null) source.title else message.name
         val phone = message.address.replace(Regex("""[\s()-]"""), "")
         val dialable = !private && !message.sample && Regex("""^\+?[0-9]{7,15}$""").matches(phone)
@@ -425,7 +428,10 @@ class FloatingNotifications : Service() {
         val avatar = if (initial == null) ImageView(this).apply {
             setImageResource(R.drawable.ic_glass_chat)
             scaleType = ImageView.ScaleType.CENTER
-        } else label(initial, 19f, true).apply { gravity = Gravity.CENTER }
+        } else label(initial, 19f, true).apply {
+            gravity = Gravity.CENTER
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 19f)
+        }
         avatar.background = badge
         avatar.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         header.addView(avatar, LinearLayout.LayoutParams(dp(42), dp(42)).apply { marginEnd = dp(9) })
@@ -613,9 +619,11 @@ class FloatingNotifications : Service() {
             wm.addView(window, p)
             card = window
             if (!pinned && !reduce && (Build.VERSION.SDK_INT < 26 || android.animation.ValueAnimator.areAnimatorsEnabled())) {
+                scroll.cameraDistance = 1600f * density
+                scroll.rotationX = if (flag("bannerTop")) -2.5f else 2.5f
                 scroll.alpha = .86f
                 scroll.translationY = dp(if (flag("bannerTop")) -4 else 4).toFloat()
-                scroll.animate().alpha(1f).translationY(0f).setDuration(140L).start()
+                scroll.animate().alpha(1f).translationY(0f).rotationX(0f).setDuration(140L).start()
             }
             if (replying) {
                 val field = replyField

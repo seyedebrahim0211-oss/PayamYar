@@ -251,9 +251,9 @@ class SmsBridge {
     }
   }
 
-  static Future<bool> previewNotification() async {
+  static Future<bool> previewNotification({String? source}) async {
     if (!supported) return false;
-    return await _channel.invokeMethod<bool>('previewNotification') ?? false;
+    return await _channel.invokeMethod<bool>('previewNotification', {'source': source}) ?? false;
   }
 
   /// Re-arms the native birthday alarm after the list changed (see Birthdays.kt).

@@ -52,8 +52,8 @@ class _BannerLayer extends StatefulWidget {
 class _BannerLayerState extends State<_BannerLayer> with SingleTickerProviderStateMixin {
   late final AnimationController _show = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 460),
-    reverseDuration: const Duration(milliseconds: 240),
+    duration: const Duration(milliseconds: 220),
+    reverseDuration: const Duration(milliseconds: 140),
   );
   IncomingBanner? _banner;
   Timer? _timer;
@@ -184,7 +184,8 @@ class _BannerLayerState extends State<_BannerLayer> with SingleTickerProviderSta
     final slide = Tween<Offset>(
       begin: Offset(0, top ? -1.4 : 1.4),
       end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _show, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic));
+    ).chain(CurveTween(curve: Curves.easeOutCubic)).animate(_show);
+    final tilt = Tween<double>(begin: top ? -.04 : .04, end: 0).animate(_show);
     return Stack(
       children: [
         Positioned(
@@ -206,23 +207,33 @@ class _BannerLayerState extends State<_BannerLayer> with SingleTickerProviderSta
                 position: slide,
                 child: FadeTransition(
                   opacity: _show,
-                  child: GestureDetector(
-                    onVerticalDragUpdate: (d) => _dragUpdate(d, top),
-                    onVerticalDragEnd: (d) => _dragEnd(d, top),
-                    child: Transform.translate(
-                      offset: Offset(0, _drag),
-                      child: GlassBannerCard(
-                        key: ValueKey(b),
-                        banner: b,
-                        settings: widget.settings,
-                        onTap: _open,
-                        onClose: _dismiss,
-                        onReply: _reply,
-                        onCopy: _copy,
-                        onTyping: (typing) {
-                          _typing = typing;
-                          _restartTimer();
-                        },
+                  child: AnimatedBuilder(
+                    animation: tilt,
+                    builder: (context, child) => Transform(
+                      alignment: top ? Alignment.topCenter : Alignment.bottomCenter,
+                      transform: Matrix4.identity()
+                        ..setEntry(3, 2, .001)
+                        ..rotateX(tilt.value),
+                      child: child,
+                    ),
+                    child: GestureDetector(
+                      onVerticalDragUpdate: (d) => _dragUpdate(d, top),
+                      onVerticalDragEnd: (d) => _dragEnd(d, top),
+                      child: Transform.translate(
+                        offset: Offset(0, _drag),
+                        child: GlassBannerCard(
+                          key: ValueKey(b),
+                          banner: b,
+                          settings: widget.settings,
+                          onTap: _open,
+                          onClose: _dismiss,
+                          onReply: _reply,
+                          onCopy: _copy,
+                          onTyping: (typing) {
+                            _typing = typing;
+                            _restartTimer();
+                          },
+                        ),
                       ),
                     ),
                   ),
@@ -597,6 +608,7 @@ class _GlassAvatar extends StatelessWidget {
             ? const Icon(Icons.chat_bubble_rounded, color: Colors.white, size: 20)
             : Text(
                 initial,
+                textScaler: TextScaler.noScaling,
                 style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.bold),
               ),
       ),

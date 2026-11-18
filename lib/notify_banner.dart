@@ -34,9 +34,10 @@ class IncomingBanner {
     );
   }
 
-  static IncomingBanner preview() => IncomingBanner(
+  static IncomingBanner preview({String? sender, int? sourceColor}) => IncomingBanner(
         address: 'preview',
-        name: 'پیامیار',
+        name: sender ?? 'پیامیار',
+        sourceColor: sourceColor,
         body: 'سلام! این نمونه اعلان شیشه‌ای پیامیار است. کد آزمایشی: 12345',
         time: DateTime.now(),
         otp: '12345',
