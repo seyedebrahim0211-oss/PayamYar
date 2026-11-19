@@ -425,10 +425,25 @@ class _ComposeScreenState extends State<ComposeScreen> {
         'عزیزانم، $prefix$name مبارک! به امید دیدار.']);
       break;
     }
+    final preferences = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    final favorites = preferences.getStringList('occasionFavorites') ?? <String>[];
+    final draft = body.text.trim();
     final selected = await showModalBottomSheet<String>(context: context,
       builder: (sheet) => SafeArea(child: ListView(shrinkWrap: true, children: [
         ListTile(title: Text(title)),
-        for (final text in choices) ListTile(title: Text(text), onTap: () => Navigator.pop(sheet, text)),
+        for (final (index, text) in choices.indexed) ListTile(
+          subtitle: Text(const ['دوستانه', 'رسمی', 'خانوادگی'][index]),
+          title: Text(text), onTap: () => Navigator.pop(sheet, text)),
+        if (draft.isNotEmpty && !favorites.contains(draft)) ListTile(
+          leading: const Icon(Icons.bookmark_add_outlined), title: const Text('ذخیره متن فعلی در علاقه‌مندی‌ها'),
+          onTap: () async {
+            await preferences.setStringList('occasionFavorites', {...favorites, draft}.toList());
+            if (sheet.mounted) Navigator.pop(sheet);
+          }),
+        if (favorites.isNotEmpty) const ListTile(title: Text('علاقه‌مندی‌ها')),
+        for (final favorite in favorites) ListTile(title: Text(favorite),
+          onTap: () => Navigator.pop(sheet, favorite)),
       ])));
     if (!mounted || selected == null) return;
     final value = body.text.isEmpty ? selected : '${body.text} $selected';
