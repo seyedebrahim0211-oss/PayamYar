@@ -8,6 +8,7 @@ class RiskReport {
   bool get suspicious => score >= 2;
 }
 class MessageRecord {
+  final int simSlot;
   final int? id;
   final bool read;
   final int type;
@@ -16,7 +17,7 @@ class MessageRecord {
   final String body;
   final DateTime date;
   final bool outgoing;
-  const MessageRecord({required this.sender, required this.body, required this.date, this.outgoing = false, this.id, this.read = true, this.type = 1, this.delivery = -1});
+  const MessageRecord({required this.sender, required this.body, required this.date, this.outgoing = false, this.id, this.read = true, this.type = 1, this.delivery = -1, this.simSlot = 0});
 }
 class MessageLogic {
   // Compiled once: category() runs for every message on each inbox rebuild.

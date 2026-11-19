@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../contacts/contacts_data.dart';
 import 'contact_action_card.dart';
@@ -21,7 +22,7 @@ class InteractiveMessageText extends StatelessWidget {
     this.senderName, this.onPhoneMessage});
 
   static final _pattern = RegExp(
-    r'(https?://[^\s<>"،؛]+|(?:\+98|0098|0|\+۹۸|۰۰۹۸|۰|\+٩٨|٠٠٩٨|٠)[9۹٩](?:[0-9۰-۹٠-٩][\s-]?){8}[0-9۰-۹٠-٩])',
+    r'((?:https?://|www\.)[^\s<>"،؛]+|(?:[a-z0-9-]+\.)+(?:ir|com|net|org|io|app)(?![a-z0-9.-])(?:[/\?#][^\s<>"،؛]*)?|(?:\+98|0098|0|\+۹۸|۰۰۹۸|۰|\+٩٨|٠٠٩٨|٠)[9۹٩](?:[0-9۰-۹٠-٩][\s-]?){8}[0-9۰-۹٠-٩])',
     caseSensitive: false);
 
   static String _cleanUrl(String value) => value.replaceFirst(RegExp(r'[.,،؛!?؟]+$'), '');
@@ -33,7 +34,12 @@ class InteractiveMessageText extends StatelessWidget {
     for (final match in _pattern.allMatches(text).take(45)) {
       if (match.start > start) spans.add(TextSpan(text: text.substring(start, match.start)));
       final raw = match.group(0)!;
-      final url = raw.toLowerCase().startsWith('http');
+      final url = raw.contains('.') || raw.contains('://');
+      if (match.start > 0 && text[match.start - 1] == '@' && url) {
+        spans.add(TextSpan(text: raw));
+        start = match.end;
+        continue;
+      }
       final value = url ? _cleanUrl(raw) : raw;
       spans.add(WidgetSpan(alignment: PlaceholderAlignment.baseline, baseline: TextBaseline.alphabetic,
         child: InkWell(
@@ -44,24 +50,35 @@ class InteractiveMessageText extends StatelessWidget {
                 onMessage: onPhoneMessage == null ? null : () => onPhoneMessage!(phoneKey(value)));
               return;
             }
-            final uri = Uri.tryParse(value);
+            final uri = Uri.tryParse(value.contains('://') ? value : 'https://$value');
             if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https') ||
                 uri.host.isEmpty || !context.mounted) { return; }
             final proceed = await showDialog<bool>(context: context, builder: (d) => AlertDialog(
               title: const Text('باز کردن لینک'),
-              content: SelectableText('آدرس مقصد:\n${uri.toString()}\n\nلینک‌های ناشناس ممکن است فیشینگ باشند.'),
+              content: SingleChildScrollView(child: SelectableText(uri.toString(), textDirection: TextDirection.ltr)),
               actions: [
                 TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('انصراف')),
-                FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('باز کردن')),
+                TextButton(onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: uri.toString()));
+                  if (d.mounted) Navigator.pop(d, false);
+                }, child: const Text('کپی آدرس')),
+                FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('باز کردن در مرورگر')),
               ],
             ));
-            if (proceed == true) await launchUrl(uri, mode: LaunchMode.externalApplication);
+            if (proceed != true) return;
+            try {
+              if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
+            } catch (_) {
+              // Android may have no enabled activity for this web address.
+            }
+            if (context.mounted) { ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('مرورگر باز نشد. آدرس را از کارت لینک کپی کنید.'))); }
           },
           child: url
-            ? Text(value, textDirection: TextDirection.ltr,
+            ? Chip(avatar: const Icon(Icons.open_in_browser, size: 16), label: Text(value, maxLines: 2, overflow: TextOverflow.ellipsis, textDirection: TextDirection.ltr,
                 style: (style ?? DefaultTextStyle.of(context).style).copyWith(
                   color: Theme.of(context).colorScheme.primary,
-                  fontWeight: FontWeight.w800, decoration: TextDecoration.underline))
+                  fontWeight: FontWeight.w800, decoration: TextDecoration.underline)))
             : FutureBuilder<String?>(
                 future: ContactNameLookup.resolve(phoneKey(value)),
                 builder: (ctx, result) {

@@ -7,9 +7,14 @@ class SmartAssistant {
 
   /// Up to three short replies for the latest incoming personal message.
   /// [now] picks greetings suited to the time of day.
-  static List<String> suggestReplies(String incoming, {DateTime? now}) {
+  static List<String> suggestReplies(String incoming, {DateTime? now, int tone = 0}) {
     final v = _norm(incoming);
     if (v.isEmpty) return const [];
+    if (_any(v, ['یک بارمصرف', 'یک بار مصرف', 'یکبارمصرف', 'مانده حساب', 'لغو ۱۱', 'لغو 11'])) return const [];
+    final arrival = RegExp(r'ساعت\s+([۰-۹0-9:٫]+|یک|دو|سه|چهار|پنج|شش|هفت|هشت|نه|ده)\s+می\s*رسی').firstMatch(v);
+    if (arrival != null) {
+      return ['بله، ساعت ${arrival.group(1)} می‌رسم', 'کمی دیرتر می‌رسم', tone == 1 ? 'زمان دقیق را اطلاع می‌دهم' : 'هنوز قطعی نیست، خبر می‌دم'];
+    }
     final hour = (now ?? DateTime.now()).hour;
 
     // Verification codes and money requests are never answered by suggestion.
@@ -27,6 +32,8 @@ class SmartAssistant {
       return const ['عید شما هم مبارک 🌷', 'سال خوبی داشته باشید', 'ممنون، همچنین'];
     }
     if (_any(v, ['ممنون', 'مرسی', 'تشکر', 'سپاس', 'دستت درد نکنه'])) {
+      if (tone == 2) return const ['خواهش می‌کنم', 'خوشحالم که کمک کرد', 'قابلی نداشت'];
+      if (tone == 1) return const ['خواهش می‌کنم', 'خوشحالم که مفید بود', 'از لطف شما ممنونم'];
       return const ['خواهش می‌کنم 🌹', 'لطف دارید', 'انجام وظیفه بود'];
     }
     if (_any(v, ['ببخشید', 'عذر میخوام', 'عذرخواهی', 'شرمنده'])) {

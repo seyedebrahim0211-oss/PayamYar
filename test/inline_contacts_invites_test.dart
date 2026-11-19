@@ -5,6 +5,16 @@ import 'package:payamyar/screens/invite_friends_screen.dart';
 import 'package:payamyar/screens/message_interactions.dart';
 
 void main() {
+  testWidgets('bare domain opens a card with the HTTPS destination', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: Scaffold(
+      body: InteractiveMessageText(text: 'سایت example.ir/page?id=1، امروز'))));
+    await tester.tap(find.text('example.ir/page?id=1'));
+    await tester.pumpAndSettle();
+    expect(find.text('https://example.ir/page?id=1'), findsOneWidget);
+    expect(find.text('باز کردن در مرورگر'), findsOneWidget);
+    expect(find.text('کپی آدرس'), findsOneWidget);
+  });
+
   testWidgets('phone number in an SMS opens action card without sending', (tester) async {
     await tester.pumpWidget(const MaterialApp(
       home: Scaffold(body: Center(

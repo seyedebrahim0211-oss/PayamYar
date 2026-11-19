@@ -67,6 +67,7 @@ class AppSettings extends ChangeNotifier {
   bool enterToSend = false;
   bool signatureEnabled = false;
   String signature = '';
+  int replyTone = 0;
   bool smartReplies = true;
   /// App-side recipient selection capacity, not an operator sending allowance.
   /// For >500, the user must explicitly opt in; all SMS remain subject to carrier policy.
@@ -88,6 +89,7 @@ class AppSettings extends ChangeNotifier {
   double bannerShine = .55;
   double bannerCorner = 26;
   double bannerOpacity = .9;
+  bool swipeRightRead = true;
   bool bannerTop = true;
   int bannerSeconds = 6;
   bool bannerCompact = false;
@@ -161,6 +163,7 @@ class AppSettings extends ChangeNotifier {
     enterToSend = p.getBool('enterToSend') ?? false;
     signatureEnabled = p.getBool('signatureEnabled') ?? false;
     signature = p.getString('signature') ?? '';
+    replyTone = (p.getInt('replyTone') ?? 0).clamp(0, 2).toInt();
     smartReplies = p.getBool('smartReplies') ?? true;
     recipientCapacity = _capacity(p.getInt('recipientCapacity') ?? 500);
     swipeTabs = p.getBool('swipeTabs') ?? true;
@@ -180,6 +183,7 @@ class AppSettings extends ChangeNotifier {
     bannerShine = (p.getDouble('bannerShine') ?? .55).clamp(0, 1).toDouble();
     bannerCorner = (p.getDouble('bannerCorner') ?? 26).clamp(16, 36).toDouble();
     bannerOpacity = (p.getDouble('bannerOpacity') ?? .9).clamp(.78, 1).toDouble();
+    swipeRightRead = p.getBool('swipeRightRead') ?? true;
     bannerTop = p.getBool('bannerTop') ?? true;
     bannerSeconds = (p.getInt('bannerSeconds') ?? 6).clamp(2, 15).toInt();
     bannerCompact = false; // Legacy flag. The card always starts folded and can expand.
@@ -209,7 +213,7 @@ class AppSettings extends ChangeNotifier {
   Future<void> update({int? palette, ThemeMode? mode, bool? autoNight, int? nightStart, int? nightEnd, double? scale, int? fontChoice,
       bool? hidePreview, bool? notifyPreview, bool? notifyIncoming, bool? notifySent,
       bool? sendDelayEnabled, int? sendDelaySeconds, SentFeedback? sentFeedback, bool? enterToSend,
-      bool? signatureEnabled, String? signature, bool? smartReplies, int? recipientCapacity,
+      bool? signatureEnabled, String? signature, bool? smartReplies, int? replyTone, int? recipientCapacity,
        bool? swipeTabs, bool? reduceEffects, ChatStyle? chatStyle,
       double? bubbleText, bool? quietHours, int? quietStart, int? quietEnd}) async {
     this.palette = palette ?? this.palette;
@@ -229,6 +233,7 @@ class AppSettings extends ChangeNotifier {
     this.enterToSend = enterToSend ?? this.enterToSend;
     this.signatureEnabled = signatureEnabled ?? this.signatureEnabled;
     this.signature = (signature ?? this.signature).trim();
+    this.replyTone = (replyTone ?? this.replyTone).clamp(0, 2).toInt();
     this.smartReplies = smartReplies ?? this.smartReplies;
     this.recipientCapacity = _capacity(recipientCapacity ?? this.recipientCapacity);
     this.swipeTabs = swipeTabs ?? this.swipeTabs;
@@ -265,6 +270,7 @@ class AppSettings extends ChangeNotifier {
     await p.setBool('enterToSend', enterToSend);
     await p.setBool('signatureEnabled', signatureEnabled);
     await p.setString('signature', signature);
+    await p.setInt('replyTone', replyTone);
     await p.setBool('smartReplies', smartReplies);
     await p.setInt('recipientCapacity', recipientCapacity);
     await p.setBool('swipeTabs', swipeTabs);
@@ -277,7 +283,7 @@ class AppSettings extends ChangeNotifier {
   /// Notification look; separate from [update] to keep that signature readable.
   Future<void> updateNotify({bool? notifyInApp, BannerStyle? bannerStyle, int? bannerTint, double? bannerHue, double? bannerBlur,
       double? bannerEdge, double? bannerShine, double? bannerCorner,
-      double? bannerOpacity, bool? bannerTop, int? bannerSeconds, bool? bannerCompact,
+      double? bannerOpacity, bool? bannerTop, bool? swipeRightRead, int? bannerSeconds, bool? bannerCompact,
       double? bannerMaxWidth, bool? bannerBubbles, bool? bannerSourceColors, Map<String, int>? bannerSenderTints, bool? notifyGlassAvatar,
       int? notifyAvatarShape, bool? notifyBubbles, bool? notifyQuickReply, bool? notifyOtpCopy,
       BannerActionSize? bannerActionSize, bool? bannerActionIcons, bool? bannerActionCode,
@@ -292,6 +298,7 @@ class AppSettings extends ChangeNotifier {
     this.bannerCorner = (bannerCorner ?? this.bannerCorner).clamp(16, 36).toDouble();
     this.bannerBlur = (bannerBlur ?? this.bannerBlur).clamp(0, 30).toDouble();
     this.bannerOpacity = (bannerOpacity ?? this.bannerOpacity).clamp(.78, 1).toDouble();
+    this.swipeRightRead = swipeRightRead ?? this.swipeRightRead;
     this.bannerTop = bannerTop ?? this.bannerTop;
     this.bannerSeconds = (bannerSeconds ?? this.bannerSeconds).clamp(2, 15).toInt();
     this.bannerCompact = false;
@@ -344,7 +351,7 @@ class AppSettings extends ChangeNotifier {
   Map<String, Object> notifyJson() => {
     'notifyInApp': notifyInApp, 'bannerStyle': bannerStyle.index, 'bannerTint': bannerTint,
     'bannerHue': bannerHue, 'bannerEdge': bannerEdge, 'bannerShine': bannerShine, 'bannerCorner': bannerCorner,
-    'bannerBlur': bannerBlur, 'bannerOpacity': bannerOpacity, 'bannerTop': bannerTop,
+    'bannerBlur': bannerBlur, 'bannerOpacity': bannerOpacity, 'bannerTop': bannerTop, 'swipeRightRead': swipeRightRead,
     'bannerSeconds': bannerSeconds, 'bannerCompact': bannerCompact,
     'bannerMaxWidth': bannerMaxWidth, 'bannerBubbles': bannerBubbles, 'bannerSourceColors': bannerSourceColors,
     'bannerSenderTints': jsonEncode(bannerSenderTints), 'notifyGlassAvatar': notifyGlassAvatar,
@@ -354,6 +361,8 @@ class AppSettings extends ChangeNotifier {
     'bannerActionCode': bannerActionCode, 'notifyOpen': notifyOpen, 'notifyDismiss': notifyDismiss,
     'notifyMarkRead': notifyMarkRead, 'notifyCall': notifyCall,
   };
+
+  Future<void> resetNotificationStyle() => _restoreNotify(AppSettings().notifyJson());
 
   Future<void> _restoreNotify(Map<String, dynamic> j) async {
     bool? b(String k) => j[k] is bool ? j[k] as bool : null;
@@ -366,7 +375,7 @@ class AppSettings extends ChangeNotifier {
       bannerStyle: style == null ? null : BannerStyle.values[style.clamp(0, BannerStyle.values.length - 1).toInt()],
       bannerTint: i('bannerTint'), bannerHue: d('bannerHue'), bannerBlur: d('bannerBlur'),
       bannerEdge: d('bannerEdge'), bannerShine: d('bannerShine'), bannerCorner: d('bannerCorner'), bannerOpacity: d('bannerOpacity'),
-      bannerTop: b('bannerTop'), bannerSeconds: i('bannerSeconds'),
+      bannerTop: b('bannerTop'), swipeRightRead: b('swipeRightRead'), bannerSeconds: i('bannerSeconds'),
       bannerCompact: b('bannerCompact'), bannerMaxWidth: d('bannerMaxWidth'),
       bannerBubbles: b('bannerBubbles'), bannerSourceColors: b('bannerSourceColors'),
       bannerSenderTints: j.containsKey('bannerSenderTints') ? _senderTints(j['bannerSenderTints']) : null,
@@ -393,7 +402,7 @@ class AppSettings extends ChangeNotifier {
     'privatePreview': hidePreview, 'notifyPreview': notifyPreview, 'notifyIncoming': notifyIncoming,
     'notifySent': notifySent, 'sentFeedback': sentFeedback.index, 'sendDelayEnabled': sendDelayEnabled,
     'sendDelaySeconds': sendDelaySeconds, 'enterToSend': enterToSend, 'signatureEnabled': signatureEnabled,
-    'signature': signature, 'smartReplies': smartReplies, 'recipientCapacity': recipientCapacity, 'swipeTabs': swipeTabs,
+    'signature': signature, 'smartReplies': smartReplies, 'replyTone': replyTone, 'recipientCapacity': recipientCapacity, 'swipeTabs': swipeTabs,
      'reduceEffects': reduceEffects, 'chatStyle': chatStyle.index,
     'bubbleText': bubbleText, 'quietHours': quietHours, 'quietStart': quietStart, 'quietEnd': quietEnd,
     ...notifyJson(),
@@ -415,7 +424,7 @@ class AppSettings extends ChangeNotifier {
           : SentFeedback.values[i('sentFeedback')!.clamp(0, SentFeedback.values.length - 1).toInt()],
       sendDelayEnabled: v<bool>('sendDelayEnabled'), sendDelaySeconds: i('sendDelaySeconds'),
       enterToSend: v<bool>('enterToSend'), signatureEnabled: v<bool>('signatureEnabled'),
-      signature: v<String>('signature'), smartReplies: v<bool>('smartReplies'),
+      signature: v<String>('signature'), smartReplies: v<bool>('smartReplies'), replyTone: v<int>('replyTone'),
        recipientCapacity: i('recipientCapacity'), swipeTabs: v<bool>('swipeTabs'),
        reduceEffects: v<bool>('reduceEffects'),
       chatStyle: i('chatStyle') == null ? null

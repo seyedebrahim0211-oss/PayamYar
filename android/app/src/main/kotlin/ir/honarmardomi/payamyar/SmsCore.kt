@@ -22,11 +22,17 @@ object SmsCore {
         check(isDefault(c)) { "برای دسترسی به پیامک، پیام‌یار را پیامک‌رسان پیش‌فرض انتخاب کنید." }
     }
     fun status(c: Context, id: String): String = prefs(c).getString("status:$id", "unknown") ?: "unknown"
-    private val COLUMNS = arrayOf("_id", "address", "body", "date", "type", "read", "status")
+    private val COLUMNS = arrayOf("_id", "address", "body", "date", "type", "read", "status", "sub_id")
     private const val ORDER = "date DESC, _id DESC"
 
     /** Reads up to [limit] rows from the cursor as compact columns (typed arrays cross to Dart far faster than maps). */
-    private fun chunk(cur: android.database.Cursor, limit: Int): Map<String, Any> {
+    private fun simSlots(c: Context): Map<Int, Int> = try {
+        c.getSystemService(SubscriptionManager::class.java).activeSubscriptionInfoList.orEmpty()
+            .filter { it.simSlotIndex >= 0 }.associate { it.subscriptionId to it.simSlotIndex + 1 }
+    } catch (_: SecurityException) { emptyMap() }
+
+    private fun chunk(cur: android.database.Cursor, limit: Int, slots: Map<Int, Int> = emptyMap()): Map<String, Any> {
+        val sim = IntArray(limit)
         val ids = LongArray(limit); val dates = LongArray(limit)
         val types = IntArray(limit); val reads = IntArray(limit); val status = IntArray(limit)
         val senders = ArrayList<String?>(limit); val bodies = ArrayList<String?>(limit)
@@ -34,10 +40,11 @@ object SmsCore {
         while (n < limit && cur.moveToNext()) {
             ids[n] = cur.getLong(0); senders.add(cur.getString(1)); bodies.add(cur.getString(2))
             dates[n] = cur.getLong(3); types[n] = cur.getInt(4); reads[n] = cur.getInt(5); status[n] = cur.getInt(6)
+            sim[n] = if (cur.isNull(7)) 0 else slots[cur.getInt(7)] ?: 0
             n++
         }
         return mapOf("n" to n, "ids" to ids.copyOf(n), "dates" to dates.copyOf(n), "types" to types.copyOf(n),
-            "reads" to reads.copyOf(n), "status" to status.copyOf(n), "senders" to senders, "bodies" to bodies)
+            "slots" to sim.copyOf(n), "reads" to reads.copyOf(n), "status" to status.copyOf(n), "senders" to senders, "bodies" to bodies)
     }
 
     /** Newest [limit] messages; used for quick refreshes after a change. */
@@ -45,7 +52,7 @@ object SmsCore {
         requireDefault(c)
         drainIncoming(c)
         c.contentResolver.query(Telephony.Sms.CONTENT_URI, COLUMNS, null, null, ORDER)?.use { cur ->
-            return chunk(cur, limit.coerceIn(1, 5000))
+            return chunk(cur, limit.coerceIn(1, 5000), simSlots(c))
         }
         return chunk(android.database.MatrixCursor(COLUMNS), 1)
     }
@@ -56,10 +63,11 @@ object SmsCore {
         drainIncoming(c)
         var total = 0
         c.contentResolver.query(Telephony.Sms.CONTENT_URI, COLUMNS, null, null, ORDER)?.use { cur ->
+            val slots = simSlots(c)
             var size = 150
             while (true) {
                 requireDefault(c)
-                val page = chunk(cur, size)
+                val page = chunk(cur, size, slots)
                 val n = page["n"] as Int
                 if (n > 0) { total += n; emit(page) }
                 if (n < size) break
@@ -70,10 +78,10 @@ object SmsCore {
     }
 
     /** Marks every unread incoming message from this sender as read (notification "خوانده شد" action). */
-    fun markAddressRead(c: Context, address: String): Int {
+    fun markAddressRead(c: Context, address: String, through: Long = Long.MAX_VALUE): Int {
         if (!isDefault(c)) return 0
         return c.contentResolver.update(Telephony.Sms.Inbox.CONTENT_URI,
-            ContentValues().apply { put("read", 1); put("seen", 1) }, "address = ? AND read = 0", arrayOf(address))
+            ContentValues().apply { put("read", 1); put("seen", 1) }, "address = ? AND read = 0 AND date <= ?", arrayOf(address, through.toString()))
     }
     fun subscriptions(c: Context): List<Map<String, Any>> {
         val result = mutableListOf<Map<String, Any>>(mapOf("id" to -1, "label" to "سیم‌کارت پیش‌فرض"))
@@ -111,7 +119,7 @@ object SmsCore {
     @Synchronized fun queue(c: Context, address: String, body: String, sim: Int, delayMs: Long = 5000): String {
         requireDefault(c)
         require(delayMs in 0L..(30L * 24 * 60 * 60 * 1000)) { "زمان ارسال باید حداکثر ۳۰ روز آینده باشد." }
-        val to = address.replace(Regex("[\\s()-]"), "")
+        val to = address.map { it.digitToIntOrNull()?.digitToChar() ?: it }.joinToString("").replace(Regex("[\\s()-]"), "")
         require(Regex("^\\+?[0-9]{3,15}$").matches(to)) { "شماره گیرنده معتبر نیست." }
         require(body.isNotBlank() && body.length <= 2000) { "متن باید بین ۱ تا ۲۰۰۰ نویسه باشد." }
         check(ContextCompat.checkSelfPermission(c, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) { "مجوز ارسال پیامک لازم است." }
@@ -120,7 +128,7 @@ object SmsCore {
         val item = JSONObject().put("to", to).put("body", body).put("sim", subscriptionId)
             .put("due", System.currentTimeMillis() + delayMs).put("scheduled", delayMs > 10000)
         check(prefs(c).edit().putString("queue:$id", SecureVault.encryptQueue(item.toString())).putString("status:$id", "queued").commit())
-        if (delayMs > 0) arm(c, id, item.getLong("due"))
+        arm(c, id, item.getLong("due"))
         return id
     }
     private fun alarmIntent(c: Context, id: String) = PendingIntent.getBroadcast(c, 0,
@@ -347,7 +355,7 @@ object SmsCore {
         val item = JSONObject().put("address", parts[0].originatingAddress ?: "ناشناس")
             .put("body", parts.joinToString("") { it.messageBody ?: "" })
             .put("sent", parts[0].timestampMillis).put("received", System.currentTimeMillis())
-            .put("sim", intent.getIntExtra("subscription", -1))
+            .put("sim", intent.getIntExtra("android.telephony.extra.SUBSCRIPTION_INDEX", intent.getIntExtra("subscription", -1)))
         val dir = incomingDir(c).apply { mkdirs() }
         val file = android.util.AtomicFile(java.io.File(dir, "${UUID.randomUUID()}.json"))
         val output = file.startWrite()

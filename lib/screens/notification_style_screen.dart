@@ -231,6 +231,9 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                     label: const Text('آزمایش اعلان روی گوشی'),
                   )),
                 const SizedBox(height: 16),
+                Align(alignment: AlignmentDirectional.centerStart, child: TextButton.icon(
+                  icon: const Icon(Icons.restart_alt), label: const Text('بازگردانی ظاهر کارت به پیش‌فرض'),
+                  onPressed: s.resetNotificationStyle)),
                 _ActionSettings(settings: s),
                 SettingsGroup(title: 'حباب کنار صفحه و اعلان شناور', children: [
                   SwitchListTile(
@@ -242,7 +245,7 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                     value: _floating['enabled'] == true,
                     onChanged: !SmsBridge.supported || _floatingBusy ? null : _toggleFloating,
                   ),
-                  if (_floating['enabled'] == true) ExpansionTile(
+                  ExpansionTile(
                     title: const Text('تنظیمات حباب و اندازهٔ متن'),
                     children: [
                     ListTile(
@@ -273,7 +276,7 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                     ),
                     ListTile(
                       title: const Text('جنس حباب'),
-                      trailing: SegmentedButton<int>(
+                      subtitle: SegmentedButton<int>(
                         showSelectedIcon: false,
                         segments: const [
                           ButtonSegment(value: 0, label: Text('شیشه‌ای')),
@@ -288,7 +291,7 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                     ),
                     ListTile(
                       title: const Text('شکل حباب'),
-                      trailing: SegmentedButton<int>(
+                      subtitle: SegmentedButton<int>(
                         showSelectedIcon: false,
                         segments: const [
                           ButtonSegment(value: 0, label: Text('دایره')),
@@ -458,7 +461,7 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                   ListTile(
                     leading: Icon(Icons.vertical_align_center_rounded, color: scheme.primary),
                     title: const Text('محل نمایش'),
-                    trailing: SegmentedButton<bool>(
+                    subtitle: SegmentedButton<bool>(
                       showSelectedIcon: false,
                       segments: const [
                         ButtonSegment(value: true, label: Text('بالا')),
@@ -578,6 +581,8 @@ class _ActionSettings extends StatelessWidget {
       if (s.notifyOtpCopy)
         SwitchListTile(title: const Text('نمایش عدد روی دکمهٔ کپی'),
             value: s.bannerActionCode, onChanged: (v) => s.updateNotify(bannerActionCode: v)),
+      SwitchListTile(title: const Text('خواندن پیام با کشیدن کارت شناور به راست'),
+          value: s.swipeRightRead, onChanged: (v) => s.updateNotify(swipeRightRead: v)),
       ExpansionTile(title: const Text('دکمه‌های دیگر'), children: [
         SwitchListTile(title: const Text('گفتگو'), value: s.notifyOpen,
             onChanged: (v) => s.updateNotify(notifyOpen: v)),
