@@ -37,6 +37,10 @@ void main() {
       bannerStyle: BannerStyle.vivid,
       bannerCompact: true,
       notifyBubbles: true,
+      bannerActionSize: BannerActionSize.large,
+      bannerActionIcons: false,
+      bannerActionCode: true,
+      notifyOpen: false, notifyDismiss: false, notifyCall: false, notifyMarkRead: false,
     );
     final next = AppSettings();
     await next.load();
@@ -50,6 +54,13 @@ void main() {
     expect(next.bannerShine, .7);
     expect(next.bannerCorner, 32);
     expect(next.bannerOpacity, .93);
+    expect(next.bannerActionSize, BannerActionSize.large);
+    expect(next.bannerActionIcons, isFalse);
+    expect(next.bannerActionCode, isTrue);
+    expect([next.notifyOpen, next.notifyDismiss, next.notifyCall, next.notifyMarkRead], everyElement(isFalse));
+    final restored = AppSettings();
+    await restored.restore(next.toJson());
+    expect(restored.notifyJson(), next.notifyJson());
   });
   testWidgets('compact OTP is actionable and reply controls appear on demand', (tester) async {
     final settings = AppSettings()..reduceEffects = true;
@@ -71,7 +82,12 @@ void main() {
     expect(tester.widget<Text>(find.text(banner.body)).maxLines, 2);
     expect(find.text('پاسخ'), findsNothing);
     expect(find.byType(TextField), findsNothing);
-    await tester.tap(find.text('کپی کد ۱۲۳۴۵'));
+    final copy = find.text('کپی کد');
+    final button = find.ancestor(of: copy, matching: find.byType(TextButton));
+    final face = find.descendant(of: button, matching: find.byType(Material));
+    expect(tester.getSize(button).height, greaterThanOrEqualTo(48));
+    expect(tester.getSize(face).height, lessThan(36));
+    await tester.tap(copy);
     expect(copied, '12345');
     await tester.tap(find.byTooltip('نمایش متن کامل'));
     await tester.pump();
@@ -80,6 +96,30 @@ void main() {
     await tester.tap(find.text('پاسخ'));
     await tester.pump();
     expect(find.byType(TextField), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('an eight-digit OTP stays intact or uses the short label as space changes', (tester) async {
+    final settings = AppSettings()..bannerActionCode = true;
+    final banner = IncomingBanner(address: 'test', name: 'بانک', body: 'کد ورود', time: DateTime(2026), otp: '12345678');
+    String? copied;
+    Future<void> layout(double width, double scale) async {
+      await tester.pumpWidget(MaterialApp(home: MediaQuery(
+        data: MediaQueryData(size: const Size(400, 800), textScaler: TextScaler.linear(scale)),
+        child: Align(child: SizedBox(width: width, child: GlassBannerCard(
+          banner: banner, settings: settings, onCopy: (value) => copied = value))),
+      )));
+    }
+    await layout(360, 1);
+    expect(find.text('کپی کد ۱۲۳۴۵۶۷۸'), findsOneWidget);
+    settings.bannerActionSize = BannerActionSize.large;
+    settings.bannerActionIcons = false;
+    await layout(200, 2);
+    final compact = find.text('کپی کد');
+    expect(tester.widget<Text>(compact).maxLines, 1);
+    expect(find.byIcon(Icons.copy_rounded), findsNothing);
+    await tester.tap(compact);
+    expect(copied, '12345678');
     expect(tester.takeException(), isNull);
   });
 

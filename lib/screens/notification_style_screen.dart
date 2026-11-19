@@ -231,6 +231,7 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                     label: const Text('آزمایش اعلان روی گوشی'),
                   )),
                 const SizedBox(height: 16),
+                _ActionSettings(settings: s),
                 SettingsGroup(title: 'حباب کنار صفحه و اعلان شناور', children: [
                   SwitchListTile(
                     title: const Text('حباب و کارت شیشه‌ای مستقل'),
@@ -491,33 +492,22 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                   SwitchListTile(
                     secondary: Icon(Icons.auto_awesome_outlined, color: scheme.primary),
                     title: const Text('تصویر شیشه‌ای فرستنده'),
-                    subtitle: const Text('درخشش، حلقه رنگی و حباب روی عکس مخاطب'),
+                    subtitle: const Text('یک حاشیهٔ نازک و روشن دور عکس مخاطب'),
                     value: s.notifyGlassAvatar,
                     onChanged: (v) => s.updateNotify(notifyGlassAvatar: v),
                   ),
-                  ListTile(
-                    leading: Icon(Icons.crop_square_rounded, color: scheme.primary),
-                    title: const Text('شکل تصویر'),
-                    trailing: SegmentedButton<int>(
-                      showSelectedIcon: false,
-                      segments: const [
-                        ButtonSegment(value: 0, label: Text('دایره')),
-                        ButtonSegment(value: 1, label: Text('چهارگوش نرم')),
-                      ],
-                      selected: {s.notifyAvatarShape},
-                      onSelectionChanged: (v) => s.updateNotify(notifyAvatarShape: v.first),
-                    ),
-                  ),
+                  const ListTile(leading: Icon(Icons.portrait_outlined), title: Text('شکل عکس مخاطب')),
+                  Padding(padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Wrap(spacing: 8, runSpacing: 4, children: [
+                      ChoiceChip(label: const Text('دایره'), selected: s.notifyAvatarShape == 0,
+                          onSelected: (_) => s.updateNotify(notifyAvatarShape: 0)),
+                      ChoiceChip(label: const Text('چهارگوش نرم'), selected: s.notifyAvatarShape == 1,
+                          onSelected: (_) => s.updateNotify(notifyAvatarShape: 1)),
+                    ])),
                   const ListTile(
                     leading: Icon(Icons.web_asset_rounded),
                     title: Text('نمایش سازگار با گوشی'),
                     subtitle: Text('بدون اجازه شناور، اعلان استاندارد اندروید نمایش داده می‌شود. حباب و کارت شناور روی صفحه قفل پنهان می‌شوند؛ با قفل برنامه، متن و کد تأیید نمایش داده نمی‌شوند.'),
-                  ),
-                  SwitchListTile(
-                    secondary: Icon(Icons.pin_outlined, color: scheme.primary),
-                    title: const Text('دکمه کپی کد تأیید'),
-                    value: s.notifyOtpCopy,
-                    onChanged: (v) => s.updateNotify(notifyOtpCopy: v),
                   ),
                 ]),
                 SettingsGroup(title: 'پاسخ سریع', children: [
@@ -562,6 +552,44 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
           },
         ),
       );
+}
+
+class _ActionSettings extends StatelessWidget {
+  final AppSettings settings;
+  const _ActionSettings({required this.settings});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = settings;
+    return SettingsGroup(title: 'دکمه‌های کارت اعلان', children: [
+      const ListTile(leading: Icon(Icons.tune_rounded), title: Text('اندازهٔ دکمه‌ها')),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Wrap(spacing: 8, runSpacing: 4, children: [
+          for (final size in BannerActionSize.values)
+            ChoiceChip(label: Text(size.title), selected: size == s.bannerActionSize,
+                onSelected: (_) => s.updateNotify(bannerActionSize: size)),
+        ]),
+      ),
+      SwitchListTile(title: const Text('نمایش آیکون کنار عنوان'),
+          value: s.bannerActionIcons, onChanged: (v) => s.updateNotify(bannerActionIcons: v)),
+      SwitchListTile(title: const Text('دکمهٔ کپی کد تأیید'),
+          value: s.notifyOtpCopy, onChanged: (v) => s.updateNotify(notifyOtpCopy: v)),
+      if (s.notifyOtpCopy)
+        SwitchListTile(title: const Text('نمایش عدد روی دکمهٔ کپی'),
+            value: s.bannerActionCode, onChanged: (v) => s.updateNotify(bannerActionCode: v)),
+      ExpansionTile(title: const Text('دکمه‌های دیگر'), children: [
+        SwitchListTile(title: const Text('گفتگو'), value: s.notifyOpen,
+            onChanged: (v) => s.updateNotify(notifyOpen: v)),
+        SwitchListTile(title: const Text('بستن کارت'), value: s.notifyDismiss,
+            onChanged: (v) => s.updateNotify(notifyDismiss: v)),
+        SwitchListTile(title: const Text('خوانده شد در اعلان اندروید'), value: s.notifyMarkRead,
+            onChanged: (v) => s.updateNotify(notifyMarkRead: v)),
+        SwitchListTile(title: const Text('تماس در کارت شناور'), value: s.notifyCall,
+            onChanged: (v) => s.updateNotify(notifyCall: v)),
+      ]),
+    ]);
+  }
 }
 
 /// Colourful backdrop so the frosted glass can actually be seen in the preview.

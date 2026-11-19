@@ -6,6 +6,7 @@ import android.content.res.Configuration
 import android.content.pm.ServiceInfo
 import android.graphics.*
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.RippleDrawable
 import android.content.res.ColorStateList
 import android.text.TextUtils
@@ -354,22 +355,8 @@ class FloatingNotifications : Service() {
         includeFontPadding = false
         typeface = if (bold) boldCardFont else cardFont
     }
-    private fun button(text: String, icon: Int = 0, action: () -> Unit) = label(text, 13f, true).apply {
-        minHeight = dp(48)
-        gravity = Gravity.CENTER
-        maxLines = 2
-        ellipsize = TextUtils.TruncateAt.END
-        setPadding(dp(12), dp(4), dp(12), dp(4))
-        background = RippleDrawable(ColorStateList.valueOf(0x32FFFFFF), GradientDrawable().apply {
-            cornerRadius = dp(24).toFloat()
-            setColor(0x28FFFFFF)
-            setStroke(dp(1), 0x66FFFFFF)
-        }, null)
-        if (icon != 0) {
-            setCompoundDrawablesRelativeWithIntrinsicBounds(icon, 0, 0, 0)
-            compoundDrawablePadding = dp(6)
-        }
-        setOnClickListener { action() }
+    private enum class ActionSize(val font: Float, val icon: Int, val padding: Int, val inset: Int) {
+        COMPACT(12f, 14, 8, 11), REGULAR(13f, 16, 10, 8), LARGE(15f, 18, 12, 5)
     }
     /** Fit actions at their measured text size, wrapping before the edge in RTL. */
     private fun addActionRows(parent: LinearLayout, chips: List<View>, available: Int) {
@@ -380,12 +367,12 @@ class FloatingNotifications : Service() {
             chip.measure(View.MeasureSpec.makeMeasureSpec(limit, View.MeasureSpec.AT_MOST),
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
             val width = chip.measuredWidth.coerceAtMost(limit)
-            if (row == null || used + dp(6) + width > limit) {
+            if (row == null || used + dp(4) + width > limit) {
                 row = LinearLayout(this).apply { gravity = Gravity.RIGHT; layoutDirection = View.LAYOUT_DIRECTION_RTL }
-                parent.addView(row, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+                parent.addView(row, LinearLayout.LayoutParams(-1, -2))
                 used = 0
             }
-            val gap = if (used == 0) 0 else dp(6)
+            val gap = if (used == 0) 0 else dp(4)
             row.addView(chip, LinearLayout.LayoutParams(width, -2).apply { marginStart = gap })
             used += gap + width
         }
@@ -426,7 +413,7 @@ class FloatingNotifications : Service() {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutDirection = View.LAYOUT_DIRECTION_RTL
-            setPadding(dp(18), dp(12), dp(18), dp(12))
+            setPadding(dp(15), dp(9), dp(15), dp(9))
         }
         val header = LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL
@@ -474,10 +461,44 @@ class FloatingNotifications : Service() {
         layout.setOnClickListener { open(if (private || message.sample) null else message.address) }
         val actions = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val chips = mutableListOf<View>()
+        val actionWidth = (width - dp(8) - layout.paddingLeft - layout.paddingRight).coerceAtLeast(1)
+        val size = ActionSize.values()[number("bannerActionSize", 0).coerceIn(0, 2).toInt()]
+        val icons = flag("bannerActionIcons")
+        fun button(title: String, icon: Int = 0, shortLabel: String? = null, action: () -> Unit) =
+            label(title, size.font, true).apply {
+                layoutDirection = View.LAYOUT_DIRECTION_RTL
+                gravity = Gravity.CENTER
+                minWidth = dp(48)
+                minHeight = dp(48)
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+                val primary = shortLabel != null
+                val fill = GradientDrawable().apply {
+                    cornerRadius = dp(48).toFloat()
+                    setColor(if (primary) 0x30FFFFFF else 0x19FFFFFF)
+                    setStroke(dp(1), if (primary) 0x72FFFFFF else 0x44FFFFFF)
+                }
+                // The painted pill is 26/32/38 dp at normal type. The entire 48 dp view is clickable.
+                val inset = dp(size.inset)
+                background = InsetDrawable(RippleDrawable(ColorStateList.valueOf(0x32FFFFFF), fill, null),
+                    0, inset, 0, inset)
+                setPadding(dp(size.padding), inset + dp(2), dp(size.padding), inset + dp(2))
+                if (icons && icon != 0 && actionWidth >= dp(size.padding * 2 + size.icon + 32)) {
+                    val drawable = getDrawable(icon)?.mutate()
+                    drawable?.setBounds(0, 0, dp(size.icon), dp(size.icon))
+                    setCompoundDrawablesRelative(drawable, null, null, null)
+                    compoundDrawablePadding = dp(4)
+                }
+                if (shortLabel != null && title != shortLabel &&
+                    ceil(paint.measureText(title)).toInt() + compoundPaddingLeft + compoundPaddingRight > actionWidth) {
+                    text = shortLabel
+                    contentDescription = title
+                }
+                setOnClickListener { action() }
+            }
         if (!private && flag("notifyOtpCopy")) Notifier.otp(message.body)?.let { code ->
-            chips.add(button("کپی کد ${persianDigits(code)}", R.drawable.ic_glass_copy) {
-                getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("کد تأیید", code))
-                Toast.makeText(this, "کد کپی شد", Toast.LENGTH_SHORT).show()
+            chips.add(button(Notifier.copyTitle(this, code), R.drawable.ic_glass_copy, "کپی کد") {
+                Notifier.copyOtp(this, code)
                 dismissCard()
             })
         }
@@ -518,7 +539,7 @@ class FloatingNotifications : Service() {
                         chooseSim.text = "سیم‌کارت: ${sims[selection]["label"]}"
                     }
                     if (sims.size > 1) chips.add(chooseSim)
-                    val send = button("ارسال با فرصت لغو ۵ ثانیه") { }
+                    val send = button("ارسال پاسخ", R.drawable.ic_glass_reply) { }
                     send.setOnClickListener {
                         val typed = input.text.toString().trim()
                         if (typed.isBlank() || typed.length > 2000) {
@@ -530,7 +551,7 @@ class FloatingNotifications : Service() {
                                     (sims[selection]["id"] as Number).toInt(), 5000)
                                 input.isEnabled = false
                                 chooseSim.isEnabled = false
-                                send.text = "لغو ارسال (تا ۵ ثانیه)"
+                                send.text = "لغو ارسال"
                                 send.setOnClickListener {
                                     val cancelled = SmsCore.cancel(this, id)
                                     Toast.makeText(this, if (cancelled) "ارسال لغو شد"
@@ -539,7 +560,7 @@ class FloatingNotifications : Service() {
                                 }
                                 main.postDelayed({
                                     if (card != null) {
-                                        send.text = "ارسال در شبکه انجام می‌شود"
+                                        send.text = "در حال ارسال"
                                         send.isEnabled = false
                                     }
                                 }, 5500)
@@ -551,12 +572,12 @@ class FloatingNotifications : Service() {
                     }
                     chips.add(send)
                 } else {
-                    chips.add(button("پاسخ") {
+                    chips.add(button("پاسخ", R.drawable.ic_glass_reply) {
                         renderCard(message, pinned = true, expanded = true, replying = true)
                     })
                 }
             }
-            if (!private && !message.sample && SmsCore.isDefault(this)) chips.add(button("خواندم") {
+            if (flag("notifyMarkRead") && !private && !message.sample && SmsCore.isDefault(this)) chips.add(button("خواندم", R.drawable.ic_glass_read) {
                 try {
                     SmsCore.markAddressRead(this, message.address)
                     Notifier.cancel(this, message.address)
@@ -564,8 +585,8 @@ class FloatingNotifications : Service() {
                     Toast.makeText(this, "مجوز تغییر وضعیت پیام در دسترس نیست", Toast.LENGTH_SHORT).show()
                 }
             })
-            if (dialable) {
-                chips.add(button("تماس") {
+            if (dialable && flag("notifyCall")) {
+                chips.add(button("تماس", R.drawable.ic_glass_call) {
                     val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + Uri.encode(phone)))
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     try { startActivity(intent) }
@@ -574,7 +595,7 @@ class FloatingNotifications : Service() {
                     }
                 })
             }
-            chips.add(button(if (private) "باز کردن برنامه" else "گفتگو") {
+            if (flag("notifyOpen")) chips.add(button(if (private) "باز کردن برنامه" else "گفتگو", R.drawable.ic_glass_chat) {
                 open(if (private || message.sample) null else message.address)
             })
             if (messages.size > 1 && !message.sample) chips.add(button("گفتگوی بعدی (${messages.size})") {
@@ -583,9 +604,9 @@ class FloatingNotifications : Service() {
                 shown = next
                 renderCard(next, pinned = true, expanded = true)
             })
-            chips.add(button("بستن") { dismissCard() })
+            if (flag("notifyDismiss")) chips.add(button("بستن", R.drawable.ic_glass_close) { dismissCard() })
         }
-        addActionRows(actions, chips, width - dp(8) - layout.paddingLeft - layout.paddingRight)
+        addActionRows(actions, chips, actionWidth)
         layout.addView(actions)
         if (expanded) layout.addView(body)
         val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {

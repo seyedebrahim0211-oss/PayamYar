@@ -22,6 +22,20 @@ const chatStyleNames = {
 /// Look of the glass banner shown inside the app when a message arrives.
 enum BannerStyle { glass, vivid, minimal }
 
+/// The order is shared with the Android floating card and the settings backup.
+enum BannerActionSize {
+  compact('جمع‌وجور', 26, 12, 14, 8),
+  regular('معمولی', 32, 13, 16, 10),
+  large('درشت', 38, 15, 18, 12);
+
+  const BannerActionSize(this.title, this.height, this.font, this.icon, this.padding);
+  final String title;
+  final double height, font, icon, padding;
+
+  static BannerActionSize fromIndex(int index) =>
+      values[index.clamp(0, values.length - 1)];
+}
+
 const bannerStyleNames = {
   BannerStyle.glass: 'شیشه‌ای',
   BannerStyle.vivid: 'رنگی',
@@ -102,6 +116,10 @@ class AppSettings extends ChangeNotifier {
   bool notifyBubbles = false;
   bool notifyQuickReply = true;
   bool notifyOtpCopy = true;
+  BannerActionSize bannerActionSize = BannerActionSize.compact;
+  bool bannerActionIcons = true;
+  bool bannerActionCode = false;
+  bool notifyOpen = true, notifyDismiss = true, notifyMarkRead = true, notifyCall = true;
   List<String> quickReplies = List.of(defaultQuickReplies);
 
   Color get bannerColor => bannerHue < 0 ? palettes[bannerTint] :
@@ -174,6 +192,13 @@ class AppSettings extends ChangeNotifier {
     notifyBubbles = false; // No competing OS bubble when one floating style is selected.
     notifyQuickReply = p.getBool('notifyQuickReply') ?? true;
     notifyOtpCopy = p.getBool('notifyOtpCopy') ?? true;
+    bannerActionSize = BannerActionSize.fromIndex(p.getInt('bannerActionSize') ?? 0);
+    bannerActionIcons = p.getBool('bannerActionIcons') ?? true;
+    bannerActionCode = p.getBool('bannerActionCode') ?? false;
+    notifyOpen = p.getBool('notifyOpen') ?? true;
+    notifyDismiss = p.getBool('notifyDismiss') ?? true;
+    notifyMarkRead = p.getBool('notifyMarkRead') ?? true;
+    notifyCall = p.getBool('notifyCall') ?? true;
     final replies = p.getString('notifyQuickReplies');
     quickReplies = replies == null ? List.of(defaultQuickReplies) : cleanReplies(replies.split('\n'));
     notifyListeners();
@@ -255,6 +280,8 @@ class AppSettings extends ChangeNotifier {
       double? bannerOpacity, bool? bannerTop, int? bannerSeconds, bool? bannerCompact,
       double? bannerMaxWidth, bool? bannerBubbles, bool? bannerSourceColors, Map<String, int>? bannerSenderTints, bool? notifyGlassAvatar,
       int? notifyAvatarShape, bool? notifyBubbles, bool? notifyQuickReply, bool? notifyOtpCopy,
+      BannerActionSize? bannerActionSize, bool? bannerActionIcons, bool? bannerActionCode,
+      bool? notifyOpen, bool? notifyDismiss, bool? notifyMarkRead, bool? notifyCall,
       List<String>? quickReplies}) async {
     this.notifyInApp = notifyInApp ?? this.notifyInApp;
     this.bannerStyle = BannerStyle.glass;
@@ -277,6 +304,13 @@ class AppSettings extends ChangeNotifier {
     this.notifyBubbles = false;
     this.notifyQuickReply = notifyQuickReply ?? this.notifyQuickReply;
     this.notifyOtpCopy = notifyOtpCopy ?? this.notifyOtpCopy;
+    this.bannerActionSize = bannerActionSize ?? this.bannerActionSize;
+    this.bannerActionIcons = bannerActionIcons ?? this.bannerActionIcons;
+    this.bannerActionCode = bannerActionCode ?? this.bannerActionCode;
+    this.notifyOpen = notifyOpen ?? this.notifyOpen;
+    this.notifyDismiss = notifyDismiss ?? this.notifyDismiss;
+    this.notifyMarkRead = notifyMarkRead ?? this.notifyMarkRead;
+    this.notifyCall = notifyCall ?? this.notifyCall;
     if (quickReplies != null) this.quickReplies = cleanReplies(quickReplies);
     notifyListeners();
     await _saveNotify(await SharedPreferences.getInstance());
@@ -316,6 +350,9 @@ class AppSettings extends ChangeNotifier {
     'bannerSenderTints': jsonEncode(bannerSenderTints), 'notifyGlassAvatar': notifyGlassAvatar,
     'notifyAvatarShape': notifyAvatarShape, 'notifyBubbles': notifyBubbles,
     'notifyQuickReply': notifyQuickReply, 'notifyOtpCopy': notifyOtpCopy, 'quickReplies': quickReplies,
+    'bannerActionSize': bannerActionSize.index, 'bannerActionIcons': bannerActionIcons,
+    'bannerActionCode': bannerActionCode, 'notifyOpen': notifyOpen, 'notifyDismiss': notifyDismiss,
+    'notifyMarkRead': notifyMarkRead, 'notifyCall': notifyCall,
   };
 
   Future<void> _restoreNotify(Map<String, dynamic> j) async {
@@ -335,6 +372,10 @@ class AppSettings extends ChangeNotifier {
       bannerSenderTints: j.containsKey('bannerSenderTints') ? _senderTints(j['bannerSenderTints']) : null,
       notifyGlassAvatar: b('notifyGlassAvatar'), notifyAvatarShape: i('notifyAvatarShape'),
       notifyBubbles: b('notifyBubbles'), notifyQuickReply: b('notifyQuickReply'), notifyOtpCopy: b('notifyOtpCopy'),
+      bannerActionSize: i('bannerActionSize') == null ? null : BannerActionSize.fromIndex(i('bannerActionSize')!),
+      bannerActionIcons: b('bannerActionIcons'), bannerActionCode: b('bannerActionCode'),
+      notifyOpen: b('notifyOpen'), notifyDismiss: b('notifyDismiss'),
+      notifyMarkRead: b('notifyMarkRead'), notifyCall: b('notifyCall'),
       quickReplies: replies is List ? [for (final r in replies) if (r is String) r] : null,
     );
   }

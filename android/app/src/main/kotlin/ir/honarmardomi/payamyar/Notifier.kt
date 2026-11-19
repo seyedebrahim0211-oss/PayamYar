@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.ClipData
+import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
@@ -17,10 +18,8 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
-import android.graphics.Path
-import android.graphics.PorterDuff
-import android.graphics.PorterDuffXfermode
-import android.graphics.RadialGradient
+import android.graphics.BitmapShader
+import android.graphics.Matrix
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
@@ -28,6 +27,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.PersistableBundle
 import android.provider.ContactsContract
 import android.widget.Toast
 import io.flutter.plugin.common.MethodChannel
@@ -75,6 +75,17 @@ object Notifier {
     fun otp(body: String): String? =
         Regex("(?:کد|رمز|code|otp|password|pin)[^\\d\\n]{0,25}(\\d{4,8})(?!\\d)", RegexOption.IGNORE_CASE)
             .find(latinDigits(body))?.groupValues?.get(1)
+
+    fun copyTitle(c: Context, code: String): String =
+        if (enabled(c, "bannerActionCode", false)) "کپی کد " + code.map { '۰' + (it - '0') }.joinToString("")
+        else "کپی کد"
+
+    fun copyOtp(c: Context, code: String) {
+        val clip = ClipData.newPlainText("کد تأیید", code)
+        clip.description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true) }
+        c.getSystemService(ClipboardManager::class.java).setPrimaryClip(clip)
+        if (Build.VERSION.SDK_INT < 33) Toast.makeText(c, "کد تأیید کپی شد", Toast.LENGTH_SHORT).show()
+    }
 
     // ───────────── user preferences ─────────────
 
@@ -130,62 +141,31 @@ object Notifier {
     private fun darken(color: Int, f: Float) = Color.rgb(
         (Color.red(color) * (1 - f)).toInt(), (Color.green(color) * (1 - f)).toInt(), (Color.blue(color) * (1 - f)).toInt())
 
-    /**
-     * Clips the picture to a circle or soft square and, when the glass look is on, adds a frosted
-     * top highlight, a soft inner glow and a two-tone ring in the user's accent colour.
-     */
-    private fun styledAvatar(c: Context, source: Bitmap): Bitmap {
+    /** One transparent portrait is shared by MessagingStyle, the conversation shortcut and large icon. */
+    internal fun styledAvatar(source: Bitmap, softSquare: Boolean, glass: Boolean, tint: Int): Bitmap {
         val size = AVATAR.toFloat()
         val out = Bitmap.createBitmap(AVATAR, AVATAR, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(out)
-        val rounded = number(c, "notifyAvatarShape", 0L) == 1L
-        val clip = Path().apply {
-            if (rounded) addRoundRect(RectF(0f, 0f, size, size), size * .3f, size * .3f, Path.Direction.CW)
-            else addCircle(size / 2, size / 2, size / 2, Path.Direction.CW)
+        val bounds = RectF(0f, 0f, size, size)
+        val radius = if (softSquare) size * .28f else size / 2f
+        val scale = maxOf(size / source.width, size / source.height)
+        val crop = Matrix().apply {
+            setScale(scale, scale)
+            postTranslate((size - source.width * scale) / 2f, (size - source.height * scale) / 2f)
         }
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-        canvas.save()
-        canvas.clipPath(clip)
-        canvas.drawBitmap(Bitmap.createScaledBitmap(source, AVATAR, AVATAR, true), 0f, 0f, paint)
-        if (enabled(c, "notifyGlassAvatar")) {
-            // Frosted reflection on the upper half.
-            val gloss = Paint(Paint.ANTI_ALIAS_FLAG)
-            gloss.shader = LinearGradient(0f, 0f, 0f, size * .58f, 0x99FFFFFF.toInt(), 0x00FFFFFF, Shader.TileMode.CLAMP)
-            canvas.drawOval(RectF(-size * .15f, -size * .42f, size * 1.15f, size * .52f), gloss)
-            // Light from the bottom edge, like thick glass.
-            val glow = Paint(Paint.ANTI_ALIAS_FLAG)
-            glow.shader = RadialGradient(size / 2, size * 1.05f, size * .55f, 0x55FFFFFF, 0x00FFFFFF, Shader.TileMode.CLAMP)
-            canvas.drawRect(0f, 0f, size, size, glow)
-            // Two tiny bubbles.
-            val dot = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x88FFFFFF.toInt() }
-            canvas.drawCircle(size * .74f, size * .24f, size * .045f, dot)
-            canvas.drawCircle(size * .83f, size * .36f, size * .025f, dot)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+            shader = BitmapShader(source, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).apply { setLocalMatrix(crop) }
         }
-        canvas.restore()
-        val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
-        val inset = 4f
-        val rect = RectF(inset, inset, size - inset, size - inset)
-        ring.strokeWidth = 7f
-        ring.color = accent(c)
-        if (rounded) canvas.drawRoundRect(rect, size * .28f, size * .28f, ring) else canvas.drawOval(rect, ring)
-        ring.strokeWidth = 2f
-        ring.color = 0xB3FFFFFF.toInt()
-        val inner = RectF(inset + 4.5f, inset + 4.5f, size - inset - 4.5f, size - inset - 4.5f)
-        if (rounded) canvas.drawRoundRect(inner, size * .26f, size * .26f, ring) else canvas.drawOval(inner, ring)
-        return out
-    }
-
-    /** 108dp adaptive canvas: the avatar sits inside the 72dp safe zone, on the accent colour. */
-    private fun adaptive(c: Context, avatar: Bitmap): Bitmap {
-        val size = 216
-        val out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(out)
-        canvas.drawColor(accent(c))
-        val inner = 144
-        val offset = (size - inner) / 2f
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-        canvas.drawBitmap(Bitmap.createScaledBitmap(avatar, inner, inner, true), offset, offset, paint)
-        paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OVER)
+        canvas.drawRoundRect(bounds, radius, radius, paint)
+        if (glass) {
+            // Keep the face unobstructed; the glass highlight only traces the edge.
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 3f
+            bounds.inset(1.5f, 1.5f)
+            paint.shader = LinearGradient(0f, 0f, size, size,
+                intArrayOf(0xD9FFFFFF.toInt(), lighten(tint, .38f), darken(tint, .12f)), null, Shader.TileMode.CLAMP)
+            canvas.drawRoundRect(bounds, radius - 1.5f, radius - 1.5f, paint)
+        }
         return out
     }
 
@@ -213,9 +193,6 @@ object Notifier {
         } catch (_: Exception) { }
         return null
     }
-
-    private fun profileBitmap(c: Context, address: String, label: String): Bitmap =
-        styledAvatar(c, contactPhoto(c, address) ?: letterAvatar(label, address))
 
     private fun broadcast(c: Context, action: String, address: String, extra: String? = null, mutable: Boolean = false): PendingIntent {
         val intent = Intent(c, NotifyActionReceiver::class.java).setAction(action)
@@ -381,11 +358,15 @@ object Notifier {
         val manager = c.getSystemService(NotificationManager::class.java)
         val deliveryChannel = if (floating) OVERLAY_CHANNEL else CHANNEL
         val id = idFor(address)
-        val picture = if (enabled(c, "appLock", false)) styledAvatar(c, letterAvatar("پ", "private"))
-            else profileBitmap(c, address, name)
+        val color = if (enabled(c, "bannerSourceColors") && enabled(c, "notifyPreview", false) && !enabled(c, "appLock", false))
+            (sampleSource ?: MessengerSender.fromAddress(address))?.selectedColor(prefs(c)) ?: accent(c) else accent(c)
+        val source = if (enabled(c, "appLock", false)) letterAvatar("پ", "private")
+            else contactPhoto(c, address) ?: letterAvatar(name, address)
+        val picture = styledAvatar(source, number(c, "notifyAvatarShape", 0L) == 1L, enabled(c, "notifyGlassAvatar"), color)
+        val portrait = IconCompat.createWithBitmap(picture)
         // MessagingStyle retains conversation semantics and unread message history.
         val sender = Person.Builder().setName(name).setKey(address)
-            .setIcon(IconCompat.createWithBitmap(picture)).setImportant(true).build()
+            .setIcon(portrait).setImportant(true).build()
 
         // Stack this message under earlier unread ones from the same sender.
         val existing = if (enabled(c, "notifyPreview", false) && !enabled(c, "appLock", false))
@@ -404,8 +385,6 @@ object Notifier {
         val open = PendingIntent.getActivity(c, idFor(address), openIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
-        val color = if (enabled(c, "bannerSourceColors") && enabled(c, "notifyPreview", false) && !enabled(c, "appLock", false))
-            (sampleSource ?: MessengerSender.fromAddress(address))?.selectedColor(prefs(c)) ?: accent(c) else accent(c)
         val builder = NotificationCompat.Builder(c, deliveryChannel)
             .setSmallIcon(R.drawable.ic_stat_payamyar)
             .setColor(color)
@@ -427,8 +406,7 @@ object Notifier {
 
 
         if (!sample && !enabled(c, "appLock", false)) {
-            val shortcut = conversationShortcut(c, address, name, sender,
-                IconCompat.createWithAdaptiveBitmap(adaptive(c, picture)))
+            val shortcut = conversationShortcut(c, address, name, sender, portrait)
             if (shortcut != null) {
                 builder.setShortcutId(shortcut).setLocusId(LocusIdCompat(shortcut))
                 // One notification renderer: the custom sender bubble is never stacked with
@@ -438,18 +416,22 @@ object Notifier {
 
         // The system shade uses MessagingStyle only: its OEM-owned layout handles large
         // fonts, accessibility and lock-screen redaction. Glass is a separate overlay window.
+        val actionIcons = enabled(c, "bannerActionIcons")
         if (code != null) {
-            builder.addAction(NotificationCompat.Action.Builder(0, "📋 کپی کد " + code, broadcast(c, ACTION_COPY, address, code)).build())
+            builder.addAction(NotificationCompat.Action.Builder(if (actionIcons) R.drawable.ic_glass_copy else 0,
+                copyTitle(c, code), broadcast(c, ACTION_COPY, address, code)).setAuthenticationRequired(true).build())
         }
         // Short codes and named senders (banks, services) cannot receive replies.
         if (reply) {
             val input = RemoteInput.Builder(KEY_REPLY).setLabel("پاسخ به " + name.take(18) + "…")
                 .setChoices(quickReplies(c)).setAllowFreeFormInput(true).build()
-            builder.addAction(NotificationCompat.Action.Builder(0, "↩ پاسخ سریع", broadcast(c, ACTION_REPLY, address, mutable = true))
+            builder.addAction(NotificationCompat.Action.Builder(if (actionIcons) R.drawable.ic_glass_reply else 0,
+                "پاسخ سریع", broadcast(c, ACTION_REPLY, address, mutable = true))
                 .addRemoteInput(input).setAllowGeneratedReplies(true)
                 .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY).setShowsUserInterface(false).build())
         }
-        builder.addAction(NotificationCompat.Action.Builder(0, "✓ خوانده شد", broadcast(c, ACTION_READ, address))
+        if (enabled(c, "notifyMarkRead")) builder.addAction(NotificationCompat.Action.Builder(
+            if (actionIcons) R.drawable.ic_glass_read else 0, "خوانده شد", broadcast(c, ACTION_READ, address))
             .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_MARK_AS_READ).setShowsUserInterface(false).build())
         NotificationManagerCompat.from(c).notify(id, builder.build())
     }
@@ -504,8 +486,10 @@ class NotifyActionReceiver : BroadcastReceiver() {
         when (intent.action) {
             Notifier.ACTION_COPY -> {
                 val code = intent.getStringExtra("extra") ?: return
-                context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("کد تأیید", code))
-                Handler(Looper.getMainLooper()).post { Toast.makeText(context, "کد " + code + " کپی شد", Toast.LENGTH_SHORT).show() }
+                val prefs = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                if (!prefs.getBoolean("flutter.notifyOtpCopy", true) || !prefs.getBoolean("flutter.notifyPreview", false) ||
+                    context.getSystemService(android.app.KeyguardManager::class.java).isDeviceLocked) return
+                Notifier.copyOtp(context, code)
             }
             Notifier.ACTION_READ, Notifier.ACTION_REPLY -> {
                 val reply = RemoteInput.getResultsFromIntent(intent)?.getCharSequence(Notifier.KEY_REPLY)?.toString()
