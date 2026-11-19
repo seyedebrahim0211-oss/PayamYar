@@ -26,6 +26,14 @@ class SmsBridge {
   static const MethodChannel _channel = MethodChannel('ir.honarmardomi.payamyar/sms');
   static bool get supported => Platform.isAndroid;
 
+  static Future<void> copyOtp(String code) async {
+    if (supported) {
+      await _channel.invokeMethod<void>('copyOtp', {'code': code});
+    } else {
+      await Clipboard.setData(ClipboardData(text: code));
+    }
+  }
+
   static Future<bool> available() async {
     if (!supported) return false;
     return await _channel.invokeMethod<bool>('isAvailable') ?? false;

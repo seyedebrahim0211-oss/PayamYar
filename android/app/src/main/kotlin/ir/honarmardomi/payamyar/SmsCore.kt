@@ -18,6 +18,9 @@ import java.util.UUID
 object SmsCore {
     private fun prefs(c: Context) = c.getSharedPreferences("sms_engine_v1", Context.MODE_PRIVATE)
     fun isDefault(c: Context) = Telephony.Sms.getDefaultSmsPackage(c) == c.packageName
+    private fun requireDefault(c: Context) {
+        check(isDefault(c)) { "برای دسترسی به پیامک، پیام‌یار را پیامک‌رسان پیش‌فرض انتخاب کنید." }
+    }
     fun status(c: Context, id: String): String = prefs(c).getString("status:$id", "unknown") ?: "unknown"
     private val COLUMNS = arrayOf("_id", "address", "body", "date", "type", "read", "status")
     private const val ORDER = "date DESC, _id DESC"
@@ -39,7 +42,8 @@ object SmsCore {
 
     /** Newest [limit] messages; used for quick refreshes after a change. */
     fun read(c: Context, limit: Int): Map<String, Any> {
-        if (isDefault(c)) drainIncoming(c)
+        requireDefault(c)
+        drainIncoming(c)
         c.contentResolver.query(Telephony.Sms.CONTENT_URI, COLUMNS, null, null, ORDER)?.use { cur ->
             return chunk(cur, limit.coerceIn(1, 5000))
         }
@@ -48,11 +52,13 @@ object SmsCore {
 
     /** Whole inbox in ONE query: a small first page for instant display, then large pages. Returns the total. */
     fun stream(c: Context, emit: (Map<String, Any>) -> Unit): Int {
-        if (isDefault(c)) drainIncoming(c)
+        requireDefault(c)
+        drainIncoming(c)
         var total = 0
         c.contentResolver.query(Telephony.Sms.CONTENT_URI, COLUMNS, null, null, ORDER)?.use { cur ->
             var size = 150
             while (true) {
+                requireDefault(c)
                 val page = chunk(cur, size)
                 val n = page["n"] as Int
                 if (n > 0) { total += n; emit(page) }
@@ -103,6 +109,7 @@ object SmsCore {
     }
 
     @Synchronized fun queue(c: Context, address: String, body: String, sim: Int, delayMs: Long = 5000): String {
+        requireDefault(c)
         require(delayMs in 0L..(30L * 24 * 60 * 60 * 1000)) { "زمان ارسال باید حداکثر ۳۰ روز آینده باشد." }
         val to = address.replace(Regex("[\\s()-]"), "")
         require(Regex("^\\+?[0-9]{3,15}$").matches(to)) { "شماره گیرنده معتبر نیست." }
@@ -208,20 +215,19 @@ object SmsCore {
         prefs(c).edit().remove("queue:$id").putString("status:$id", "pending").commit()
         var row: Uri? = null
         try {
+            requireDefault(c)
             val selected = resolveSubscription(c, item.getInt("sim"))
             @Suppress("DEPRECATION")
             val manager = if (Build.VERSION.SDK_INT >= 31) c.getSystemService(SmsManager::class.java).createForSubscriptionId(selected)
                 else SmsManager.getSmsManagerForSubscriptionId(selected)
             val parts = manager.divideMessage(item.getString("body"))
-            if (isDefault(c)) {
-                row = c.contentResolver.insert(Telephony.Sms.CONTENT_URI, ContentValues().apply {
-                    put("address", item.getString("to")); put("body", item.getString("body"))
-                    put("date", System.currentTimeMillis()); put("read", 1); put("type", 4); put("status", 32); put("sub_id", selected)
-                    put("thread_id", Telephony.Threads.getOrCreateThreadId(c, item.getString("to")))
-                })
-                check(row != null) { "ذخیره پیام ممکن نشد." }
-            }
-            prefs(c).edit().putString("row:$id", row?.toString()).commit()
+            row = c.contentResolver.insert(Telephony.Sms.CONTENT_URI, ContentValues().apply {
+                put("address", item.getString("to")); put("body", item.getString("body"))
+                put("date", System.currentTimeMillis()); put("read", 1); put("type", 4); put("status", 32); put("sub_id", selected)
+                put("thread_id", Telephony.Threads.getOrCreateThreadId(c, item.getString("to")))
+            })
+            check(row != null) { "ذخیره پیام ممکن نشد." }
+            prefs(c).edit().putString("row:$id", row.toString()).commit()
             fun callbacks(delivered: Boolean) = ArrayList(parts.indices.map { part ->
                 PendingIntent.getBroadcast(c, 0, Intent(c, SendStatusReceiver::class.java)
                     .setData(Uri.parse("payamyar:status/$id/$delivered/$part"))

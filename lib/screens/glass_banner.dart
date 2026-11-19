@@ -155,11 +155,15 @@ class _BannerLayerState extends State<_BannerLayer> with SingleTickerProviderSta
     if (sent != null) widget.store.onNotice?.call('پاسخ به $name در صف ارسال است.');
   }
 
-  void _copy(String code) {
-    Clipboard.setData(ClipboardData(text: code));
-    final shown = Jalali.digits(code);
-    widget.store.onNotice?.call('کد $shown کپی شد');
-    _dismiss();
+  Future<void> _copy(String code) async {
+    final banner = _banner;
+    try {
+      await SmsBridge.copyOtp(code);
+      if (!mounted) return;
+      if (identical(_banner, banner)) _dismiss();
+    } on PlatformException {
+      if (mounted) widget.store.onNotice?.call('کپی کد انجام نشد. دوباره لمس کنید.');
+    }
   }
 
   void _dragUpdate(DragUpdateDetails d, bool top) {
@@ -299,7 +303,10 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
   @override
   void didUpdateWidget(GlassBannerCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.banner != widget.banner) _expanded = false;
+    if (oldWidget.banner != widget.banner && !widget.banner.sample) {
+      _expanded = false;
+      _writing = false;
+    }
     _syncBubbles();
   }
 
@@ -347,7 +354,7 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
     );
     final code = b.otp;
     final chipCode = code != null && s.notifyOtpCopy;
-    final showReply = _expanded && widget.interactive && b.canReply && s.notifyQuickReply;
+    final showReply = _expanded && b.canReply && s.notifyQuickReply;
     final reduce = s.reduceEffects || MediaQuery.disableAnimationsOf(context);
 
     void toggle() {
@@ -443,7 +450,7 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
                         ],
                       ),
                     ),
-                    if (widget.interactive)
+                    if (widget.interactive || b.sample)
                       IconButton(
                         onPressed: toggle,
                         tooltip: _expanded ? 'جمع کردن اعلان' : 'نمایش متن کامل',
@@ -456,31 +463,33 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
                 ),
                 const SizedBox(height: 6),
                 if (!_expanded) messageText,
-                if (chipCode || _expanded) ...[
-                  const SizedBox(height: 5),
+                if (chipCode || showReply || (_expanded && (s.notifyOpen || s.notifyDismiss))) ...[
                   Wrap(
-                    spacing: 6,
-                    runSpacing: 2,
+                    spacing: 4,
                     children: [
                       if (chipCode)
                         _GlassChip(
-                          label: 'کپی کد ${Jalali.digits(code)}',
+                          settings: s,
+                          label: s.bannerActionCode ? 'کپی کد ${Jalali.digits(code)}' : 'کپی کد',
+                          shortLabel: 'کپی کد',
                           icon: Icons.copy_rounded,
                           onTap: widget.interactive ? () => widget.onCopy?.call(code) : null,
                         ),
                       if (showReply && !_writing)
                         _GlassChip(
+                          settings: s,
                           label: 'پاسخ',
                           icon: Icons.reply_rounded,
-                          onTap: () {
+                          onTap: !widget.interactive ? null : () {
                             setState(() => _writing = true);
                             _focus.requestFocus();
                           },
                         ),
-                      if (_expanded && widget.interactive) ...[
-                        _GlassChip(label: 'گفتگو', icon: Icons.chat_bubble_outline_rounded, onTap: widget.onTap),
-                        _GlassChip(label: 'بستن', icon: Icons.close_rounded, onTap: widget.onClose),
-                      ],
+                      if (_expanded && s.notifyOpen)
+                        _GlassChip(settings: s, label: 'گفتگو', icon: Icons.chat_bubble_outline_rounded, onTap: widget.onTap),
+                      if (_expanded && s.notifyDismiss)
+                        _GlassChip(settings: s, label: 'بستن', icon: Icons.close_rounded,
+                            onTap: widget.interactive ? widget.onClose : toggle),
                     ],
                   ),
                 ],
@@ -511,7 +520,8 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
                     spacing: 6,
                     runSpacing: 2,
                     children: [
-                      for (final reply in s.quickReplies) _GlassChip(label: reply, onTap: () => _send(reply)),
+                      for (final reply in s.quickReplies)
+                        _GlassChip(settings: s, label: reply, onTap: () => _send(reply)),
                     ],
                   ),
                 ],
@@ -619,31 +629,53 @@ class _GlassAvatar extends StatelessWidget {
 }
 
 class _GlassChip extends StatelessWidget {
+  final AppSettings settings;
   final String label;
+  final String? shortLabel;
   final IconData? icon;
   final VoidCallback? onTap;
-  const _GlassChip({required this.label, this.icon, this.onTap});
+  const _GlassChip({required this.settings, required this.label, this.shortLabel, this.icon, this.onTap});
 
   @override
-  Widget build(BuildContext context) => TextButton(
-    onPressed: onTap,
-    style: TextButton.styleFrom(
-      foregroundColor: Colors.white,
-      disabledForegroundColor: Colors.white,
-      backgroundColor: const Color(0x28FFFFFF),
-      side: const BorderSide(color: Color(0x66FFFFFF)),
-      minimumSize: const Size(48, 36),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      tapTargetSize: MaterialTapTargetSize.padded,
-    ),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (icon != null) ...[Icon(icon, size: 17), const SizedBox(width: 6)],
-        Flexible(child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis)),
-      ],
-    ),
-  );
+  Widget build(BuildContext context) {
+    final size = settings.bannerActionSize;
+    final textStyle = Theme.of(context).textTheme.labelMedium!.copyWith(
+      fontSize: size.font, height: 1.22, fontWeight: FontWeight.w600, letterSpacing: 0,
+    );
+    final primary = shortLabel != null;
+    return LayoutBuilder(builder: (context, bounds) {
+      final showIcon = settings.bannerActionIcons && icon != null &&
+          bounds.maxWidth >= size.padding * 2 + size.icon + 32;
+      var visibleLabel = label;
+      // Preserve the entire OTP or omit the digits. A partly visible code is misleading.
+      if (shortLabel != null && label != shortLabel) {
+        final measure = TextPainter(
+          text: TextSpan(text: label, style: textStyle), textDirection: TextDirection.rtl,
+          textScaler: MediaQuery.textScalerOf(context), maxLines: 1,
+        )..layout();
+        final needed = measure.width.ceil() + 2 * size.padding + (showIcon ? size.icon + 4 : 0);
+        measure.dispose();
+        if (needed > bounds.maxWidth) visibleLabel = shortLabel!;
+      }
+      return TextButton(
+        onPressed: onTap,
+        style: TextButton.styleFrom(
+          foregroundColor: Colors.white, disabledForegroundColor: Colors.white,
+          backgroundColor: primary ? const Color(0x30FFFFFF) : const Color(0x19FFFFFF),
+          side: BorderSide(color: primary ? const Color(0x72FFFFFF) : const Color(0x44FFFFFF)),
+          shape: const StadiumBorder(), minimumSize: Size(48, size.height),
+          padding: EdgeInsets.symmetric(horizontal: size.padding, vertical: 2),
+          tapTargetSize: MaterialTapTargetSize.padded, visualDensity: VisualDensity.standard,
+          textStyle: textStyle,
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (showIcon) ...[Icon(icon, size: size.icon), const SizedBox(width: 4)],
+          Flexible(child: Text(visibleLabel, softWrap: false, maxLines: 1,
+              overflow: TextOverflow.ellipsis, semanticsLabel: label)),
+        ]),
+      );
+    });
+  }
 }
 
 /// Only the seven rings repaint during the brief entry motion.

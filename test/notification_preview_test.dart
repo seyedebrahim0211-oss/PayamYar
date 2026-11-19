@@ -33,7 +33,7 @@ void main() {
     await tester.pumpAndSettle();
     final preview = find.byKey(const ValueKey('notification-style-preview'));
     final card = find.descendant(of: preview, matching: find.byType(GlassBannerCard));
-    final copy = find.descendant(of: card, matching: find.text('کپی کد ۱۲۳۴۵'));
+    final copy = find.descendant(of: card, matching: find.text('کپی کد'));
     expect(copy, findsOneWidget);
     expect(tester.getRect(card).contains(tester.getCenter(copy)), isTrue);
     expect(tester.getCenter(copy).dx, greaterThan(tester.getCenter(card).dx));

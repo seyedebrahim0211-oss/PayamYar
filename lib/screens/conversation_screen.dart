@@ -657,9 +657,12 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
       trailing: code == null ? null : ActionChip(
         avatar: const Icon(Icons.copy_rounded, size: 16),
         label: Text('کپی کد ${Jalali.digits(code)}'),
-        onPressed: () {
-          Clipboard.setData(ClipboardData(text: code));
-          store.onNotice?.call('کد $code کپی شد.');
+        onPressed: () async {
+          try {
+            await SmsBridge.copyOtp(code);
+          } on PlatformException {
+            if (mounted) store.onNotice?.call('کپی کد انجام نشد. دوباره لمس کنید.');
+          }
         }),
     );
   }

@@ -2,6 +2,10 @@ package ir.honarmardomi.payamyar
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -72,6 +76,7 @@ class FloatingNotificationsTest {
         device.executeShellCommand("pm grant ${context.packageName} android.permission.POST_NOTIFICATIONS")
         context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).edit()
             .putBoolean("flutter.appLock", false).putBoolean("flutter.notifyPreview", true)
+            .putBoolean("flutter.bannerActionCode", false).putBoolean("flutter.notifyOpen", true)
             .putBoolean("flutter.bannerTop", true).putLong("flutter.bannerSeconds", 15).commit()
         scenario = ActivityScenario.launch(Intent(context, MainActivity::class.java))
         scenario!!.onActivity { assertTrue(FloatingNotifications.setEnabled(it, true)) }
@@ -97,7 +102,10 @@ class FloatingNotificationsTest {
         val bounds = header.visibleBounds
         assertTrue(bounds.left >= 0 && bounds.right <= device.displayWidth)
         assertTrue(bounds.top >= 0 && bounds.bottom <= device.displayHeight)
-        assertTrue("The copy action belongs on the folded card", device.hasObject(By.text("کپی کد ۱۲۳۴۵")))
+        val copy = device.findObject(By.text("کپی کد"))
+        assertNotNull("The short copy action belongs on the folded card", copy)
+        val minTouch = (48 * context.resources.displayMetrics.density).toInt()
+        assertTrue(copy.visibleBounds.height() >= minTouch && copy.visibleBounds.width() >= minTouch)
         assertFalse(device.hasObject(By.text("گفتگو")))
         val toggle = device.findObject(By.desc("نمایش متن کامل"))
         assertTrue("The RTL sender must be to the right of the chevron", bounds.centerX() > toggle.visibleBounds.centerX())
@@ -177,5 +185,31 @@ class FloatingNotificationsTest {
         assertTrue(device.wait(Until.hasObject(By.descContains("حباب پیام‌یار")), 15000))
         instrumentation.runOnMainSync { FloatingNotifications.setEnabled(context, false) }
         assertTrue(device.wait(Until.gone(By.descContains("حباب پیام‌یار")), 5000))
+    }
+
+    @Test fun roundNotificationPortraitPreservesPhotoProportionsAndHasTransparentCorners() {
+        val photo = Bitmap.createBitmap(240, 120, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(photo)
+        canvas.drawColor(Color.RED)
+        canvas.drawRect(60f, 0f, 180f, 120f, Paint().apply { color = Color.GREEN })
+        for (glass in listOf(false, true)) {
+            val circle = Notifier.styledAvatar(photo, false, glass, Color.CYAN)
+            val softSquare = Notifier.styledAvatar(photo, true, glass, Color.CYAN)
+            assertEquals(0, Color.alpha(circle.getPixel(20, 20)))
+            assertEquals(0, Color.alpha(softSquare.getPixel(0, 0)))
+            assertTrue(Color.alpha(softSquare.getPixel(20, 20)) > 0)
+            assertEquals(Color.GREEN, circle.getPixel(16, 80))
+            assertEquals(Color.GREEN, circle.getPixel(80, 80))
+        }
+    }
+
+    @Test fun overlayHonorsOptionalCodeAndHidesUnselectedActions() {
+        context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).edit()
+            .putBoolean("flutter.bannerActionCode", true).putBoolean("flutter.notifyOpen", false).commit()
+        displayWhileAppVisible("test", "نمونه", "کد تأیید 12345678", true)
+        assertTrue(device.wait(Until.hasObject(By.text("کپی کد ۱۲۳۴۵۶۷۸")), 5000))
+        expandCard()
+        assertTrue(device.wait(Until.hasObject(By.text("بستن")), 5000))
+        assertFalse(device.hasObject(By.text("گفتگو")))
     }
 }

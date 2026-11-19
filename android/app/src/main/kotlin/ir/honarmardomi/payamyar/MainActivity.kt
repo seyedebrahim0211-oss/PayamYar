@@ -49,7 +49,10 @@ open class MainActivity : FlutterActivity() {
     private val worker = Executors.newSingleThreadExecutor()
     private val handler = Handler(Looper.getMainLooper())
     private val observer = object : ContentObserver(handler) {
-        override fun onChange(selfChange: Boolean) { channel.invokeMethod("messagesChanged", null) }
+        override fun onChange(selfChange: Boolean) {
+            observeMessages()
+            if (observing) channel.invokeMethod("messagesChanged", null)
+        }
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -140,6 +143,14 @@ open class MainActivity : FlutterActivity() {
                     } catch (_: Exception) { result.success(false) }
                 }
                 "clearNotifications" -> { Notifier.cancel(this, call.argument<String>("address").orEmpty()); result.success(null) }
+                "copyOtp" -> {
+                    try {
+                        Notifier.copyOtp(this, call.argument<String>("code").orEmpty())
+                        result.success(null)
+                    } catch (e: RuntimeException) {
+                        result.error("CLIPBOARD", "کپی کد انجام نشد.", null)
+                    }
+                }
                 "shareText" -> {
                     try {
                         val send = Intent(Intent.ACTION_SEND).setType("text/plain")
@@ -328,11 +339,12 @@ open class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun permissionMap() = mapOf(
-        "read" to has(Manifest.permission.READ_SMS),
-        "send" to has(Manifest.permission.SEND_SMS),
-        "contacts" to has(Manifest.permission.READ_CONTACTS),
-        "default" to SmsCore.isDefault(this))
+    private fun permissionMap(): Map<String, Boolean> {
+        val smsRole = SmsCore.isDefault(this)
+        return mapOf("read" to (smsRole && has(Manifest.permission.READ_SMS)),
+            "send" to (smsRole && has(Manifest.permission.SEND_SMS)),
+            "contacts" to has(Manifest.permission.READ_CONTACTS), "default" to smsRole)
+    }
 
     private fun specialAccess(): Map<String, Boolean> {
         val power = getSystemService(android.os.PowerManager::class.java)
@@ -431,7 +443,11 @@ open class MainActivity : FlutterActivity() {
     }
 
     private fun observeMessages() {
-        if (!observing && has(Manifest.permission.READ_SMS)) {
+        val canObserve = SmsCore.isDefault(this) && has(Manifest.permission.READ_SMS)
+        if (observing && !canObserve) {
+            contentResolver.unregisterContentObserver(observer)
+            observing = false
+        } else if (!observing && canObserve) {
             try {
                 contentResolver.registerContentObserver(Telephony.Sms.CONTENT_URI, true, observer)
                 observing = true
