@@ -111,7 +111,7 @@ object SmsCore {
     @Synchronized fun queue(c: Context, address: String, body: String, sim: Int, delayMs: Long = 5000): String {
         requireDefault(c)
         require(delayMs in 0L..(30L * 24 * 60 * 60 * 1000)) { "زمان ارسال باید حداکثر ۳۰ روز آینده باشد." }
-        val to = address.replace(Regex("[\\s()-]"), "")
+        val to = address.map { it.digitToIntOrNull()?.digitToChar() ?: it }.joinToString("").replace(Regex("[\\s()-]"), "")
         require(Regex("^\\+?[0-9]{3,15}$").matches(to)) { "شماره گیرنده معتبر نیست." }
         require(body.isNotBlank() && body.length <= 2000) { "متن باید بین ۱ تا ۲۰۰۰ نویسه باشد." }
         check(ContextCompat.checkSelfPermission(c, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) { "مجوز ارسال پیامک لازم است." }
@@ -120,7 +120,7 @@ object SmsCore {
         val item = JSONObject().put("to", to).put("body", body).put("sim", subscriptionId)
             .put("due", System.currentTimeMillis() + delayMs).put("scheduled", delayMs > 10000)
         check(prefs(c).edit().putString("queue:$id", SecureVault.encryptQueue(item.toString())).putString("status:$id", "queued").commit())
-        if (delayMs > 0) arm(c, id, item.getLong("due"))
+        arm(c, id, item.getLong("due"))
         return id
     }
     private fun alarmIntent(c: Context, id: String) = PendingIntent.getBroadcast(c, 0,
@@ -347,7 +347,7 @@ object SmsCore {
         val item = JSONObject().put("address", parts[0].originatingAddress ?: "ناشناس")
             .put("body", parts.joinToString("") { it.messageBody ?: "" })
             .put("sent", parts[0].timestampMillis).put("received", System.currentTimeMillis())
-            .put("sim", intent.getIntExtra("subscription", -1))
+            .put("sim", intent.getIntExtra("android.telephony.extra.SUBSCRIPTION_INDEX", intent.getIntExtra("subscription", -1)))
         val dir = incomingDir(c).apply { mkdirs() }
         val file = android.util.AtomicFile(java.io.File(dir, "${UUID.randomUUID()}.json"))
         val output = file.startWrite()
