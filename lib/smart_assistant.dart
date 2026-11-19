@@ -10,6 +10,11 @@ class SmartAssistant {
   static List<String> suggestReplies(String incoming, {DateTime? now}) {
     final v = _norm(incoming);
     if (v.isEmpty) return const [];
+    if (_any(v, ['یک بارمصرف', 'یک بار مصرف', 'یکبارمصرف', 'مانده حساب', 'لغو ۱۱', 'لغو 11'])) return const [];
+    final arrival = RegExp(r'ساعت\s+([۰-۹0-9:٫]+|یک|دو|سه|چهار|پنج|شش|هفت|هشت|نه|ده)\s+می\s*رسی').firstMatch(v);
+    if (arrival != null) {
+      return ['بله، ساعت ${arrival.group(1)} می‌رسم', 'کمی دیرتر می‌رسم', 'هنوز قطعی نیست، خبر می‌دم'];
+    }
     final hour = (now ?? DateTime.now()).hour;
 
     // Verification codes and money requests are never answered by suggestion.

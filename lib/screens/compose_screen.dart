@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../jalali.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app_store.dart';
 import '../text_polish.dart';
@@ -406,6 +407,34 @@ class _ComposeScreenState extends State<ComposeScreen> {
     await _saveDraft();
   }
 
+  Future<void> _pickOccasion() async {
+    final now = DateTime.now();
+    final choices = <String>[];
+    String title = 'در هفت روز آینده مناسبتی ثبت نشده است';
+    for (var offset = 0; offset <= 7; offset++) {
+      final day = DateTime(now.year, now.month, now.day + offset, 12);
+      final date = Jalali.fromGregorian(day.year, day.month, day.day);
+      final name = switch ((date[1], date[2])) {
+        (1, 1) => 'نوروز', (9, 30) => 'شب یلدا', _ => null,
+      };
+      if (name == null) continue;
+      title = offset == 0 ? 'امروز · $name' : '$name · ${Jalali.digits(offset)} روز دیگر';
+      final prefix = offset == 0 ? '' : 'پیشاپیش ';
+      choices.addAll(['${prefix}$name مبارک! امیدوارم بهت خوش بگذره.',
+        '${prefix}فرارسیدن $name را به شما تبریک می‌گویم.',
+        'عزیزانم، ${prefix}$name مبارک! به امید دیدار.']);
+      break;
+    }
+    final selected = await showModalBottomSheet<String>(context: context,
+      builder: (sheet) => SafeArea(child: ListView(shrinkWrap: true, children: [
+        ListTile(title: Text(title)),
+        for (final text in choices) ListTile(title: Text(text), onTap: () => Navigator.pop(sheet, text)),
+      ])));
+    if (!mounted || selected == null) return;
+    final value = body.text.isEmpty ? selected : '${body.text} $selected';
+    body.value = TextEditingValue(text: value, selection: TextSelection.collapsed(offset: value.length));
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -425,6 +454,9 @@ class _ComposeScreenState extends State<ComposeScreen> {
             Text('$count از $maxRecipients', style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
           ]),
           const SizedBox(height: 10),
+          Align(alignment: AlignmentDirectional.centerStart,
+            child: TextButton.icon(onPressed: _pickOccasion, icon: const Icon(Icons.event_outlined),
+              label: const Text('پیام‌های مناسبتی'))),
           if (widget.lockGroupRecipients)
             Card(
               child: ListTile(

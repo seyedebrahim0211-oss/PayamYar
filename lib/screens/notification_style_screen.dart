@@ -242,7 +242,7 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                     value: _floating['enabled'] == true,
                     onChanged: !SmsBridge.supported || _floatingBusy ? null : _toggleFloating,
                   ),
-                  if (_floating['enabled'] == true) ExpansionTile(
+                  ExpansionTile(
                     title: const Text('تنظیمات حباب و اندازهٔ متن'),
                     children: [
                     ListTile(
@@ -273,7 +273,7 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                     ),
                     ListTile(
                       title: const Text('جنس حباب'),
-                      trailing: SegmentedButton<int>(
+                      subtitle: SegmentedButton<int>(
                         showSelectedIcon: false,
                         segments: const [
                           ButtonSegment(value: 0, label: Text('شیشه‌ای')),
@@ -288,7 +288,7 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                     ),
                     ListTile(
                       title: const Text('شکل حباب'),
-                      trailing: SegmentedButton<int>(
+                      subtitle: SegmentedButton<int>(
                         showSelectedIcon: false,
                         segments: const [
                           ButtonSegment(value: 0, label: Text('دایره')),
@@ -458,7 +458,7 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                   ListTile(
                     leading: Icon(Icons.vertical_align_center_rounded, color: scheme.primary),
                     title: const Text('محل نمایش'),
-                    trailing: SegmentedButton<bool>(
+                    subtitle: SegmentedButton<bool>(
                       showSelectedIcon: false,
                       segments: const [
                         ButtonSegment(value: true, label: Text('بالا')),
