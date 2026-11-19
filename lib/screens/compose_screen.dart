@@ -420,9 +420,9 @@ class _ComposeScreenState extends State<ComposeScreen> {
       if (name == null) continue;
       title = offset == 0 ? 'امروز · $name' : '$name · ${Jalali.digits(offset)} روز دیگر';
       final prefix = offset == 0 ? '' : 'پیشاپیش ';
-      choices.addAll(['${prefix}$name مبارک! امیدوارم بهت خوش بگذره.',
-        '${prefix}فرارسیدن $name را به شما تبریک می‌گویم.',
-        'عزیزانم، ${prefix}$name مبارک! به امید دیدار.']);
+      choices.addAll(['$prefix$name مبارک! امیدوارم بهت خوش بگذره.',
+        '$prefixفرارسیدن $name را به شما تبریک می‌گویم.',
+        'عزیزانم، $prefix$name مبارک! به امید دیدار.']);
       break;
     }
     final selected = await showModalBottomSheet<String>(context: context,

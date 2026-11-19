@@ -66,6 +66,7 @@ class SmsBridge {
     // unless all column lengths agree and the page has a reasonable bound.
     if (count < 0 || count > 5000 ||
         lists.values.any((values) => values.length < count)) { return const []; }
+    final slots = raw['slots'];
     final out = <MessageRecord>[];
     for (var i = 0; i < count; i++) {
       final id = lists['ids']![i];
@@ -78,6 +79,7 @@ class SmsBridge {
       try {
         out.add(MessageRecord(
           id: id.toInt(),
+          simSlot: slots is List && i < slots.length && slots[i] is int ? slots[i] as int : 0,
           sender: lists['senders']![i]?.toString() ?? '',
           body: lists['bodies']![i]?.toString() ?? '',
           date: DateTime.fromMillisecondsSinceEpoch(date.toInt()),

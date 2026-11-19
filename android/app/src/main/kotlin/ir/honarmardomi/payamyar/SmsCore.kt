@@ -22,11 +22,17 @@ object SmsCore {
         check(isDefault(c)) { "برای دسترسی به پیامک، پیام‌یار را پیامک‌رسان پیش‌فرض انتخاب کنید." }
     }
     fun status(c: Context, id: String): String = prefs(c).getString("status:$id", "unknown") ?: "unknown"
-    private val COLUMNS = arrayOf("_id", "address", "body", "date", "type", "read", "status")
+    private val COLUMNS = arrayOf("_id", "address", "body", "date", "type", "read", "status", "sub_id")
     private const val ORDER = "date DESC, _id DESC"
 
     /** Reads up to [limit] rows from the cursor as compact columns (typed arrays cross to Dart far faster than maps). */
-    private fun chunk(cur: android.database.Cursor, limit: Int): Map<String, Any> {
+    private fun simSlots(c: Context): Map<Int, Int> = try {
+        c.getSystemService(SubscriptionManager::class.java).activeSubscriptionInfoList.orEmpty()
+            .filter { it.simSlotIndex >= 0 }.associate { it.subscriptionId to it.simSlotIndex + 1 }
+    } catch (_: SecurityException) { emptyMap() }
+
+    private fun chunk(cur: android.database.Cursor, limit: Int, slots: Map<Int, Int> = emptyMap()): Map<String, Any> {
+        val sim = IntArray(limit)
         val ids = LongArray(limit); val dates = LongArray(limit)
         val types = IntArray(limit); val reads = IntArray(limit); val status = IntArray(limit)
         val senders = ArrayList<String?>(limit); val bodies = ArrayList<String?>(limit)
@@ -34,10 +40,11 @@ object SmsCore {
         while (n < limit && cur.moveToNext()) {
             ids[n] = cur.getLong(0); senders.add(cur.getString(1)); bodies.add(cur.getString(2))
             dates[n] = cur.getLong(3); types[n] = cur.getInt(4); reads[n] = cur.getInt(5); status[n] = cur.getInt(6)
+            sim[n] = if (cur.isNull(7)) 0 else slots[cur.getInt(7)] ?: 0
             n++
         }
         return mapOf("n" to n, "ids" to ids.copyOf(n), "dates" to dates.copyOf(n), "types" to types.copyOf(n),
-            "reads" to reads.copyOf(n), "status" to status.copyOf(n), "senders" to senders, "bodies" to bodies)
+            "slots" to sim.copyOf(n), "reads" to reads.copyOf(n), "status" to status.copyOf(n), "senders" to senders, "bodies" to bodies)
     }
 
     /** Newest [limit] messages; used for quick refreshes after a change. */
@@ -45,7 +52,7 @@ object SmsCore {
         requireDefault(c)
         drainIncoming(c)
         c.contentResolver.query(Telephony.Sms.CONTENT_URI, COLUMNS, null, null, ORDER)?.use { cur ->
-            return chunk(cur, limit.coerceIn(1, 5000))
+            return chunk(cur, limit.coerceIn(1, 5000), simSlots(c))
         }
         return chunk(android.database.MatrixCursor(COLUMNS), 1)
     }
@@ -56,10 +63,11 @@ object SmsCore {
         drainIncoming(c)
         var total = 0
         c.contentResolver.query(Telephony.Sms.CONTENT_URI, COLUMNS, null, null, ORDER)?.use { cur ->
+            val slots = simSlots(c)
             var size = 150
             while (true) {
                 requireDefault(c)
-                val page = chunk(cur, size)
+                val page = chunk(cur, size, slots)
                 val n = page["n"] as Int
                 if (n > 0) { total += n; emit(page) }
                 if (n < size) break

@@ -387,6 +387,17 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
     return items;
   }
 
+  MessageRecord? _suggestionSource;
+  List<String> _suggestions = const [];
+  List<String> _repliesFor(MessageRecord message) {
+    if (!identical(message, _suggestionSource)) {
+      _suggestionSource = message;
+      _suggestions = MessageLogic.category(message) == MessageCategory.personal
+          ? SmartAssistant.suggestReplies(message.body) : const [];
+    }
+    return _suggestions;
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -402,9 +413,8 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
         final items = _entries(messages, pending);
         final matches = _searchVisible ? MessageSearch.withinConversation(messages, _searchQuery) : const <MessageRecord>[];
         final selectedMatch = matches.isEmpty ? null : matches[_matchIndex.clamp(0, matches.length - 1)];
-        final quickReplies = settings.smartReplies && messages.isNotEmpty && !messages.first.outgoing &&
-                MessageLogic.category(messages.first) == MessageCategory.personal
-            ? SmartAssistant.suggestReplies(messages.first.body)
+        final quickReplies = settings.smartReplies && messages.isNotEmpty && !messages.first.outgoing
+            ? _repliesFor(messages.first)
             : const <String>[];
         final pinned = store.isPinned(widget.address);
         final pinnedId = store.pinnedMessageId(widget.address);
@@ -655,7 +665,7 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
       searchHit: searchHit,
       selectedHit: selectedHit,
       warning: !m.outgoing && MessageLogic.suspicious(m.body),
-      time: Jalali.time(m.date),
+      time: !m.outgoing && m.simSlot > 0 ? '${Jalali.time(m.date)} · سیم ${Jalali.digits(m.simSlot)}' : Jalali.time(m.date),
       status: status,
       statusIcon: icon,
       onLongPress: () => _messageActions(m),
