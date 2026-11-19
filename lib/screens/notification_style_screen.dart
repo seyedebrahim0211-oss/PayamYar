@@ -231,6 +231,9 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                     label: const Text('آزمایش اعلان روی گوشی'),
                   )),
                 const SizedBox(height: 16),
+                Align(alignment: AlignmentDirectional.centerStart, child: TextButton.icon(
+                  icon: const Icon(Icons.restart_alt), label: const Text('بازگردانی ظاهر کارت به پیش‌فرض'),
+                  onPressed: s.resetNotificationStyle)),
                 _ActionSettings(settings: s),
                 SettingsGroup(title: 'حباب کنار صفحه و اعلان شناور', children: [
                   SwitchListTile(

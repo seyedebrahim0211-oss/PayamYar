@@ -67,6 +67,7 @@ class AppSettings extends ChangeNotifier {
   bool enterToSend = false;
   bool signatureEnabled = false;
   String signature = '';
+  int replyTone = 0;
   bool smartReplies = true;
   /// App-side recipient selection capacity, not an operator sending allowance.
   /// For >500, the user must explicitly opt in; all SMS remain subject to carrier policy.
@@ -162,6 +163,7 @@ class AppSettings extends ChangeNotifier {
     enterToSend = p.getBool('enterToSend') ?? false;
     signatureEnabled = p.getBool('signatureEnabled') ?? false;
     signature = p.getString('signature') ?? '';
+    replyTone = (p.getInt('replyTone') ?? 0).clamp(0, 2).toInt();
     smartReplies = p.getBool('smartReplies') ?? true;
     recipientCapacity = _capacity(p.getInt('recipientCapacity') ?? 500);
     swipeTabs = p.getBool('swipeTabs') ?? true;
@@ -211,7 +213,7 @@ class AppSettings extends ChangeNotifier {
   Future<void> update({int? palette, ThemeMode? mode, bool? autoNight, int? nightStart, int? nightEnd, double? scale, int? fontChoice,
       bool? hidePreview, bool? notifyPreview, bool? notifyIncoming, bool? notifySent,
       bool? sendDelayEnabled, int? sendDelaySeconds, SentFeedback? sentFeedback, bool? enterToSend,
-      bool? signatureEnabled, String? signature, bool? smartReplies, int? recipientCapacity,
+      bool? signatureEnabled, String? signature, bool? smartReplies, int? replyTone, int? recipientCapacity,
        bool? swipeTabs, bool? reduceEffects, ChatStyle? chatStyle,
       double? bubbleText, bool? quietHours, int? quietStart, int? quietEnd}) async {
     this.palette = palette ?? this.palette;
@@ -231,6 +233,7 @@ class AppSettings extends ChangeNotifier {
     this.enterToSend = enterToSend ?? this.enterToSend;
     this.signatureEnabled = signatureEnabled ?? this.signatureEnabled;
     this.signature = (signature ?? this.signature).trim();
+    this.replyTone = (replyTone ?? this.replyTone).clamp(0, 2).toInt();
     this.smartReplies = smartReplies ?? this.smartReplies;
     this.recipientCapacity = _capacity(recipientCapacity ?? this.recipientCapacity);
     this.swipeTabs = swipeTabs ?? this.swipeTabs;
@@ -267,6 +270,7 @@ class AppSettings extends ChangeNotifier {
     await p.setBool('enterToSend', enterToSend);
     await p.setBool('signatureEnabled', signatureEnabled);
     await p.setString('signature', signature);
+    await p.setInt('replyTone', replyTone);
     await p.setBool('smartReplies', smartReplies);
     await p.setInt('recipientCapacity', recipientCapacity);
     await p.setBool('swipeTabs', swipeTabs);
@@ -358,6 +362,8 @@ class AppSettings extends ChangeNotifier {
     'notifyMarkRead': notifyMarkRead, 'notifyCall': notifyCall,
   };
 
+  Future<void> resetNotificationStyle() => _restoreNotify(AppSettings().notifyJson());
+
   Future<void> _restoreNotify(Map<String, dynamic> j) async {
     bool? b(String k) => j[k] is bool ? j[k] as bool : null;
     int? i(String k) => j[k] is num ? (j[k] as num).toInt() : null;
@@ -396,7 +402,7 @@ class AppSettings extends ChangeNotifier {
     'privatePreview': hidePreview, 'notifyPreview': notifyPreview, 'notifyIncoming': notifyIncoming,
     'notifySent': notifySent, 'sentFeedback': sentFeedback.index, 'sendDelayEnabled': sendDelayEnabled,
     'sendDelaySeconds': sendDelaySeconds, 'enterToSend': enterToSend, 'signatureEnabled': signatureEnabled,
-    'signature': signature, 'smartReplies': smartReplies, 'recipientCapacity': recipientCapacity, 'swipeTabs': swipeTabs,
+    'signature': signature, 'smartReplies': smartReplies, 'replyTone': replyTone, 'recipientCapacity': recipientCapacity, 'swipeTabs': swipeTabs,
      'reduceEffects': reduceEffects, 'chatStyle': chatStyle.index,
     'bubbleText': bubbleText, 'quietHours': quietHours, 'quietStart': quietStart, 'quietEnd': quietEnd,
     ...notifyJson(),
@@ -418,7 +424,7 @@ class AppSettings extends ChangeNotifier {
           : SentFeedback.values[i('sentFeedback')!.clamp(0, SentFeedback.values.length - 1).toInt()],
       sendDelayEnabled: v<bool>('sendDelayEnabled'), sendDelaySeconds: i('sendDelaySeconds'),
       enterToSend: v<bool>('enterToSend'), signatureEnabled: v<bool>('signatureEnabled'),
-      signature: v<String>('signature'), smartReplies: v<bool>('smartReplies'),
+      signature: v<String>('signature'), smartReplies: v<bool>('smartReplies'), replyTone: v<int>('replyTone'),
        recipientCapacity: i('recipientCapacity'), swipeTabs: v<bool>('swipeTabs'),
        reduceEffects: v<bool>('reduceEffects'),
       chatStyle: i('chatStyle') == null ? null

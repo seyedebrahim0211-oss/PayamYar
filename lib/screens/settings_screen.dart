@@ -492,6 +492,12 @@ class SendingSettingsPage extends StatelessWidget {
             title: const Text('پیشنهاد پاسخ سریع'),
             subtitle: const Text('پاسخ‌های کوتاه پیشنهادی زیر پیام دریافتی'),
             value: settings.smartReplies, onChanged: (v) => settings.update(smartReplies: v)),
+          if (settings.smartReplies) ListTile(title: const Text('لحن پاسخ پیشنهادی'),
+            subtitle: Wrap(spacing: 6, children: [
+              for (final (index, label) in const ['خودکار', 'رسمی', 'صمیمی'].indexed)
+                ChoiceChip(label: Text(label), selected: settings.replyTone == index,
+                  onSelected: (_) => settings.update(replyTone: index)),
+            ])),
           SwitchListTile(
             secondary: Icon(Icons.draw_outlined, color: scheme.primary),
             title: const Text('امضای خودکار'),

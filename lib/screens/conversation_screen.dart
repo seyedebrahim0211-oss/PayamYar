@@ -387,13 +387,15 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
     return items;
   }
 
+  int _cachedTone = -1;
   MessageRecord? _suggestionSource;
   List<String> _suggestions = const [];
   List<String> _repliesFor(MessageRecord message) {
-    if (!identical(message, _suggestionSource)) {
+    if (!identical(message, _suggestionSource) || _cachedTone != settings.replyTone) {
+      _cachedTone = settings.replyTone;
       _suggestionSource = message;
       _suggestions = MessageLogic.category(message) == MessageCategory.personal
-          ? SmartAssistant.suggestReplies(message.body) : const [];
+          ? SmartAssistant.suggestReplies(message.body, tone: _cachedTone) : const [];
     }
     return _suggestions;
   }
