@@ -613,8 +613,21 @@ class FloatingNotifications : Service() {
             override fun onDown(e: MotionEvent): Boolean = true
             override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float,
                                  velocityY: Float): Boolean {
-                if (e1 == null || messages.size < 2 || abs(velocityX) < 450 ||
+                if (e1 == null || abs(velocityX) < 450 ||
                     abs(e2.x - e1.x) < dp(70) || abs(velocityY) > abs(velocityX)) return false
+                if (velocityX > 0 && flag("swipeRightRead") && !private && !message.sample && SmsCore.isDefault(this@FloatingNotifications)) {
+                    main.post {
+                        if (shown != message) return@post
+                        try {
+                            SmsCore.markAddressRead(this@FloatingNotifications, message.address, message.time)
+                            Notifier.cancel(this@FloatingNotifications, message.address)
+                        } catch (_: SecurityException) {
+                            Toast.makeText(this@FloatingNotifications, "مجوز خواندن پیام در دسترس نیست", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    return true
+                }
+                if (messages.size < 2) return false
                 val all = messages.values.toList()
                 val i = all.indexOfFirst { it.address == message.address }
                 val next = all[(i + (if (velocityX < 0) 1 else all.size - 1)).mod(all.size)]
@@ -634,7 +647,13 @@ class FloatingNotifications : Service() {
         val window = object : FrameLayout(this) {
             override fun dispatchTouchEvent(event: MotionEvent): Boolean {
                 if (event.actionMasked == MotionEvent.ACTION_DOWN) main.removeCallbacks(hide)
-                if (!replying) detector.onTouchEvent(event)
+                if (!replying && detector.onTouchEvent(event) && event.actionMasked == MotionEvent.ACTION_UP) {
+                    val cancel = MotionEvent.obtain(event)
+                    cancel.action = MotionEvent.ACTION_CANCEL
+                    super.dispatchTouchEvent(cancel)
+                    cancel.recycle()
+                    return true
+                }
                 val handled = super.dispatchTouchEvent(event)
                 if (card === this && (event.actionMasked == MotionEvent.ACTION_UP ||
                     event.actionMasked == MotionEvent.ACTION_CANCEL)) {

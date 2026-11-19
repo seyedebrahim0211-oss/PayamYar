@@ -78,10 +78,10 @@ object SmsCore {
     }
 
     /** Marks every unread incoming message from this sender as read (notification "خوانده شد" action). */
-    fun markAddressRead(c: Context, address: String): Int {
+    fun markAddressRead(c: Context, address: String, through: Long = Long.MAX_VALUE): Int {
         if (!isDefault(c)) return 0
         return c.contentResolver.update(Telephony.Sms.Inbox.CONTENT_URI,
-            ContentValues().apply { put("read", 1); put("seen", 1) }, "address = ? AND read = 0", arrayOf(address))
+            ContentValues().apply { put("read", 1); put("seen", 1) }, "address = ? AND read = 0 AND date <= ?", arrayOf(address, through.toString()))
     }
     fun subscriptions(c: Context): List<Map<String, Any>> {
         val result = mutableListOf<Map<String, Any>>(mapOf("id" to -1, "label" to "سیم‌کارت پیش‌فرض"))
