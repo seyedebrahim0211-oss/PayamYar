@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../app_settings.dart';
 import '../app_store.dart';
+import '../bank_badge.dart';
 import '../jalali.dart';
 import '../notify_banner.dart';
 import '../sms_bridge.dart';
@@ -59,6 +60,7 @@ class _BannerLayerState extends State<_BannerLayer> with SingleTickerProviderSta
   Timer? _timer;
   bool _typing = false;
   double _drag = 0;
+  double _horizontal = 0;
   int _bannerGeneration = 0;
 
   @override
@@ -87,6 +89,7 @@ class _BannerLayerState extends State<_BannerLayer> with SingleTickerProviderSta
       _banner = next;
       _typing = false;
       _drag = 0;
+      _horizontal = 0;
     });
     HapticFeedback.lightImpact();
     if (widget.settings.reduceEffects || MediaQuery.disableAnimationsOf(context)) {
@@ -118,6 +121,7 @@ class _BannerLayerState extends State<_BannerLayer> with SingleTickerProviderSta
       _banner = null;
       _typing = false;
       _drag = 0;
+      _horizontal = 0;
     });
     // A newer SMS may arrive while the old card is animating out.
     // Only clear the exact banner dismissed, never the new message.
@@ -164,6 +168,26 @@ class _BannerLayerState extends State<_BannerLayer> with SingleTickerProviderSta
     } on PlatformException {
       if (mounted) widget.store.onNotice?.call('کپی کد انجام نشد. دوباره لمس کنید.');
     }
+  }
+
+  Future<void> _horizontalEnd(DragEndDetails details) async {
+    final b = _banner;
+    final dx = _horizontal;
+    setState(() => _horizontal = 0);
+    if (b == null || dx.abs() < 44 || _typing) {
+      _restartTimer();
+      return;
+    }
+    final read = dx > 0 ? widget.settings.swipeRightRead : widget.settings.swipeLeftRead;
+    if (read && !b.sample) {
+      try {
+        await SmsBridge.readBanner(b.address, b.time);
+        if (mounted) unawaited(widget.store.refresh());
+      } on PlatformException {
+        if (mounted) widget.store.onNotice?.call('علامت‌گذاری پیام انجام نشد.');
+      }
+    }
+    if (mounted && identical(_banner, b)) await _dismiss();
   }
 
   void _dragUpdate(DragUpdateDetails d, bool top) {
@@ -221,10 +245,17 @@ class _BannerLayerState extends State<_BannerLayer> with SingleTickerProviderSta
                       child: child,
                     ),
                     child: GestureDetector(
+                      onHorizontalDragStart: (_) => _timer?.cancel(),
+                      onHorizontalDragUpdate: (d) => setState(() => _horizontal += d.delta.dx),
+                      onHorizontalDragEnd: _horizontalEnd,
+                      onHorizontalDragCancel: () {
+                        setState(() => _horizontal = 0);
+                        _restartTimer();
+                      },
                       onVerticalDragUpdate: (d) => _dragUpdate(d, top),
                       onVerticalDragEnd: (d) => _dragEnd(d, top),
                       child: Transform.translate(
-                        offset: Offset(0, _drag),
+                        offset: Offset(_horizontal, _drag),
                         child: GlassBannerCard(
                           key: ValueKey(b),
                           banner: b,
@@ -419,12 +450,14 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
               children: [
                 Row(
                   children: [
-                    _GlassAvatar(
+                    BankBadge(sender: b.showBrand && s.notifyPreview ? b.address : '',
+                      size: 42, square: s.notifyAvatarShape == 1,
+                      fallback: _GlassAvatar(
                       name: b.name,
                       tint: tint,
                       glass: s.notifyGlassAvatar,
                       square: s.notifyAvatarShape == 1,
-                    ),
+                    )),
                     const SizedBox(width: 9),
                     Expanded(
                       child: Column(

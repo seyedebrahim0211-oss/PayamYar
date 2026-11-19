@@ -28,6 +28,12 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   int tab = 0;
+  bool _contactsVisited = false;
+
+  void _selectTab(int next) => setState(() {
+    tab = next;
+    if (next == 1) _contactsVisited = true;
+  });
   DateTime? _lastUpdateCheck;
 
   @override
@@ -106,13 +112,14 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           final isRtl = Directionality.of(context) == TextDirection.rtl;
           final direction = isRtl ? (speed > 0 ? 1 : -1) : (speed < 0 ? 1 : -1);
           final next = (tab + direction).clamp(0, 4);
-          if (next != tab && mounted) setState(() => tab = next);
+          if (next != tab && mounted) _selectTab(next);
         } : null,
         child: Stack(children: [
           Offstage(
             offstage: tab != 0,
             child: TickerMode(enabled: tab == 0, child: ConversationsPage(store: widget.store, settings: widget.settings))),
-          if (tab == 1) ContactsScreen(store: widget.store),
+          if (_contactsVisited) Offstage(offstage: tab != 1,
+            child: TickerMode(enabled: tab == 1, child: ContactsScreen(store: widget.store))),
           if (tab == 2) GroupsScreen(store: widget.store),
           if (tab == 3) ReportsScreen(store: widget.store, settings: widget.settings),
           if (tab == 4) SettingsScreen(store: widget.store, settings: widget.settings),
@@ -169,7 +176,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                   surfaceTintColor: Colors.transparent,
                   indicatorColor: Theme.of(context).colorScheme.primary.withValues(alpha: .16),
                   selectedIndex: tab,
-                  onDestinationSelected: (v) => setState(() => tab = v),
+                  onDestinationSelected: _selectTab,
                   destinations: [
                     NavigationDestination(
                       icon: Badge(

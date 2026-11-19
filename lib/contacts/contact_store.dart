@@ -67,7 +67,7 @@ class ContactStore extends ChangeNotifier {
           final raw = jsonDecode(prefs.getString(_birthdayKey) ?? '{}');
           if (raw is Map) saved = raw.cast<String, dynamic>();
         } catch (_) {}
-        contacts = [
+        contacts = saved.isEmpty ? native : [
           for (final c in native)
             c.withBirthdayOverride(
               saved[c.key] is List && (saved[c.key] as List).length == 2
@@ -75,6 +75,9 @@ class ContactStore extends ChangeNotifier {
                 : null,
             ),
         ];
+        _photos.clear();
+      } else {
+        contacts = [];
         _photos.clear();
       }
     } catch (e) {
@@ -128,6 +131,7 @@ class ContactStore extends ChangeNotifier {
   static String _fold(String s) => s.replaceAll('ي', 'ی').replaceAll('ك', 'ک').replaceAll('‌', ' ').toLowerCase();
 
   List<PhoneContact> search(String query, {String? groupId, bool favorites = false}) {
+    if (query.trim().isEmpty && groupId == null && !favorites) return contacts;
     final q = _fold(query.trim());
     final qDigits = phoneKey(query);
     return contacts.where((c) {
@@ -140,7 +144,7 @@ class ContactStore extends ChangeNotifier {
     }).toList();
   }
 
-  int get favoritesCount => contacts.where((c) => c.starred).length;
+  int get favoritesCount => _cached('favoriteCount', () => contacts.where((c) => c.starred).length);
 
   // Derived lists are cached per loaded contact list (they are shown on every rebuild).
   List<PhoneContact>? _cacheFor;

@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../message_logic.dart';
+import '../bank_badge.dart';
 import '../sms_bridge.dart';
 
 const _avatarColors = [
@@ -34,7 +35,8 @@ class SenderAvatar extends StatelessWidget {
       };
       child = Icon(icon, color: Colors.white, size: radius * .95);
     }
-    final fallback = CircleAvatar(radius: radius, backgroundColor: color, child: child);
+    final fallback = BankBadge(sender: address, size: radius * 2,
+        fallback: CircleAvatar(radius: radius, backgroundColor: color, child: child));
     final phone = SmsBridge.normalizeNumber(address).replaceAll(RegExp(r'[^0-9]'), '');
     if (!SmsBridge.supported || category != MessageCategory.personal || phone.length < 7) {
       return fallback;

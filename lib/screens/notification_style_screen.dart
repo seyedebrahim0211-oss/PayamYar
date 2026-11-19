@@ -581,8 +581,10 @@ class _ActionSettings extends StatelessWidget {
       if (s.notifyOtpCopy)
         SwitchListTile(title: const Text('نمایش عدد روی دکمهٔ کپی'),
             value: s.bannerActionCode, onChanged: (v) => s.updateNotify(bannerActionCode: v)),
-      SwitchListTile(title: const Text('خواندن پیام با کشیدن کارت شناور به راست'),
+      SwitchListTile(title: const Text('خواندن پیام با کشیدن کارت به راست'),
           value: s.swipeRightRead, onChanged: (v) => s.updateNotify(swipeRightRead: v)),
+      SwitchListTile(title: const Text('خواندن پیام با کشیدن کارت به چپ'),
+          value: s.swipeLeftRead, onChanged: (v) => s.updateNotify(swipeLeftRead: v)),
       ExpansionTile(title: const Text('دکمه‌های دیگر'), children: [
         SwitchListTile(title: const Text('گفتگو'), value: s.notifyOpen,
             onChanged: (v) => s.updateNotify(notifyOpen: v)),

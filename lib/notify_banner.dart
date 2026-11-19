@@ -12,9 +12,10 @@ class IncomingBanner {
 
   /// Settings preview: nothing is opened or sent.
   final bool sample;
+  final bool showBrand;
 
   const IncomingBanner({required this.address, required this.name, required this.body, required this.time,
-      this.otp, this.sourceColor, this.canReply = false, this.sample = false});
+      this.otp, this.sourceColor, this.canReply = false, this.showBrand = false, this.sample = false});
 
   /// Payload of the native "incomingBanner" event (see Notifier.kt).
   static IncomingBanner? fromMap(Object? raw) {
@@ -31,6 +32,7 @@ class IncomingBanner {
       otp: (otp == null || otp.isEmpty) ? null : otp,
       sourceColor: (raw['sourceColor'] as num?)?.toInt(),
       canReply: raw['canReply'] == true,
+      showBrand: raw['showBrand'] == true,
     );
   }
 

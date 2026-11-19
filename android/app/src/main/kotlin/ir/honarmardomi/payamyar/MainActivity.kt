@@ -40,6 +40,12 @@ open class MainActivity : FlutterActivity() {
             return token
         }
     }
+    // Accessed by the single SMS worker. Reuse the same snapshot for the
+    // first inbox page and the rest of the history, then refresh periodically.
+    private var nameIndex: Map<String, String> = emptyMap()
+    private var nameIndexAt = -1L
+    @Volatile private var resumeGeneration = 0
+    private var indexedGeneration = -1
     private var observing = false
     private var contactResult: MethodChannel.Result? = null
     private var permissionResult: MethodChannel.Result? = null
@@ -289,7 +295,10 @@ open class MainActivity : FlutterActivity() {
                             "readMessages" -> SmsCore.read(this, call.argument<Int>("limit") ?: 300)
                             "subscriptions" -> SmsCore.subscriptions(this)
                             "pendingSms" -> SmsCore.pending(this)
-                            "contactNames" -> contactNames(call.argument<List<String>>("addresses").orEmpty())
+                            "contactNames" -> {
+                                if (call.argument<Boolean>("force") == true) nameIndexAt = -1
+                                contactNames(call.argument<List<String>>("addresses").orEmpty())
+                            }
                             "contactPhoto" -> contactPhoto(call.argument<String>("address").orEmpty())
                             "listContacts" -> listContacts()
                             "blockNumber" -> blockNumber(call.argument<String>("address").orEmpty())
@@ -303,6 +312,15 @@ open class MainActivity : FlutterActivity() {
                                 }
                             "cancelSms" -> SmsCore.cancel(this, call.argument<String>("requestId").orEmpty())
                             "sendStatus" -> SmsCore.status(this, call.argument<String>("requestId").orEmpty())
+                            "readBanner" -> {
+                                check(SmsCore.isDefault(this))
+                                val prefs = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+                                check(!prefs.getBoolean("flutter.appLock", false))
+                                val address = requireNotNull(call.argument<String>("address")).also { require(it.isNotBlank()) }
+                                val through = requireNotNull(call.argument<Number>("through")).toLong()
+                                SmsCore.markAddressRead(this, address, through)
+                                true
+                            }
                             "markRead" -> SmsCore.mutate(this, call.argument<List<Number>>("ids").orEmpty(), false)
                             "deleteMessages" -> SmsCore.mutate(this, call.argument<List<Number>>("ids").orEmpty(), true)
                             else -> { runOnUiThread { result.notImplemented() }; return@execute }
@@ -366,7 +384,28 @@ open class MainActivity : FlutterActivity() {
 
     /** Display names for phone numbers: the phone book is read in ONE query and matched by the last 10 digits. */
     private fun contactNames(addresses: List<String>): Map<String, String> {
-        if (!has(Manifest.permission.READ_CONTACTS)) return emptyMap()
+        if (!has(Manifest.permission.READ_CONTACTS)) {
+            nameIndex = emptyMap()
+            nameIndexAt = -1
+            return emptyMap()
+        }
+        val now = android.os.SystemClock.elapsedRealtime()
+        val generation = resumeGeneration
+        if (indexedGeneration != generation || nameIndexAt < 0 || now - nameIndexAt >= 120_000L) {
+            nameIndex = readNameIndex()
+            nameIndexAt = now
+            indexedGeneration = generation
+        }
+        val names = HashMap<String, String>()
+        for (address in addresses) {
+            if (address.any { it.isLetter() }) continue
+            val key = phoneKey(address)
+            if (key.length >= 7) nameIndex[key]?.let { names[address] = it }
+        }
+        return names
+    }
+
+    private fun readNameIndex(): Map<String, String> {
         val book = HashMap<String, String>()
         contentResolver.query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
             arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER, ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME),
@@ -378,14 +417,7 @@ open class MainActivity : FlutterActivity() {
                 if (key.length >= 7 && !name.isNullOrBlank() && !book.containsKey(key)) book[key] = name
             }
         }
-        val names = HashMap<String, String>()
-        for (address in addresses) {
-            if (address.any { it.isLetter() }) continue
-            val key = phoneKey(address)
-            val name = if (key.length >= 7) book[key] else null
-            if (name != null) names[address] = name
-        }
-        return names
+        return book
     }
 
     /** Read only the local contact thumbnail, never upload a photo or expose the full address book. */
@@ -458,6 +490,7 @@ open class MainActivity : FlutterActivity() {
     }
     override fun onResume() {
         super.onResume()
+        resumeGeneration++
         if (::channel.isInitialized) { observeMessages(); foregroundChannel = channel }
         FloatingNotifications.refresh()
     }

@@ -56,7 +56,7 @@ class ContactsScreen extends StatefulWidget {
   State<ContactsScreen> createState() => _ContactsScreenState();
 }
 
-class _ContactsScreenState extends State<ContactsScreen> {
+class _ContactsScreenState extends State<ContactsScreen> with WidgetsBindingObserver {
   final contacts = ContactStore();
   final search = TextEditingController();
   String query = '';
@@ -115,11 +115,18 @@ class _ContactsScreenState extends State<ContactsScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     contacts.load(ask: true);
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !contacts.loading) contacts.load();
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     contacts.dispose();
     search.dispose();
     super.dispose();

@@ -127,8 +127,7 @@ class AppStore extends ChangeNotifier {
 
   Future<void> init() async {
     final p = await SharedPreferences.getInstance();
-    await smsGroups.load();
-    await folders.load();
+    await Future.wait([smsGroups.load(), folders.load()]);
     onboarded = p.getBool('onboarded') ?? false;
     archived.addAll(p.getStringList('archived') ?? []);
     pinned.addAll(p.getStringList('pinned') ?? []);
@@ -141,7 +140,9 @@ class AppStore extends ChangeNotifier {
     if (android) {
       SmsBridge.listen(_onNativeEvent);
       await checkPermissions();
-      if (permissions.isDefault && permissions.canRead) unawaited(_quickThenAll());
+      if (permissions.isDefault && permissions.canRead) unawaited(loadAll());
+      initialized = true;
+      notifyListeners();
       try {
         final queued = await SmsBridge.pending();
         for (final item in queued) {
@@ -199,12 +200,13 @@ class AppStore extends ChangeNotifier {
       final hadContacts = permissions.contacts;
       permissions = await SmsBridge.status();
       if (!permissions.contacts) {
+        if (hadContacts) _contactEpoch++;
         names.clear();
         _lastNamesLoad = null;
       } else if (!hadContacts) {
         unawaited(_loadNames(force: true));
       }
-      if (!permissions.isDefault) {
+      if (!permissions.isDefault || !permissions.canRead) {
         // Stop any in-flight SMS page aggregation after default-role revocation.
         _generation++;
         _buffer = [];
@@ -226,7 +228,7 @@ class AppStore extends ChangeNotifier {
       if (!permissions.isDefault) return permissions;
     }
     permissions = await SmsBridge.request();
-    if (permissions.isDefault && permissions.canRead && messages.isEmpty) unawaited(_quickThenAll());
+    if (permissions.isDefault && permissions.canRead && messages.isEmpty) unawaited(loadAll());
     notifyListeners();
     return permissions;
   }
@@ -331,24 +333,6 @@ class AppStore extends ChangeNotifier {
 
   // ───────────── loading ─────────────
 
-  /// Shows the newest messages within a moment, then reads the whole inbox silently in the background.
-  Future<void> _quickThenAll() async {
-    if (!permissions.isDefault || !permissions.canRead) return;
-    if (messages.isEmpty) {
-      try {
-        final first = await SmsBridge.read(limit: 400);
-        if (messages.isEmpty && first.isNotEmpty) {
-          messages = first;
-          _rebuild();
-          notifyListeners();
-        }
-      } catch (_) {
-        // The full load below reports errors.
-      }
-    }
-    await loadAll();
-  }
-
   /// Reads every SMS in one native pass. The first 150 messages appear at once; the rest follow in large pages.
   Future<void> loadAll() async {
     if (!android || !permissions.isDefault || !permissions.canRead || loadingAll) return;
@@ -387,10 +371,14 @@ class AppStore extends ChangeNotifier {
     _buffer.addAll(page);
     loadedCount = _buffer.length;
     if (_progressive) {
+      final firstPage = loadedCount == page.length;
       messages = _buffer;
       _ingest(page);
       revision++;
-      notifyListeners();
+      if (firstPage) {
+        unawaited(_loadNames());
+        notifyListeners();
+      }
     }
   }
 
@@ -413,6 +401,12 @@ class AppStore extends ChangeNotifier {
       }
       const window = 300;
       final page = await SmsBridge.read(limit: window);
+      if (!permissions.isDefault || !permissions.canRead) return;
+      if ((page.length == window || page.length == messages.length) &&
+          page.length <= messages.length && _samePage(page, messages)) {
+        unawaited(_loadNames());
+        return;
+      }
       if (page.length < window) {
         messages = page;
       } else {
@@ -431,7 +425,18 @@ class AppStore extends ChangeNotifier {
     }
   }
 
-  bool _loadingNames = false;
+  static bool _samePage(List<MessageRecord> rows, List<MessageRecord> previous) {
+    for (var i = 0; i < rows.length; i++) {
+      final a = rows[i], b = previous[i];
+      if (a.id != b.id || a.date != b.date || a.body != b.body || a.sender != b.sender ||
+          a.read != b.read || a.type != b.type || a.simSlot != b.simSlot ||
+          a.outgoing != b.outgoing || a.delivery != b.delivery) return false;
+    }
+    return true;
+  }
+
+  Future<void>? _namesRequest;
+  int _contactEpoch = 0;
   DateTime? _lastNamesLoad;
 
   /// Refreshes saved contact names after returning from the phonebook.
@@ -439,7 +444,11 @@ class AppStore extends ChangeNotifier {
   Future<void> refreshContactNames({bool force = false}) => _loadNames(force: force);
 
   Future<void> _loadNames({bool force = false}) async {
-    if (!permissions.contacts || _loadingNames) return;
+    final previous = _namesRequest;
+    if (previous != null) await previous;
+    if (!permissions.contacts || !permissions.isDefault || !permissions.canRead) return;
+    if (_namesRequest != null) return;
+    final epoch = _contactEpoch;
     final all = conversations.map((c) => c.address)
         .where((a) => RegExp(r'\d{5}').hasMatch(a)).toSet().toList();
     if (all.isEmpty) return;
@@ -448,9 +457,19 @@ class AppStore extends ChangeNotifier {
         now.difference(_lastNamesLoad!) >= const Duration(minutes: 2);
     final requested = refreshAll ? all : all.where((a) => !names.containsKey(a)).toList();
     if (requested.isEmpty) return;
-    _loadingNames = true;
+    final request = _applyNames(requested, epoch, now, force);
+    _namesRequest = request;
     try {
-      final found = await SmsBridge.contactNames(requested);
+      await request;
+    } finally {
+      _namesRequest = null;
+    }
+  }
+
+  Future<void> _applyNames(List<String> requested, int epoch, DateTime now, bool force) async {
+    try {
+      final found = await SmsBridge.contactNames(requested, force: force);
+      if (!permissions.contacts || !permissions.isDefault || !permissions.canRead || epoch != _contactEpoch) return;
       var changed = false;
       for (final address in requested) {
         final updated = found[address] ?? '';
@@ -463,8 +482,6 @@ class AppStore extends ChangeNotifier {
       if (changed) notifyListeners();
     } catch (_) {
       // Keep existing names if the contacts provider is temporarily unavailable.
-    } finally {
-      _loadingNames = false;
     }
   }
 

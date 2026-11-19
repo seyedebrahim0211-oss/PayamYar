@@ -313,7 +313,7 @@ object Notifier {
         val front = MainActivity.foregroundChannel
         if (!forceSystem && front != null && enabled(c, "notifyInApp")) {
             val payload = mapOf("address" to address, "name" to name, "body" to text, "time" to time,
-                "otp" to code, "canReply" to reply, "sourceColor" to source?.selectedColor(prefs(c))?.toLong()?.and(0xffffffffL))
+                "otp" to code, "canReply" to reply, "showBrand" to preview, "sourceColor" to source?.selectedColor(prefs(c))?.toLong()?.and(0xffffffffL))
             Handler(Looper.getMainLooper()).post {
                 try {
                     front.invokeMethod("incomingBanner", payload, object : MethodChannel.Result {
@@ -361,7 +361,8 @@ object Notifier {
         val color = if (enabled(c, "bannerSourceColors") && enabled(c, "notifyPreview", false) && !enabled(c, "appLock", false))
             (sampleSource ?: MessengerSender.fromAddress(address))?.selectedColor(prefs(c)) ?: accent(c) else accent(c)
         val source = if (enabled(c, "appLock", false)) letterAvatar("پ", "private")
-            else contactPhoto(c, address) ?: letterAvatar(name, address)
+            else (if (enabled(c, "notifyPreview", false)) BankLogos.picture(c, address) else null)
+                ?: contactPhoto(c, address) ?: letterAvatar(name, address)
         val picture = styledAvatar(source, number(c, "notifyAvatarShape", 0L) == 1L, enabled(c, "notifyGlassAvatar"), color)
         val portrait = IconCompat.createWithBitmap(picture)
         // MessagingStyle retains conversation semantics and unread message history.

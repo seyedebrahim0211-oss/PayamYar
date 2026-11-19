@@ -4,6 +4,19 @@ import 'package:payamyar/app_settings.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('left and right read gestures persist independently after upgrading', () async {
+    SharedPreferences.setMockInitialValues({'swipeRightRead': false});
+    final settings = AppSettings();
+    await settings.load();
+    expect(settings.swipeLeftRead, isFalse);
+    await settings.updateNotify(swipeLeftRead: true);
+    final restored = AppSettings();
+    await restored.load();
+    expect(restored.swipeRightRead, isFalse);
+    expect(restored.swipeLeftRead, isTrue);
+    settings.dispose();
+    restored.dispose();
+  });
   test('glass banner location persists across settings reload', () async {
     SharedPreferences.setMockInitialValues({});
     final settings = AppSettings();

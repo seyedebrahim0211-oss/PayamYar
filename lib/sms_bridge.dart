@@ -188,9 +188,9 @@ class SmsBridge {
     if (supported) await _channel.invokeMethod<void>('clearNotifications', {'address': address});
   }
 
-  static Future<Map<String, String>> contactNames(List<String> addresses) async {
+  static Future<Map<String, String>> contactNames(List<String> addresses, {bool force = false}) async {
     if (!supported || addresses.isEmpty) return {};
-    final raw = await _channel.invokeMapMethod<String, String>('contactNames', {'addresses': addresses});
+    final raw = await _channel.invokeMapMethod<String, String>('contactNames', {'addresses': addresses, 'force': force});
     return raw ?? {};
   }
   static Future<List<Map<dynamic, dynamic>>> subscriptions() async =>
@@ -208,6 +208,11 @@ class SmsBridge {
   }
   static Future<bool> cancel(String id) async =>
     await _channel.invokeMethod<bool>('cancelSms', {'requestId': id}) ?? false;
+  static Future<bool> readBanner(String address, DateTime time) async =>
+      await _channel.invokeMethod<bool>('readBanner', {
+        'address': address, 'through': time.millisecondsSinceEpoch,
+      }) ?? false;
+
   static Future<void> markRead(List<int> ids) async {
     for (var start = 0; start < ids.length; start += 500) {
       await _channel.invokeMethod<void>('markRead', {'ids': ids.sublist(start, (start + 500).clamp(0, ids.length))});

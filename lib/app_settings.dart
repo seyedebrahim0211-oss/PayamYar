@@ -90,6 +90,7 @@ class AppSettings extends ChangeNotifier {
   double bannerCorner = 26;
   double bannerOpacity = .9;
   bool swipeRightRead = true;
+  bool swipeLeftRead = true;
   bool bannerTop = true;
   int bannerSeconds = 6;
   bool bannerCompact = false;
@@ -184,6 +185,7 @@ class AppSettings extends ChangeNotifier {
     bannerCorner = (p.getDouble('bannerCorner') ?? 26).clamp(16, 36).toDouble();
     bannerOpacity = (p.getDouble('bannerOpacity') ?? .9).clamp(.78, 1).toDouble();
     swipeRightRead = p.getBool('swipeRightRead') ?? true;
+    swipeLeftRead = p.getBool('swipeLeftRead') ?? !p.containsKey('swipeRightRead');
     bannerTop = p.getBool('bannerTop') ?? true;
     bannerSeconds = (p.getInt('bannerSeconds') ?? 6).clamp(2, 15).toInt();
     bannerCompact = false; // Legacy flag. The card always starts folded and can expand.
@@ -283,7 +285,7 @@ class AppSettings extends ChangeNotifier {
   /// Notification look; separate from [update] to keep that signature readable.
   Future<void> updateNotify({bool? notifyInApp, BannerStyle? bannerStyle, int? bannerTint, double? bannerHue, double? bannerBlur,
       double? bannerEdge, double? bannerShine, double? bannerCorner,
-      double? bannerOpacity, bool? bannerTop, bool? swipeRightRead, int? bannerSeconds, bool? bannerCompact,
+      double? bannerOpacity, bool? bannerTop, bool? swipeRightRead, bool? swipeLeftRead, int? bannerSeconds, bool? bannerCompact,
       double? bannerMaxWidth, bool? bannerBubbles, bool? bannerSourceColors, Map<String, int>? bannerSenderTints, bool? notifyGlassAvatar,
       int? notifyAvatarShape, bool? notifyBubbles, bool? notifyQuickReply, bool? notifyOtpCopy,
       BannerActionSize? bannerActionSize, bool? bannerActionIcons, bool? bannerActionCode,
@@ -298,6 +300,7 @@ class AppSettings extends ChangeNotifier {
     this.bannerCorner = (bannerCorner ?? this.bannerCorner).clamp(16, 36).toDouble();
     this.bannerBlur = (bannerBlur ?? this.bannerBlur).clamp(0, 30).toDouble();
     this.bannerOpacity = (bannerOpacity ?? this.bannerOpacity).clamp(.78, 1).toDouble();
+    this.swipeLeftRead = swipeLeftRead ?? this.swipeLeftRead;
     this.swipeRightRead = swipeRightRead ?? this.swipeRightRead;
     this.bannerTop = bannerTop ?? this.bannerTop;
     this.bannerSeconds = (bannerSeconds ?? this.bannerSeconds).clamp(2, 15).toInt();
@@ -351,7 +354,7 @@ class AppSettings extends ChangeNotifier {
   Map<String, Object> notifyJson() => {
     'notifyInApp': notifyInApp, 'bannerStyle': bannerStyle.index, 'bannerTint': bannerTint,
     'bannerHue': bannerHue, 'bannerEdge': bannerEdge, 'bannerShine': bannerShine, 'bannerCorner': bannerCorner,
-    'bannerBlur': bannerBlur, 'bannerOpacity': bannerOpacity, 'bannerTop': bannerTop, 'swipeRightRead': swipeRightRead,
+    'bannerBlur': bannerBlur, 'bannerOpacity': bannerOpacity, 'bannerTop': bannerTop, 'swipeRightRead': swipeRightRead, 'swipeLeftRead': swipeLeftRead,
     'bannerSeconds': bannerSeconds, 'bannerCompact': bannerCompact,
     'bannerMaxWidth': bannerMaxWidth, 'bannerBubbles': bannerBubbles, 'bannerSourceColors': bannerSourceColors,
     'bannerSenderTints': jsonEncode(bannerSenderTints), 'notifyGlassAvatar': notifyGlassAvatar,
@@ -375,7 +378,7 @@ class AppSettings extends ChangeNotifier {
       bannerStyle: style == null ? null : BannerStyle.values[style.clamp(0, BannerStyle.values.length - 1).toInt()],
       bannerTint: i('bannerTint'), bannerHue: d('bannerHue'), bannerBlur: d('bannerBlur'),
       bannerEdge: d('bannerEdge'), bannerShine: d('bannerShine'), bannerCorner: d('bannerCorner'), bannerOpacity: d('bannerOpacity'),
-      bannerTop: b('bannerTop'), swipeRightRead: b('swipeRightRead'), bannerSeconds: i('bannerSeconds'),
+      bannerTop: b('bannerTop'), swipeRightRead: b('swipeRightRead'), swipeLeftRead: b('swipeLeftRead'), bannerSeconds: i('bannerSeconds'),
       bannerCompact: b('bannerCompact'), bannerMaxWidth: d('bannerMaxWidth'),
       bannerBubbles: b('bannerBubbles'), bannerSourceColors: b('bannerSourceColors'),
       bannerSenderTints: j.containsKey('bannerSenderTints') ? _senderTints(j['bannerSenderTints']) : null,

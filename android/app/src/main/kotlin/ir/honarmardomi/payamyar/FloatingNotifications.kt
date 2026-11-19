@@ -426,7 +426,13 @@ class FloatingNotifications : Service() {
             setStroke(dp(1), 0xCBFFFFFF.toInt())
         }
         val initial = name.codePointsCompatInitial()
-        val avatar = if (initial == null) ImageView(this).apply {
+        val bank = if (private || message.sample) null else BankLogos.picture(this, message.address)
+        val avatar = if (bank != null) ImageView(this).apply {
+            setImageBitmap(bank)
+            setPadding(dp(5), dp(5), dp(5), dp(5))
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            badge.setColor(Color.WHITE)
+        } else if (initial == null) ImageView(this).apply {
             setImageResource(R.drawable.ic_glass_chat)
             scaleType = ImageView.ScaleType.CENTER
         } else label(initial, 19f, true).apply {
@@ -609,32 +615,33 @@ class FloatingNotifications : Service() {
         addActionRows(actions, chips, actionWidth)
         layout.addView(actions)
         if (expanded) layout.addView(body)
-        val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onDown(e: MotionEvent): Boolean = true
-            override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float,
-                                 velocityY: Float): Boolean {
-                if (e1 == null || abs(velocityX) < 450 ||
-                    abs(e2.x - e1.x) < dp(70) || abs(velocityY) > abs(velocityX)) return false
-                if (velocityX > 0 && flag("swipeRightRead") && !private && !message.sample && SmsCore.isDefault(this@FloatingNotifications)) {
-                    main.post {
-                        if (shown != message) return@post
-                        try {
-                            SmsCore.markAddressRead(this@FloatingNotifications, message.address, message.time)
-                            Notifier.cancel(this@FloatingNotifications, message.address)
-                        } catch (_: SecurityException) {
-                            Toast.makeText(this@FloatingNotifications, "مجوز خواندن پیام در دسترس نیست", Toast.LENGTH_SHORT).show()
-                        }
+        var downX = 0f
+        var downY = 0f
+        fun swipe(event: MotionEvent): Boolean {
+            val dx = event.rawX - downX
+            val dy = event.rawY - downY
+            if (abs(dx) < dp(55) || abs(dx) <= abs(dy) * 1.25f) return false
+            val read = if (dx > 0) flag("swipeRightRead")
+                else flag("swipeLeftRead", !settings.contains("flutter.swipeRightRead"))
+            if (read && !private && !message.sample && SmsCore.isDefault(this@FloatingNotifications)) {
+                main.post {
+                    if (shown != message) return@post
+                    try {
+                        SmsCore.markAddressRead(this@FloatingNotifications, message.address, message.time)
+                        Notifier.cancel(this@FloatingNotifications, message.address)
+                    } catch (_: SecurityException) {
+                        Toast.makeText(this@FloatingNotifications, "مجوز خواندن پیام در دسترس نیست", Toast.LENGTH_SHORT).show()
                     }
-                    return true
                 }
-                if (messages.size < 2) return false
-                val all = messages.values.toList()
-                val i = all.indexOfFirst { it.address == message.address }
-                val next = all[(i + (if (velocityX < 0) 1 else all.size - 1)).mod(all.size)]
-                main.post { shown = next; renderCard(next, pinned = true, expanded = true) }
                 return true
             }
-        })
+            if (messages.size < 2) return false
+            val all = messages.values.toList()
+            val i = all.indexOfFirst { it.address == message.address }
+            val next = all[(i + (if (dx < 0) 1 else all.size - 1)).mod(all.size)]
+            main.post { shown = next; renderCard(next, pinned = true, expanded = true) }
+            return true
+        }
         val scroll = ScrollView(this).apply {
             isFillViewport = false
             isVerticalScrollBarEnabled = expanded
@@ -646,8 +653,12 @@ class FloatingNotifications : Service() {
         }
         val window = object : FrameLayout(this) {
             override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-                if (event.actionMasked == MotionEvent.ACTION_DOWN) main.removeCallbacks(hide)
-                if (!replying && detector.onTouchEvent(event) && event.actionMasked == MotionEvent.ACTION_UP) {
+                if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                    downX = event.rawX
+                    downY = event.rawY
+                    main.removeCallbacks(hide)
+                }
+                if (!replying && event.actionMasked == MotionEvent.ACTION_UP && swipe(event)) {
                     val cancel = MotionEvent.obtain(event)
                     cancel.action = MotionEvent.ACTION_CANCEL
                     super.dispatchTouchEvent(cancel)
