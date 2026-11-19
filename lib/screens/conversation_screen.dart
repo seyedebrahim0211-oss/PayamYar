@@ -559,7 +559,19 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
                           child: ActionChip(
                             avatar: Icon(Icons.auto_awesome_outlined, color: scheme.primary, size: 17),
                             label: Text(suggestion, style: const TextStyle(fontSize: 12)),
-                            onPressed: () { input.text = suggestion; },
+                            onPressed: () async {
+                              final append = input.text.trim().isEmpty ? false : await showDialog<bool>(
+                                context: context,
+                                builder: (dialog) => AlertDialog(title: const Text('پیش‌نویس پاسخ'), actions: [
+                                  TextButton(onPressed: () => Navigator.pop(dialog), child: const Text('انصراف')),
+                                  TextButton(onPressed: () => Navigator.pop(dialog, false), child: const Text('جایگزینی')),
+                                  FilledButton(onPressed: () => Navigator.pop(dialog, true), child: const Text('افزودن')),
+                                ]),
+                              );
+                              if (!mounted || append == null) return;
+                              final text = append ? '${input.text.trimRight()} $suggestion' : suggestion;
+                              input.value = TextEditingValue(text: text, selection: TextSelection.collapsed(offset: text.length));
+                            },
                           ),
                         ),
                     ],
