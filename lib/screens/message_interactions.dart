@@ -71,8 +71,8 @@ class InteractiveMessageText extends StatelessWidget {
             } catch (_) {
               // Android may have no enabled activity for this web address.
             }
-            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('مرورگر باز نشد. آدرس را از کارت لینک کپی کنید.')));
+            if (context.mounted) { ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('مرورگر باز نشد. آدرس را از کارت لینک کپی کنید.'))); }
           },
           child: url
             ? Chip(avatar: const Icon(Icons.open_in_browser, size: 16), label: Text(value, maxLines: 2, overflow: TextOverflow.ellipsis, textDirection: TextDirection.ltr,
