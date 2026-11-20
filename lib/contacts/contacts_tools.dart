@@ -156,7 +156,7 @@ Future<void> exportContacts(BuildContext context, ContactStore contacts, List<Ph
     ),
   );
   if (format == null) return;
-  final base = list.length == 1 ? list.first.displayName : 'مخاطبین-پیامیار-${_stamp()}';
+  final base = list.length == 1 ? list.first.displayName : 'مخاطبین-سوسلنگ-${_stamp()}';
   final groups = contacts.groupNamesByKey;
   bool ok;
   if (format == 'xlsx') {
@@ -174,7 +174,7 @@ Future<void> exportContacts(BuildContext context, ContactStore contacts, List<Ph
 
 Future<void> saveSampleExcel(BuildContext context, {void Function(String)? onNotice}) async {
   final bytes = await ContactsBridge.xlsxWrite([for (final r in sampleRows) List<String>.of(r)]);
-  final ok = await ContactsBridge.saveFile('نمونه-ورود-مخاطبین-پیامیار.xlsx',
+  final ok = await ContactsBridge.saveFile('نمونه-ورود-مخاطبین-سوسلنگ.xlsx',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', bytes);
   if (ok) onNotice?.call('فایل نمونه ذخیره شد؛ آن را پر کنید و از «ورود از فایل» وارد کنید.');
 }
@@ -336,7 +336,7 @@ class _ImportPreviewState extends State<_ImportPreview> {
                 child: FilledButton.icon(
                   onPressed: running ? null : _run,
                   icon: const Icon(Icons.download_done_rounded),
-                  label: const Text('ورود به پیامیار'),
+                  label: const Text('ورود به سوسلنگ'),
                 ),
               ),
             ]),

@@ -257,7 +257,7 @@ object Notifier {
             .setContentText("وضعیت ارسال توسط شبکه تأیید شد.")
             .setStyle(NotificationCompat.BigTextStyle()
                 .bigText("شبکه ارسال پیامک را پذیرفت. تحویل قطعی به گوشی گیرنده فقط با گزارش تحویل مشخص می‌شود."))
-            .setSubText("پیامیار • گزارش ارسال")
+            .setSubText("سوسلنگ • گزارش ارسال")
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setContentIntent(open).setAutoCancel(true)
@@ -305,7 +305,7 @@ object Notifier {
         val appLocked = enabled(c, "appLock", false)
         val preview = enabled(c, "notifyPreview", false) && !appLocked
         val source = if (preview) MessengerSender.fromAddress(address) else null
-        val name = if (appLocked) "پیام‌یار" else contact?.takeIf { it.isNotBlank() } ?: source?.title ?: address
+        val name = if (appLocked) "سوسلنگ" else contact?.takeIf { it.isNotBlank() } ?: source?.title ?: address
         val text = if (preview) body else "پیامک جدید"
         val code = if (preview && enabled(c, "notifyOtpCopy")) otp(body) else null
         val reply = canReply(address) && enabled(c, "notifyQuickReply") && !appLocked
@@ -347,7 +347,7 @@ object Notifier {
             if (enabled(c, "notifyIncoming") && NotificationManagerCompat.from(c).areNotificationsEnabled()) {
                 val locked = enabled(c, "appLock", false)
                 val reveal = !locked && enabled(c, "notifyPreview", false)
-                postIncoming(c, address, if (locked) "پیام‌یار" else name, if (reveal) text else "پیامک جدید",
+                postIncoming(c, address, if (locked) "سوسلنگ" else name, if (reveal) text else "پیامک جدید",
                     time, if (reveal) code else null, reply && !locked, sample, visible, sampleSource)
             }
         }
@@ -391,7 +391,7 @@ object Notifier {
             .setColor(color)
             .setStyle(style)
             .setLargeIcon(picture)
-            .setSubText("پیامیار")
+            .setSubText("سوسلنگ")
             .setContentTitle(name).setContentText(text)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setGroup("payamyar_incoming_sms")
@@ -402,7 +402,7 @@ object Notifier {
             .setLights(color, 600, 2400)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setPublicVersion(NotificationCompat.Builder(c, CHANNEL).setSmallIcon(R.drawable.ic_stat_payamyar)
-                .setColor(color).setContentTitle("پیامیار").setContentText("پیامک جدید").build())
+                .setColor(color).setContentTitle("سوسلنگ").setContentText("پیامک جدید").build())
 
 
 
@@ -452,7 +452,7 @@ object Notifier {
         val body = "سلام! کد تأیید آزمایشی شما ۱۲۳۴۵ است."
         val showingBody = enabled(c, "notifyPreview", false) && !enabled(c, "appLock", false)
         val source = if (showingBody) MessengerSender.fromKey(sourceKey) else null
-        systemIncoming(c, address, source?.title ?: "پیام‌یار", if (showingBody) body else "پیامک جدید",
+        systemIncoming(c, address, source?.title ?: "سوسلنگ", if (showingBody) body else "پیامک جدید",
             System.currentTimeMillis(), if (showingBody && enabled(c, "notifyOtpCopy")) "12345" else null, false, sample = true, sampleSource = source)
         val token = ++sampleCounter
         Handler(Looper.getMainLooper()).postDelayed({
@@ -481,7 +481,7 @@ class NotifyActionReceiver : BroadcastReceiver() {
         val address = intent.getStringExtra("address") ?: return
         if (context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
                 .getBoolean("flutter.appLock", false) && intent.action != Notifier.ACTION_READ) {
-            Toast.makeText(context, "برای پاسخ یا کپی کد، قفل پیام‌یار را باز کنید", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "برای پاسخ یا کپی کد، قفل سوسلنگ را باز کنید", Toast.LENGTH_SHORT).show()
             return
         }
         when (intent.action) {
@@ -505,7 +505,7 @@ class NotifyActionReceiver : BroadcastReceiver() {
                         if (address != Notifier.PREVIEW_ADDRESS) SmsCore.markAddressRead(context, address)
                         Notifier.cancel(context, address)
                     } catch (_: Exception) {
-                        SmsCore.notify(context, 4, "پاسخ ارسال نشد", "پیامیار را باز کنید و دوباره تلاش کنید.")
+                        SmsCore.notify(context, 4, "پاسخ ارسال نشد", "سوسلنگ را باز کنید و دوباره تلاش کنید.")
                     } finally {
                         pending.finish()
                     }

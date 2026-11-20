@@ -498,7 +498,7 @@ String reportAsText(ReportResult r, PeriodInsight p, ReportPeriod period, {requi
   String fa(Object v) => Jalali.digits(v);
   final now = r.builtAt ?? DateTime.now();
   final j = Jalali.fromGregorian(now.year, now.month, now.day);
-  b.writeln('📊 گزارش پیامیار — ${reportPeriodNames[period]} اخیر (${fa('${j[0]}/${j[1]}/${j[2]}')})');
+  b.writeln('📊 گزارش سوسلنگ — ${reportPeriodNames[period]} اخیر (${fa('${j[0]}/${j[1]}/${j[2]}')})');
   b.writeln('');
   b.writeln('✉️ دریافتی: ${fa(p.received)} • ارسالی: ${fa(p.sent)} • میانگین روزانه: ${fa(p.perDay.toStringAsFixed(1))}');
   for (final c in MessageCategory.values) {
@@ -532,7 +532,7 @@ String reportAsText(ReportResult r, PeriodInsight p, ReportPeriod period, {requi
     }
   }
   b.writeln('');
-  b.writeln('— محاسبه‌شده روی گوشی با پیامیار');
+  b.writeln('— محاسبه‌شده روی گوشی با سوسلنگ');
   return b.toString();
 }
 

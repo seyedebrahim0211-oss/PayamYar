@@ -467,7 +467,7 @@ open class MainActivity : FlutterActivity() {
 
     private fun blockNumber(address: String): Boolean {
         check(address.isNotBlank()) { "شماره معتبر نیست." }
-        check(BlockedNumberContract.canCurrentUserBlockNumbers(this)) { "برای مسدود کردن، پیامیار باید پیامک‌رسان پیش‌فرض باشد." }
+        check(BlockedNumberContract.canCurrentUserBlockNumbers(this)) { "برای مسدود کردن، سوسلنگ باید پیامک‌رسان پیش‌فرض باشد." }
         contentResolver.insert(BlockedNumberContract.BlockedNumbers.CONTENT_URI, ContentValues().apply {
             put(BlockedNumberContract.BlockedNumbers.COLUMN_ORIGINAL_NUMBER, address)
         })

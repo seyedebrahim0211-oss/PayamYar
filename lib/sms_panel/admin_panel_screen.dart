@@ -627,7 +627,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
         ),
         const SizedBox(height: 10),
         Text(
-          'شارژ اعتبار با پرداخت امن در سایت ملی پیامک انجام می‌شود؛ پیامیار اطلاعات کارت بانکی دریافت نمی‌کند.',
+          'شارژ اعتبار با پرداخت امن در سایت ملی پیامک انجام می‌شود؛ سوسلنگ اطلاعات کارت بانکی دریافت نمی‌کند.',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
         ),
@@ -728,7 +728,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
         _notice('فقط شماره‌های معتبر تلفن همراه برای پنل انتخاب شدند.');
       }
     } catch (_) {
-      _notice('دسترسی مخاطبین پیامیار را از تنظیمات اندروید فعال کنید.');
+      _notice('دسترسی مخاطبین سوسلنگ را از تنظیمات اندروید فعال کنید.');
     }
   }
 
@@ -754,7 +754,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
       builder: (ctx) => SafeArea(child: ListView(
         shrinkWrap: true,
         children: [
-          const ListTile(title: Text('انتخاب گروه پیامکی پیامیار')),
+          const ListTile(title: Text('انتخاب گروه پیامکی سوسلنگ')),
           for (final g in available)
             ListTile(title: Text(g.name),
               subtitle: Text('${g.recipients.length} عضو'),
@@ -882,7 +882,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
               labelText: 'گیرنده‌ها (با ویرگول یا خط جدید جدا کنید)',
               prefixIcon: const Icon(Icons.people_alt_outlined),
               suffixIcon: IconButton(
-                tooltip: 'انتخاب از مخاطبین خود پیامیار',
+                tooltip: 'انتخاب از مخاطبین خود سوسلنگ',
                 icon: const Icon(Icons.contacts_rounded),
                 onPressed: _pickRecipients,
               ),
@@ -893,7 +893,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
             child: OutlinedButton.icon(
               onPressed: _pickGroupRecipients,
               icon: const Icon(Icons.groups_rounded),
-              label: const Text('افزودن گیرنده از گروه‌های پیامیار'),
+              label: const Text('افزودن گیرنده از گروه‌های سوسلنگ'),
             ),
           ),
           Align(

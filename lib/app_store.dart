@@ -117,7 +117,7 @@ class AppStore extends ChangeNotifier {
   static List<MessageRecord> _sample() {
     final now = DateTime.now();
     return [
-      MessageRecord(sender: 'هنر مردمی', body: 'به پیامیار خوش آمدید. پیام‌های گوشی شما اینجا نمایش داده می‌شوند.', date: now.subtract(const Duration(minutes: 5)), read: false, id: 1),
+      MessageRecord(sender: 'هنر مردمی', body: 'به سوسلنگ خوش آمدید. پیام‌های گوشی شما اینجا نمایش داده می‌شوند.', date: now.subtract(const Duration(minutes: 5)), read: false, id: 1),
       MessageRecord(sender: 'بانک', body: 'واریز ۲۵۰,۰۰۰ تومان به حساب شما. موجودی: ۱,۲۰۰,۰۰۰ تومان', date: now.subtract(const Duration(hours: 3)), id: 2),
       MessageRecord(sender: 'سامانه', body: 'کد تأیید شما: 48213', date: now.subtract(const Duration(days: 1)), id: 3),
       MessageRecord(sender: '09121234567', body: 'سلام، فردا ساعت ۱۰ جلسه داریم.', date: now.subtract(const Duration(days: 2)), id: 4),
@@ -262,7 +262,7 @@ class AppStore extends ChangeNotifier {
         updateDismissed = false;
       }
       if (!manual && update != null && update!.version != previousVersion) {
-        onNotice?.call('نسخه جدید پیامیار ${update!.version} آماده است؛ از همین برنامه به‌روزرسانی کنید.');
+        onNotice?.call('نسخه جدید سوسلنگ ${update!.version} آماده است؛ از همین برنامه به‌روزرسانی کنید.');
       }
       notifyListeners();
       return update != null;
@@ -291,7 +291,7 @@ class AppStore extends ChangeNotifier {
       final state = await SmsBridge.installUpdate(info.url, sha256: info.sha256, size: info.sizeBytes);
       if (state == 'needs_permission') {
         updatePermissionPending = true;
-        onNotice?.call('مجوز نصب را برای پیامیار فعال کنید؛ پس از بازگشت، دریافت و نصب خودکار ادامه می‌یابد.');
+        onNotice?.call('مجوز نصب را برای سوسلنگ فعال کنید؛ پس از بازگشت، دریافت و نصب خودکار ادامه می‌یابد.');
       } else if (state == 'installing') {
         updatePermissionPending = false;
         onNotice?.call('فایل با موفقیت بررسی شد. نصب نسخه جدید را در پنجره اندروید تأیید کنید.');
@@ -319,7 +319,7 @@ class AppStore extends ChangeNotifier {
         onNotice?.call('مجوز نصب فعال شد. دریافت امن به‌روزرسانی ادامه پیدا می‌کند.');
         await installUpdate();
       } else {
-        onNotice?.call('مجوز نصب پیامیار فعال نشده؛ از تنظیمات برنامه آن را روشن کنید.');
+        onNotice?.call('مجوز نصب سوسلنگ فعال نشده؛ از تنظیمات برنامه آن را روشن کنید.');
       }
     } catch (_) {
       onNotice?.call('بررسی مجوز نصب انجام نشد؛ دوباره به‌روزرسانی را امتحان کنید.');
@@ -715,7 +715,7 @@ class AppStore extends ChangeNotifier {
 
   Future<void> markAllRead() async {
     if (android && !isDefault) {
-      onNotice?.call('برای این کار، پیامیار باید پیام‌رسان پیش‌فرض باشد.');
+      onNotice?.call('برای این کار، سوسلنگ باید پیام‌رسان پیش‌فرض باشد.');
       return;
     }
     for (final c in conversations.where((c) => unreadCount(c) > 0).toList()) {
@@ -727,7 +727,7 @@ class AppStore extends ChangeNotifier {
     if (ids.isEmpty) return true;
     if (android) {
       if (!isDefault) {
-        onNotice?.call('برای حذف پیام، پیامیار باید پیام‌رسان پیش‌فرض باشد.');
+        onNotice?.call('برای حذف پیام، سوسلنگ باید پیام‌رسان پیش‌فرض باشد.');
         return false;
       }
       try {
@@ -771,7 +771,7 @@ class AppStore extends ChangeNotifier {
     // A non-default SMS app cannot reliably write its sent row to Android's SMS provider.
     // Refuse the send and preserve the user's draft instead of showing a ghost message.
     if (!permissions.isDefault || !permissions.canSend) {
-      onNotice?.call('برای ثبت مطمئن پیام ارسالی، ابتدا پیامیار را برنامه پیش‌فرض پیامک کنید. متن شما حفظ شد.');
+      onNotice?.call('برای ثبت مطمئن پیام ارسالی، ابتدا سوسلنگ را برنامه پیش‌فرض پیامک کنید. متن شما حفظ شد.');
       return null;
     }
     try {
