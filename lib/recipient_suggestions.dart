@@ -1,5 +1,6 @@
 import 'message_logic.dart';
 import 'sms_bridge.dart';
+import 'message_search.dart';
 
 /// Local contact ranking. No message body is inspected or uploaded.
 class RecipientSuggestions {
@@ -27,26 +28,28 @@ class RecipientSuggestions {
       Set<String> excluded = const {},
       int limit = 8,
     }) {
-    final term = SmsBridge.normalizeNumber(query).toLowerCase().trim();
-    final normalizedTerm = key(term);
-    final matched = contacts.where((contact) {
+    final tokens = MessageSearch.terms(query);
+    final prefix = tokens.join(' ');
+    final numericQuery = RegExp(r'^[+0-9۰-۹٠-٩ ()-]+$').hasMatch(query) ? key(query) : '';
+    final ranked = <({Map<String, String> contact, String name, int hits, int score})>[];
+    for (final contact in contacts) {
       final number = key(contact['number'] ?? '');
-      if (excluded.contains(number)) return false;
-      if (term.isEmpty) return true;
-      return (contact['name'] ?? '').toLowerCase().contains(term) ||
-        (normalizedTerm.isNotEmpty && number.contains(normalizedTerm));
-    }).toList();
-    matched.sort((a, b) {
-      final an = key(a['number'] ?? '');
-      final bn = key(b['number'] ?? '');
-      final aExact = term.isNotEmpty && (an == normalizedTerm ||
-        (a['name'] ?? '').toLowerCase().startsWith(term)) ? 1 : 0;
-      final bExact = term.isNotEmpty && (bn == normalizedTerm ||
-        (b['name'] ?? '').toLowerCase().startsWith(term)) ? 1 : 0;
-      if (aExact != bExact) return bExact.compareTo(aExact);
-      final popularity = (frequency[bn] ?? 0).compareTo(frequency[an] ?? 0);
-      return popularity != 0 ? popularity : (a['name'] ?? '').compareTo(b['name'] ?? '');
+      if (excluded.contains(number)) continue;
+      final name = contact['name'] ?? '';
+      final folded = MessageSearch.normalize(name);
+      if (tokens.isNotEmpty && !(numericQuery.isNotEmpty && number.contains(numericQuery)) && !MessageSearch.containsTerms('$folded $number', tokens) &&
+          !MessageSearch.containsTerms('$folded ${MessageSearch.normalize(contact['number'] ?? '')}', tokens)) {
+        continue;
+      }
+      final exact = prefix.isNotEmpty && (folded.startsWith(prefix) || number == numericQuery);
+      ranked.add((contact: contact, name: name, hits: exact ? 1 : 0, score: frequency[number] ?? 0));
+    }
+    ranked.sort((a, b) {
+      final relevance = b.hits.compareTo(a.hits);
+      if (relevance != 0) return relevance;
+      final popularity = b.score.compareTo(a.score);
+      return popularity == 0 ? a.name.compareTo(b.name) : popularity;
     });
-    return matched.take(limit).toList(growable: false);
+    return ranked.take(limit).map((entry) => entry.contact).toList(growable: false);
   }
 }

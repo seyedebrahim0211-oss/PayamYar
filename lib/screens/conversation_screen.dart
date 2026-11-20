@@ -414,6 +414,7 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
         final pending = store.pendingSends.where((p) => store.key(p.to) == key).toList();
         final items = _entries(messages, pending);
         final matches = _searchVisible ? MessageSearch.withinConversation(messages, _searchQuery) : const <MessageRecord>[];
+        final matchSet = matches.toSet();
         final selectedMatch = matches.isEmpty ? null : matches[_matchIndex.clamp(0, matches.length - 1)];
         final quickReplies = settings.smartReplies && messages.isNotEmpty && !messages.first.outgoing
             ? _repliesFor(messages.first)
@@ -557,7 +558,7 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
                             );
                           }
                           return _bubbleFor(e.message!, pinnedId, look,
-                            searchHit: _searchVisible && _searchQuery.trim().isNotEmpty && MessageSearch.matches(e.message!.body, _searchQuery),
+                            searchHit: matchSet.contains(e.message),
                             selectedHit: identical(e.message, selectedMatch));
                         })),
                 if (canReply && quickReplies.isNotEmpty)

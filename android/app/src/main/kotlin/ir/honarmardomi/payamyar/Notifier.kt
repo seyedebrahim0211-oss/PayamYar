@@ -360,7 +360,7 @@ object Notifier {
         val id = idFor(address)
         val color = if (enabled(c, "bannerSourceColors") && enabled(c, "notifyPreview", false) && !enabled(c, "appLock", false))
             (sampleSource ?: MessengerSender.fromAddress(address))?.selectedColor(prefs(c)) ?: accent(c) else accent(c)
-        val source = if (enabled(c, "appLock", false)) letterAvatar("پ", "private")
+        val source = if (enabled(c, "appLock", false)) letterAvatar("س", "private")
             else (if (enabled(c, "notifyPreview", false)) BankLogos.picture(c, address) else null)
                 ?: contactPhoto(c, address) ?: letterAvatar(name, address)
         val picture = styledAvatar(source, number(c, "notifyAvatarShape", 0L) == 1L, enabled(c, "notifyGlassAvatar"), color)
@@ -428,12 +428,12 @@ object Notifier {
                 .setChoices(quickReplies(c)).setAllowFreeFormInput(true).build()
             builder.addAction(NotificationCompat.Action.Builder(if (actionIcons) R.drawable.ic_glass_reply else 0,
                 "پاسخ سریع", broadcast(c, ACTION_REPLY, address, mutable = true))
-                .addRemoteInput(input).setAllowGeneratedReplies(true)
+                .addRemoteInput(input).setAuthenticationRequired(true).setAllowGeneratedReplies(true)
                 .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY).setShowsUserInterface(false).build())
         }
-        if (enabled(c, "notifyMarkRead")) builder.addAction(NotificationCompat.Action.Builder(
+        if (!sample && !enabled(c, "appLock", false) && enabled(c, "notifyMarkRead")) builder.addAction(NotificationCompat.Action.Builder(
             if (actionIcons) R.drawable.ic_glass_read else 0, "خوانده شد", broadcast(c, ACTION_READ, address))
-            .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_MARK_AS_READ).setShowsUserInterface(false).build())
+            .setAuthenticationRequired(true).setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_MARK_AS_READ).setShowsUserInterface(false).build())
         NotificationManagerCompat.from(c).notify(id, builder.build())
     }
 
@@ -480,8 +480,9 @@ class NotifyActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val address = intent.getStringExtra("address") ?: return
         if (context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-                .getBoolean("flutter.appLock", false) && intent.action != Notifier.ACTION_READ) {
-            Toast.makeText(context, "برای پاسخ یا کپی کد، قفل سوسلنگ را باز کنید", Toast.LENGTH_SHORT).show()
+                .getBoolean("flutter.appLock", false) ||
+            context.getSystemService(android.app.KeyguardManager::class.java).isDeviceLocked) {
+            Toast.makeText(context, "برای استفاده از دکمه‌های اعلان، قفل را باز کنید", Toast.LENGTH_SHORT).show()
             return
         }
         when (intent.action) {
