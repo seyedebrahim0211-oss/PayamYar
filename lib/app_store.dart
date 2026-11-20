@@ -430,7 +430,9 @@ class AppStore extends ChangeNotifier {
       final a = rows[i], b = previous[i];
       if (a.id != b.id || a.date != b.date || a.body != b.body || a.sender != b.sender ||
           a.read != b.read || a.type != b.type || a.simSlot != b.simSlot ||
-          a.outgoing != b.outgoing || a.delivery != b.delivery) return false;
+          a.outgoing != b.outgoing || a.delivery != b.delivery) {
+        return false;
+      }
     }
     return true;
   }
