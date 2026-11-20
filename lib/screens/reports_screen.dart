@@ -81,7 +81,7 @@ class _ReportsScreenState extends State<ReportsScreen> with WidgetsBindingObserv
 
   Future<void> _share(ReportResult data, PeriodInsight p) async {
     final text = reportAsText(data, p, period, nameOf: store.displayName, money: _money);
-    final ok = await SmsBridge.shareText(text, subject: 'گزارش پیامیار', title: 'ارسال گزارش');
+    final ok = await SmsBridge.shareText(text, subject: 'گزارش سوسلنگ', title: 'ارسال گزارش');
     if (!ok) store.onNotice?.call('اشتراک‌گذاری در دسترس نیست.');
   }
 
@@ -110,7 +110,7 @@ class _ReportsScreenState extends State<ReportsScreen> with WidgetsBindingObserv
     }
     final now = DateTime.now();
     final j = Jalali.fromGregorian(now.year, now.month, now.day);
-    final ok = await ContactsBridge.saveFile('تراکنش‌های-پیامیار-${j[0]}-${j[1]}-${j[2]}.csv', 'text/csv',
+    final ok = await ContactsBridge.saveFile('تراکنش‌های-سوسلنگ-${j[0]}-${j[1]}-${j[2]}.csv', 'text/csv',
         csvBytes(transactionsAsRows(p.transactions)));
     if (ok) store.onNotice?.call('فایل تراکنش‌ها ذخیره شد (قابل باز کردن در اکسل).');
   }
@@ -120,7 +120,7 @@ class _ReportsScreenState extends State<ReportsScreen> with WidgetsBindingObserv
     final now = DateTime.now();
     final j = Jalali.fromGregorian(now.year, now.month, now.day);
     final ok = await ContactsBridge.saveFile(
-      'آمار-پیامیار-${j[0]}-${j[1]}-${j[2]}.csv',
+      'آمار-سوسلنگ-${j[0]}-${j[1]}-${j[2]}.csv',
       'text/csv',
       csvBytes(reportMetricsCsvRows(p, period)),
     );
@@ -144,7 +144,7 @@ class _ReportsScreenState extends State<ReportsScreen> with WidgetsBindingObserv
       await SmsBridge.block(sender);
       store.onNotice?.call('«$sender» مسدود شد.');
     } catch (e) {
-      store.onNotice?.call('مسدود کردن ممکن نشد؛ پیامیار باید پیامک‌رسان پیش‌فرض باشد.');
+      store.onNotice?.call('مسدود کردن ممکن نشد؛ سوسلنگ باید پیامک‌رسان پیش‌فرض باشد.');
     }
   }
 

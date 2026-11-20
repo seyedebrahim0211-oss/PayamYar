@@ -9,7 +9,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(const PayamYar());
     await tester.pumpAndSettle();
-    expect(find.text('پیامیار'), findsOneWidget);
+    expect(find.text('سوسلنگ'), findsOneWidget);
     expect(find.text('پیام جدید'), findsOneWidget);
     expect(find.text('هنر مردمی'), findsOneWidget);
   });

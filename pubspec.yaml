@@ -1,7 +1,7 @@
 name: payamyar
 description: Persian SMS messenger for Android
 publish_to: none
-version: 3.0.8+48
+version: 3.0.9+49
 environment:
   sdk: '>=3.4.0 <4.0.0'
 dependencies:
@@ -24,6 +24,7 @@ flutter:
   assets:
     - assets/fonts/OFL.txt
     - assets/banks/
+    - assets/susolang.png
   fonts:
     - family: Vazirmatn
       fonts:

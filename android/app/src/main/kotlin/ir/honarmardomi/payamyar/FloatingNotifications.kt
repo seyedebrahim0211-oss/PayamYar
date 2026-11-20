@@ -185,7 +185,7 @@ class FloatingNotifications : Service() {
         val open = PendingIntent.getActivity(this, ID, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val notification = NotificationCompat.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_stat_payamyar)
-            .setContentTitle("اعلان موقت پیام‌یار").setContentText("حباب گفتگو پس از زمان انتخاب‌شده بسته می‌شود")
+            .setContentTitle("اعلان موقت سوسلنگ").setContentText("حباب گفتگو پس از زمان انتخاب‌شده بسته می‌شود")
             .setContentIntent(open).setOngoing(true).setSilent(true)
             .addAction(0, "خاموش کردن", stop).build()
         if (Build.VERSION.SDK_INT >= 34) startForeground(ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
@@ -220,7 +220,7 @@ class FloatingNotifications : Service() {
         if (locked() || !allowed(this) || !enabled(this) ||
             (!sample && MainActivity.foregroundChannel != null)) { stopSelf(); return false }
         val source = if (sample) MessengerSender.fromKey(sampleSource) else MessengerSender.fromAddress(address)
-        val message = if (privateContent()) Message(address, "پیام‌یار", "پیام جدید", sample, time, null)
+        val message = if (privateContent()) Message(address, "سوسلنگ", "پیام جدید", sample, time, null)
                       else Message(address, name.ifBlank { address }, body, sample, time, source)
         if (!sample) {
             messages.remove(address)
@@ -301,7 +301,7 @@ class FloatingNotifications : Service() {
         p.y = bounds.top + ((bounds.height() - size).coerceAtLeast(0) * fraction).toInt()
         val view = TextView(this).apply {
             val latestName = messages.values.last().name.trim()
-            val initial = if (privateContent()) "پ" else latestName.take(1).ifBlank { "پ" }
+            val initial = if (privateContent()) "س" else latestName.codePointsCompatInitial() ?: "س"
             text = if (messages.size > 1) "$initial\n${messages.size}" else initial
             textSize = if (messages.size > 1) 15f else 22f
             gravity = Gravity.CENTER
@@ -311,7 +311,7 @@ class FloatingNotifications : Service() {
                 prefs(this@FloatingNotifications).getInt("bubbleStyle", 0) == 0,
                 prefs(this@FloatingNotifications).getFloat("bubbleOpacity", .92f), .72f, .55f,
                 avatar = true, round = prefs(this@FloatingNotifications).getInt("bubbleShape", 0) == 0)
-            contentDescription = "حباب پیام‌یار، ${messages.size} گفتگو؛ بکشید تا جابه‌جا شود، لمس کنید تا باز شود"
+            contentDescription = "حباب سوسلنگ، ${messages.size} گفتگو؛ بکشید تا جابه‌جا شود، لمس کنید تا باز شود"
             elevation = dp(4).toFloat()
         }
         var downX = 0f; var downY = 0f; var startX = 0; var startY = 0; var dragged = false
@@ -399,7 +399,7 @@ class FloatingNotifications : Service() {
         val private = privateContent()
         val source = if (private) null else message.source
         val accent = if (flag("bannerSourceColors")) source?.selectedColor(settings) ?: tint() else tint()
-        val name = if (message.name == message.address && source != null) source.title else message.name
+        val name = if (private) "سوسلنگ" else if (message.name == message.address && source != null) source.title else message.name
         val phone = message.address.replace(Regex("""[\s()-]"""), "")
         val dialable = !private && !message.sample && Regex("""^\+?[0-9]{7,15}$""").matches(phone)
         val canReplyHere = dialable && flag("notifyQuickReply") && SmsCore.isDefault(this)
@@ -445,7 +445,7 @@ class FloatingNotifications : Service() {
         val title = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         title.addView(label(name, 15.5f, true).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END })
         val clock = java.text.SimpleDateFormat("HH:mm", java.util.Locale.ROOT).format(java.util.Date(message.time))
-        title.addView(label("پیام‌یار · ${persianDigits(clock)}", 12f).apply { setTextColor(0xF2FFFFFF.toInt()) })
+        title.addView(label("سوسلنگ · ${persianDigits(clock)}", 12f).apply { setTextColor(0xF2FFFFFF.toInt()) })
         header.addView(title, LinearLayout.LayoutParams(0, -2, 1f))
         val toggle = ImageButton(this).apply {
             setImageResource(R.drawable.ic_glass_expand)
@@ -716,7 +716,7 @@ class FloatingNotifications : Service() {
             .setData(Uri.parse("payamyar:open/" + Uri.encode(address)))
             .putExtra("open_address", address).putExtra("open_token", MainActivity.launchToken(this))
         try { startActivity(intent) } catch (_: RuntimeException) {
-            Toast.makeText(this, "برای مشاهده پیام، پیام‌یار را باز کنید", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "برای مشاهده پیام، سوسلنگ را باز کنید", Toast.LENGTH_SHORT).show()
         }
     }
 }

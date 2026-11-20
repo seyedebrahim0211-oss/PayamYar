@@ -88,7 +88,7 @@ class _BirthdaysScreenState extends State<BirthdaysScreen> {
                 const EmptyState(
                   icon: Icons.cake_outlined,
                   title: 'هنوز تولدی ثبت نشده',
-                  subtitle: 'تولد مخاطبان را اضافه کنید تا پیامیار روز تولد، خودکار تبریک بفرستد.',
+                  subtitle: 'تولد مخاطبان را اضافه کنید تا سوسلنگ روز تولد، خودکار تبریک بفرستد.',
                 ),
               for (final b in list)
                 Padding(
@@ -135,7 +135,7 @@ class _BirthdaysScreenState extends State<BirthdaysScreen> {
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
-                    'پیامک تبریک در ساعت تعیین‌شده، حتی وقتی پیامیار بسته است، ارسال می‌شود. برای دقت زمان، «دسترسی‌های ویژه» را در تنظیمات کامل کنید.',
+                    'پیامک تبریک در ساعت تعیین‌شده، حتی وقتی سوسلنگ بسته است، ارسال می‌شود. برای دقت زمان، «دسترسی‌های ویژه» را در تنظیمات کامل کنید.',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
                   ),

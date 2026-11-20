@@ -1,3 +1,4 @@
+import '../message_search.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -133,12 +134,13 @@ class ContactStore extends ChangeNotifier {
   List<PhoneContact> search(String query, {String? groupId, bool favorites = false}) {
     if (query.trim().isEmpty && groupId == null && !favorites) return contacts;
     final q = _fold(query.trim());
+    final tokens = MessageSearch.terms(query);
     final qDigits = phoneKey(query);
     return contacts.where((c) {
       if (favorites && !c.starred) return false;
       if (groupId != null && !(members[c.key]?.contains(groupId) ?? false)) return false;
       if (q.isEmpty) return true;
-      if (_fold(c.name).contains(q) || _fold(c.org).contains(q)) return true;
+      if (MessageSearch.containsTerms(MessageSearch.normalize('${c.name} ${c.org}'), tokens)) return true;
       if (c.emails.any((e) => e.value.toLowerCase().contains(q))) return true;
       return qDigits.length >= 3 && c.phones.any((p) => phoneKey(p.value).contains(qDigits));
     }).toList();

@@ -659,6 +659,7 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
       : m.body;
     return _Bubble(
       text: masked,
+      searchQuery: searchHit ? _searchQuery : '',
       outgoing: m.outgoing,
       look: look,
       textSize: settings.bubbleText,
@@ -845,6 +846,7 @@ class _Bubble extends StatelessWidget {
   final bool failed;
   final bool warning;
   final bool pinned;
+  final String searchQuery;
   final bool searchHit;
   final bool selectedHit;
   final String time;
@@ -860,7 +862,7 @@ class _Bubble extends StatelessWidget {
   const _Bubble({required this.text, required this.outgoing, required this.time, required this.look,
     this.textSize = 15.5, this.status, this.statusIcon,
     this.failed = false, this.warning = false, this.pinned = false,
-    this.searchHit = false, this.selectedHit = false, this.trailing, this.onLongPress,
+    this.searchQuery = '', this.searchHit = false, this.selectedHit = false, this.trailing, this.onLongPress,
     this.onTap, this.sensitive = false, this.onPhoneMessage});
 
   @override
@@ -917,7 +919,7 @@ class _Bubble extends StatelessWidget {
               if (sensitive) Padding(padding: const EdgeInsets.only(bottom: 4),
                 child: Text('برای نمایش یا مخفی‌کردن اعداد لمس کنید',
                   style: TextStyle(color: fg.withValues(alpha: .68), fontSize: 11))),
-              InteractiveMessageText(text: text.trim().isEmpty ? 'پیام بدون متن' : text.trim(),
+              InteractiveMessageText(searchQuery: searchQuery, text: text.trim().isEmpty ? 'پیام بدون متن' : text.trim(),
                 style: TextStyle(color: fg, fontSize: textSize, height: 1.7),
                 onPhoneMessage: onPhoneMessage),
               if (text.length > 260 || text.split('\n').length > 8)

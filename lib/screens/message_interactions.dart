@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../contacts/contacts_data.dart';
+import '../search_highlight.dart';
 import 'contact_action_card.dart';
 
 /// Shared contact actions for ordinary SMS and the optional provider inbox.
@@ -15,10 +16,11 @@ Future<void> showPhoneActions(BuildContext context, String raw,
 /// the user reviews the exact HTTPS destination; SMS phishing needs caution.
 class InteractiveMessageText extends StatelessWidget {
   final String text;
+  final String searchQuery;
   final TextStyle? style;
   final String? senderName;
   final ValueChanged<String>? onPhoneMessage;
-  const InteractiveMessageText({super.key, required this.text, this.style,
+  const InteractiveMessageText({super.key, required this.text, this.searchQuery = '', this.style,
     this.senderName, this.onPhoneMessage});
 
   static final _pattern = RegExp(
@@ -32,7 +34,7 @@ class InteractiveMessageText extends StatelessWidget {
     final spans = <InlineSpan>[];
     var start = 0;
     for (final match in _pattern.allMatches(text).take(45)) {
-      if (match.start > start) spans.add(TextSpan(text: text.substring(start, match.start)));
+      if (match.start > start) spans.add(searchHighlight(text.substring(start, match.start), searchQuery));
       final raw = match.group(0)!;
       final url = raw.contains('.') || raw.contains('://');
       if (match.start > 0 && text[match.start - 1] == '@' && url) {
@@ -52,7 +54,7 @@ class InteractiveMessageText extends StatelessWidget {
             }
             final uri = Uri.tryParse(value.contains('://') ? value : 'https://$value');
             if (uri == null || (uri.scheme != 'http' && uri.scheme != 'https') ||
-                uri.host.isEmpty || !context.mounted) { return; }
+                uri.host.isEmpty || uri.userInfo.isNotEmpty || !context.mounted) { return; }
             final proceed = await showDialog<bool>(context: context, builder: (d) => AlertDialog(
               title: const Text('باز کردن لینک'),
               content: SingleChildScrollView(child: SelectableText(uri.toString(), textDirection: TextDirection.ltr)),
@@ -109,7 +111,7 @@ class InteractiveMessageText extends StatelessWidget {
       if (value.length != raw.length) spans.add(TextSpan(text: raw.substring(value.length)));
       start = match.end;
     }
-    if (start < text.length) spans.add(TextSpan(text: text.substring(start)));
+    if (start < text.length) spans.add(searchHighlight(text.substring(start), searchQuery));
     return Text.rich(TextSpan(style: style, children: spans), softWrap: true);
   }
 }

@@ -8,6 +8,7 @@ import '../conversation_logic.dart';
 import '../jalali.dart';
 import '../message_logic.dart';
 import '../message_search.dart';
+import '../search_highlight.dart';
 import '../sms_bridge.dart';
 import '../update_service.dart' show formatBytes;
 import '../contacts/contacts_screen.dart';
@@ -278,10 +279,11 @@ class _ConversationsPageState extends State<ConversationsPage> {
       }
       final sender = MessageSearch.normalize(
           '${store.displayName(c.address)} ${c.address} ${store.key(c.address)}');
-      if (MessageSearch.containsTerms(sender, searchTerms)) return true;
+      final remaining = searchTerms.where((t) => !MessageSearch.containsTerms(sender, [t])).toList();
+      if (remaining.isEmpty) return true;
       // A query can combine the contact's name and a word inside a message.
       return (_normalizedMessages[store.key(c.address)] ?? const <String>[])
-          .any((body) => MessageSearch.containsTerms('$sender $body', searchTerms));
+          .any((body) => MessageSearch.containsTerms(body, remaining));
     }).toList();
   }
 
@@ -399,7 +401,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
                     const BrandTile(size: 42),
                     const SizedBox(width: 12),
                     Flexible(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                      const Text('پیامیار', style: TextStyle(fontFamily: 'Vazirmatn', fontWeight: FontWeight.w900, fontSize: 21)),
+                      const Text('سوسلنگ', style: TextStyle(fontFamily: 'Vazirmatn', fontWeight: FontWeight.w900, fontSize: 21)),
                       Text(unread > 0 ? '${Jalali.digits(unread)} گفتگوی خوانده‌نشده' : 'همه پیام‌ها خوانده شده',
                         style: TextStyle(fontSize: 12, fontWeight: FontWeight.w400,
                           color: unread > 0 ? scheme.primary : scheme.onSurfaceVariant), maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -451,7 +453,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
                     suffixIcon: query.isEmpty ? null : IconButton(
                       tooltip: 'پاک کردن جستجو',
                       icon: const Icon(Icons.close_rounded),
-                      onPressed: () => setState(() { search.clear(); query = ''; })),
+                      onPressed: () => setState(() { _searchDebounce?.cancel(); search.clear(); query = ''; })),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(28), borderSide: BorderSide.none)),
                 ))),
               if (store.update != null && !store.updateDismissed && !widget.archive)
@@ -459,7 +461,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
               if (store.android && !store.isDefault && !widget.archive)
                 SliverToBoxAdapter(child: _ActionBanner(
                   icon: Icons.star_rounded,
-                  text: 'پیامیار را پیام‌رسان پیش‌فرض کنید تا پیام‌های جدید را دریافت و مدیریت کند.',
+                  text: 'سوسلنگ را پیام‌رسان پیش‌فرض کنید تا پیام‌های جدید را دریافت و مدیریت کند.',
                   action: 'فعال‌سازی',
                   onTap: store.requestDefault))
               else if (store.android && !store.access.complete && !widget.archive)
@@ -554,7 +556,7 @@ class UpdateBanner extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
       child: Semantics(
         container: true,
-        label: 'به‌روزرسانی پیامیار',
+        label: 'به‌روزرسانی سوسلنگ',
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(24),
@@ -577,7 +579,7 @@ class UpdateBanner extends StatelessWidget {
                   ),
                   const SizedBox(width: 12),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(error != null ? 'دریافت به‌روزرسانی کامل نشد' : 'پیامیار تازه‌تر آماده است',
+                    Text(error != null ? 'دریافت به‌روزرسانی کامل نشد' : 'سوسلنگ تازه‌تر آماده است',
                       style: const TextStyle(color: ink, fontWeight: FontWeight.w800, fontSize: 15.5)),
                     Text(meta, style: const TextStyle(color: Color(0xFFCFE9E4), fontSize: 12)),
                   ])),
@@ -683,7 +685,9 @@ class ConversationTile extends StatelessWidget {
     final name = store.displayName(conversation.address);
     final pinned = store.isPinned(conversation.address);
     final bold = unread > 0;
-    final matches = MessageSearch.withinConversation(conversation.messages, searchQuery);
+    final sender = MessageSearch.normalize('$name ${conversation.address} ${store.key(conversation.address)}');
+    final bodyQuery = MessageSearch.terms(searchQuery).where((term) => !MessageSearch.containsTerms(sender, [term])).join(' ');
+    final matches = MessageSearch.withinConversation(conversation.messages, bodyQuery);
     final previewMessage = matches.isNotEmpty ? matches.first : m;
     final preview = hidePreview ? 'متن پیام مخفی است' : '${previewMessage.outgoing ? 'شما: ' : ''}${previewMessage.body.replaceAll('\n', ' ')}';
     return Padding(
@@ -695,7 +699,7 @@ class ConversationTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
             builder: (_) => ConversationScreen(store: store, address: conversation.address,
-              initialSearch: searchQuery.isNotEmpty && matches.isNotEmpty ? searchQuery : ''))),
+              initialSearch: searchQuery.isNotEmpty && matches.isNotEmpty ? bodyQuery : ''))),
           onLongPress: onLongPress,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
@@ -704,7 +708,7 @@ class ConversationTile extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Row(children: [
-                  Expanded(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                  Expanded(child: Text.rich(searchHighlight(name, searchQuery), maxLines: 1, overflow: TextOverflow.ellipsis,
                     textDirection: name == conversation.address && RegExp(r'^[\d+]').hasMatch(name) ? TextDirection.ltr : null,
                     textAlign: TextAlign.right,
                     style: TextStyle(fontSize: 16, fontWeight: bold ? FontWeight.w800 : FontWeight.w600))),
@@ -720,7 +724,7 @@ class ConversationTile extends StatelessWidget {
                   if (info?.suspicious ?? false)
                     const Padding(padding: EdgeInsetsDirectional.only(end: 4),
                       child: Icon(Icons.warning_amber_rounded, size: 16, color: Colors.orange)),
-                  Expanded(child: Text(preview, maxLines: 1, overflow: TextOverflow.ellipsis,
+                  Expanded(child: Text.rich(searchHighlight(preview, hidePreview ? '' : bodyQuery), maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: TextStyle(color: bold ? scheme.onSurface : scheme.onSurfaceVariant,
                       fontWeight: bold ? FontWeight.w600 : null))),
                   if (searchQuery.trim().isNotEmpty && matches.isNotEmpty)

@@ -11,10 +11,10 @@ import '../support_service.dart';
 import 'support_inbox_screen.dart';
 
 const _faq = <(String, String)>[
-  ('چرا باید پیامیار را پیام‌رسان پیش‌فرض کنم؟',
-    'اندروید فقط به پیام‌رسان پیش‌فرض اجازه می‌دهد پیامک‌های جدید را دریافت، ذخیره، حذف یا علامت «خوانده‌شده» بزند. بدون آن، پیامیار فقط پیام‌ها را نمایش می‌دهد.'),
+  ('چرا باید سوسلنگ را پیام‌رسان پیش‌فرض کنم؟',
+    'اندروید فقط به پیام‌رسان پیش‌فرض اجازه می‌دهد پیامک‌های جدید را دریافت، ذخیره، حذف یا علامت «خوانده‌شده» بزند. بدون آن، سوسلنگ فقط پیام‌ها را نمایش می‌دهد.'),
   ('پیام‌های جدید دیر می‌رسند یا اعلان نمی‌آید، چه کنم؟',
-    'از «تنظیمات ← حریم خصوصی و امنیت ← دسترسی‌های ویژه» بهینه‌سازی باتری را برای پیامیار خاموش و اعلان‌ها را روشن کنید. در برخی گوشی‌ها (شیائومی، هواوی، سامسونگ) باید «اجرای خودکار» را هم فعال کنید.'),
+    'از «تنظیمات ← حریم خصوصی و امنیت ← دسترسی‌های ویژه» بهینه‌سازی باتری را برای سوسلنگ خاموش و اعلان‌ها را روشن کنید. در برخی گوشی‌ها (شیائومی، هواوی، سامسونگ) باید «اجرای خودکار» را هم فعال کنید.'),
   ('حلقه دور دکمه ارسال چیست؟',
     'فرصت لغو است. تا وقتی حلقه کامل نشده، با لمس ✕ روی همان دکمه پیام ارسال نمی‌شود و متن به کادر نوشتن برمی‌گردد. مدت آن را در «پیامک و ارسال» از ۱ تا ۱۰ ثانیه تنظیم یا خاموش کنید.'),
   ('«ارسال شد» با «تحویل شد» چه فرقی دارد؟',
@@ -28,11 +28,11 @@ const _faq = <(String, String)>[
   ('پیام کد تأیید را چطور سریع کپی کنم؟',
     'کنار پیام‌های دارای کد تأیید و در اعلان آن‌ها دکمه «کپی کد» نمایش داده می‌شود.'),
   ('به‌روزرسانی چطور انجام می‌شود؟ امن است؟',
-    'نسخه جدید فقط از honarmardomi.ir دریافت می‌شود؛ اثر انگشت فایل و امضای رسمی پیامیار پیش از نصب بررسی و نصب با تأیید خودتان در نصب‌کننده اندروید انجام می‌شود. داده‌های شما حفظ می‌شود.'),
+    'نسخه جدید فقط از honarmardomi.ir دریافت می‌شود؛ اثر انگشت فایل و امضای رسمی سوسلنگ پیش از نصب بررسی و نصب با تأیید خودتان در نصب‌کننده اندروید انجام می‌شود. داده‌های شما حفظ می‌شود.'),
   ('آیا پیامک‌های من جایی ارسال می‌شود؟',
     'متن پیامک‌ها و فهرست مخاطبان برای پشتیبانی ارسال نمی‌شود. فقط متن گزارشی که خودتان ثبت و ارسال می‌کنید، به‌صورت امن در سامانه پشتیبانی honarmardomi.ir ذخیره می‌شود؛ بررسی به‌روزرسانی و سرویس‌های اختیاری ممکن است به اینترنت نیاز داشته باشند.'),
   ('پیام چندرسانه‌ای (MMS) پشتیبانی می‌شود؟',
-    'فعلاً خیر؛ پیامیار اعلان MMS را نشان می‌دهد ولی دانلود آن را انجام نمی‌دهد.'),
+    'فعلاً خیر؛ سوسلنگ اعلان MMS را نشان می‌دهد ولی دانلود آن را انجام نمی‌دهد.'),
   ('پیش از تعویض گوشی یا نصب دوباره چه کنم؟',
     'از «تنظیمات ← پشتیبان تنظیمات» نسخه پشتیبان را برای خودتان بفرستید. پیامک‌ها در حافظه خود اندروید می‌مانند.'),
 ];
@@ -107,7 +107,7 @@ class _BugReportPageState extends State<BugReportPage> {
     final info = await PackageInfo.fromPlatform();
     final s = widget.store;
     final buffer = StringBuffer()
-      ..writeln('گزارش خرابی پیامیار')
+      ..writeln('گزارش خرابی سوسلنگ')
       ..writeln('بخش: $kind')
       ..writeln('شرح: ${what.text.trim()}');
     if (steps.text.trim().isNotEmpty) buffer.writeln('مراحل تکرار: ${steps.text.trim()}');
@@ -209,11 +209,11 @@ class ContactPage extends StatelessWidget {
         const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Center(child: PayamYarLogotype(height: 46, tagline: true))),
         tile(Icons.language_rounded, 'وب‌سایت هنر مردمی', 'honarmardomi.ir',
           () => UpdateService.openDownload('https://honarmardomi.ir/')),
-        tile(Icons.phone_android_rounded, 'صفحه رسمی پیامیار', 'دانلود و اخبار نسخه‌ها',
+        tile(Icons.phone_android_rounded, 'صفحه رسمی سوسلنگ', 'دانلود و اخبار نسخه‌ها',
           () => UpdateService.openDownload('https://honarmardomi.ir/payamyar/')),
-        tile(Icons.share_rounded, 'معرفی پیامیار به دوستان', 'ارسال لینک دانلود',
-          () => SmsBridge.shareText('پیامیار؛ پیام‌رسان پیامکی فارسی و امن\nدانلود: https://honarmardomi.ir/payamyar/',
-            subject: 'پیامیار', title: 'معرفی پیامیار')),
+        tile(Icons.share_rounded, 'معرفی سوسلنگ به دوستان', 'ارسال لینک دانلود',
+          () => SmsBridge.shareText('سوسلنگ؛ پیام‌رسان پیامکی فارسی و امن\nدانلود: https://honarmardomi.ir/payamyar/',
+            subject: 'سوسلنگ', title: 'معرفی سوسلنگ')),
       ]),
     );
   }
@@ -226,7 +226,7 @@ class AboutPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('درباره پیامیار')),
+      appBar: AppBar(title: const Text('درباره سوسلنگ')),
       body: ListView(padding: const EdgeInsets.fromLTRB(20, 16, 20, 24), children: [
         const Center(child: PayamYarLogotype(height: 60, tagline: true)),
         const SizedBox(height: 18),
@@ -234,7 +234,7 @@ class AboutPage extends StatelessWidget {
           snap.hasData ? 'نسخه ${Jalali.digits(snap.data!.version)} (ساخت ${Jalali.digits(snap.data!.buildNumber)})' : '',
           style: TextStyle(color: scheme.onSurfaceVariant)))),
         const SizedBox(height: 18),
-        const Text('پیامیار پیام‌رسان پیامکی فارسی از خانواده هنر مردمی است: گفتگوهای مرتب، جداسازی پیام‌های بانکی و تبلیغاتی، '
+        const Text('سوسلنگ پیام‌رسان پیامکی فارسی از خانواده هنر مردمی است: گفتگوهای مرتب، جداسازی پیام‌های بانکی و تبلیغاتی، '
           'گزارش مالی، گروه‌های پیامکی، ارسال زمان‌دار، فرصت لغو و قالب‌های زیبای گفتگو. '
           'همه پیام‌ها فقط روی گوشی شما نگه‌داری می‌شود.', style: TextStyle(height: 1.95)),
         const SizedBox(height: 18),
