@@ -83,7 +83,7 @@ class FloatingNotificationsTest {
         device.pressHome()
         // Enabling only records the preference: no idle bubble and no permanent alert.
         assertFalse("The idle app must not display a persistent chat head",
-            device.hasObject(By.descContains("حباب پیام‌یار")))
+            device.hasObject(By.descContains("حباب سوسلنگ")))
     }
     @After fun stop() {
         instrumentation.runOnMainSync { FloatingNotifications.setEnabled(context, false) }
@@ -138,19 +138,19 @@ class FloatingNotificationsTest {
         assertTrue("Conversation action must be reachable by scrolling", scrollToAction("گفتگو"))
     }
     @Test fun senderBubbleAppearsOnlyForIncomingSms() {
-        assertFalse(device.hasObject(By.descContains("حباب پیام‌یار")))
+        assertFalse(device.hasObject(By.descContains("حباب سوسلنگ")))
         context.getSharedPreferences("payamyar_overlay", Context.MODE_PRIVATE).edit()
             .putInt("bubbleSeconds", 8).commit()
         context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).edit()
             .putLong("flutter.bannerSeconds", 3).commit()
         displayWhileAppVisible("+989120000001", "مریم", "سلام، پیام تازه", false)
         assertTrue(device.wait(Until.hasObject(By.desc("نمایش متن کامل")), 5000))
-        assertFalse("Card and chat head must never cover each other", device.hasObject(By.descContains("حباب پیام‌یار")))
+        assertFalse("Card and chat head must never cover each other", device.hasObject(By.descContains("حباب سوسلنگ")))
         assertTrue("A newly received message must show its sender bubble after the card closes",
-            device.wait(Until.hasObject(By.descContains("حباب پیام‌یار")), 15000))
+            device.wait(Until.hasObject(By.descContains("حباب سوسلنگ")), 15000))
         assertFalse(device.hasObject(By.desc("نمایش متن کامل")))
         assertTrue("The transient bubble must disappear after its configured lifetime",
-            device.wait(Until.gone(By.descContains("حباب پیام‌یار")), 12000))
+            device.wait(Until.gone(By.descContains("حباب سوسلنگ")), 12000))
     }
     @Test fun glassOpacityIsStableAcrossRedraws() {
         val glass = GlassSurface(0xff087f81.toInt(), 1f, 26f, true, .78f, .15f, .55f)
@@ -182,9 +182,9 @@ class FloatingNotificationsTest {
         context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).edit()
             .putLong("flutter.bannerSeconds", 3).commit()
         displayWhileAppVisible("+989120000001", "مریم", "پیام", false)
-        assertTrue(device.wait(Until.hasObject(By.descContains("حباب پیام‌یار")), 15000))
+        assertTrue(device.wait(Until.hasObject(By.descContains("حباب سوسلنگ")), 15000))
         instrumentation.runOnMainSync { FloatingNotifications.setEnabled(context, false) }
-        assertTrue(device.wait(Until.gone(By.descContains("حباب پیام‌یار")), 5000))
+        assertTrue(device.wait(Until.gone(By.descContains("حباب سوسلنگ")), 5000))
     }
 
     @Test fun roundNotificationPortraitPreservesPhotoProportionsAndHasTransparentCorners() {
