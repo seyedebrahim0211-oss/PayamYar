@@ -243,6 +243,19 @@ class _ConversationsPageState extends State<ConversationsPage> {
   bool _searching = false;
   List<Conversation> _results = const [];
   Map<String, ({String query, MessageRecord first, int count})> _hits = {};
+  // Cache normalized sender names across keystrokes; rebuild only when the
+  // on-device contact directory changes.
+  final Map<String, String> _senderIndex = {};
+  int _senderDirectoryRevision = -1;
+
+  String _senderSearchText(Conversation c) {
+    if (_senderDirectoryRevision != store.directoryRevision) {
+      _senderIndex.clear();
+      _senderDirectoryRevision = store.directoryRevision;
+    }
+    return _senderIndex.putIfAbsent(c.address, () => MessageSearch.normalize(
+      '${store.displayName(c.address)} ${c.address} ${store.key(c.address)}'));
+  }
 
   /// Merged listenable for the rebuild: built once, not on every build.
   late final Listenable _repaint = Listenable.merge([store, widget.settings, store.folders]);
@@ -288,7 +301,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
         if (cancelled()) return;
         budget.reset();
       }
-      final sender = MessageSearch.normalize('${store.displayName(c.address)} ${c.address} ${store.key(c.address)}');
+      final sender = _senderSearchText(c);
       final remaining = tokens.where((t) => !MessageSearch.containsTerms(sender, [t])).toList();
       if (remaining.isNotEmpty) {
         final matches = await MessageSearch.scan(c.messages, remaining, budget, cancelled);
@@ -511,15 +524,17 @@ class _ConversationsPageState extends State<ConversationsPage> {
                   padding: EdgeInsets.all(40),
                   child: Center(child: CircularProgressIndicator()))),
               if (!widget.archive)
-                SliverToBoxAdapter(child: SizedBox(height: 50, child: ListView(
+                SliverToBoxAdapter(child: SizedBox(height: 44, child: ListView(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                   children: [
                     _chip('همه', !unreadOnly && category == null && folder == null, () =>
-                      setState(() { unreadOnly = false; category = null; folder = null; })),
-                    _chip('خوانده‌نشده', unreadOnly, () => setState(() { unreadOnly = !unreadOnly; })),
+                      setState(() { unreadOnly = false; category = null; folder = null; }), icon: Icons.apps_rounded),
+                    _chip('خوانده‌نشده', unreadOnly, () => setState(() { unreadOnly = !unreadOnly; }),
+                      icon: Icons.mark_email_unread_outlined),
                     for (final c in MessageCategory.values)
-                      _chip(categoryName(c), category == c, () => setState(() => category = category == c ? null : c)),
+                      _chip(categoryName(c), category == c, () => setState(() => category = category == c ? null : c),
+                        tint: _categoryTint(c), icon: _categoryIcon(c)),
                     for (final title in store.folders.titles)
                       _chip('📁 $title', folder == title, () => setState(() => folder = folder == title ? null : title)),
                     _chip('＋ پوشه', false, _createFolder),
@@ -559,16 +574,35 @@ class _ConversationsPageState extends State<ConversationsPage> {
     );
   }
 
-  Widget _chip(String label, bool selected, VoidCallback onTap) => Padding(
-    padding: const EdgeInsetsDirectional.only(end: 8),
-    child: FilterChip(
-      label: Text(label),
-      selected: selected,
-      showCheckmark: false,
-      onSelected: (_) => onTap(),
-      shape: const StadiumBorder(),
-    ),
-  );
+  Widget _chip(String label, bool selected, VoidCallback onTap,
+      {Color? tint, IconData? icon}) {
+    final shade = tint ?? Theme.of(context).colorScheme.primary;
+    final foreground = tint == null && selected ? Colors.white : shade;
+    return Padding(
+      padding: const EdgeInsetsDirectional.only(end: 6),
+      child: FilterChip(
+        visualDensity: VisualDensity.compact,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        labelPadding: const EdgeInsetsDirectional.only(start: 2, end: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 5),
+        label: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (icon != null) ...[
+            Icon(icon, size: 13, color: foreground),
+            const SizedBox(width: 3),
+          ],
+          Text(label, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700,
+            color: foreground)),
+        ]),
+        selected: selected,
+        selectedColor: tint == null ? shade : shade.withValues(alpha: .18),
+        backgroundColor: shade.withValues(alpha: .07),
+        side: BorderSide(color: shade.withValues(alpha: selected ? .35 : .13)),
+        showCheckmark: false,
+        onSelected: (_) => onTap(),
+        shape: const StadiumBorder(),
+      ),
+    );
+  }
 }
 
 /// "New version available" card; downloads, verifies and opens Android's installer inside the app.
@@ -704,6 +738,20 @@ class _ActionBanner extends StatelessWidget {
   }
 }
 
+Color _categoryTint(MessageCategory category) => switch (category) {
+  MessageCategory.banking => const Color(0xFF227653),
+  MessageCategory.personal => const Color(0xFFA55247),
+  MessageCategory.advertising => const Color(0xFFAC6619),
+  MessageCategory.service => const Color(0xFF536D83),
+};
+
+IconData _categoryIcon(MessageCategory category) => switch (category) {
+  MessageCategory.banking => Icons.account_balance_rounded,
+  MessageCategory.personal => Icons.person_outline_rounded,
+  MessageCategory.advertising => Icons.campaign_outlined,
+  MessageCategory.service => Icons.miscellaneous_services_outlined,
+};
+
 class ConversationTile extends StatelessWidget {
   final AppStore store;
   final Conversation conversation;
@@ -721,12 +769,7 @@ class ConversationTile extends StatelessWidget {
     final unread = info?.unread ?? 0;
     final name = store.displayName(conversation.address);
     final category = info?.category ?? MessageCategory.personal;
-    final tint = switch (category) {
-      MessageCategory.banking => const Color(0xFF308668),
-      MessageCategory.service => const Color(0xFF477AB2),
-      MessageCategory.personal => scheme.primary,
-      MessageCategory.advertising => scheme.tertiary,
-    };
+    final tint = _categoryTint(category);
     final pinned = store.isPinned(conversation.address);
     final bold = unread > 0;
     final bodyQuery = hit?.query ?? '';
@@ -735,7 +778,7 @@ class ConversationTile extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Material(
-        color: Color.alphaBlend(tint.withValues(alpha: pinned ? .18 : .075), scheme.surface),
+        color: Color.alphaBlend(tint.withValues(alpha: pinned ? .10 : .035), scheme.surface),
         borderRadius: BorderRadius.circular(20),
         child: InkWell(
           borderRadius: BorderRadius.circular(20),
@@ -754,7 +797,21 @@ class ConversationTile extends StatelessWidget {
                     textDirection: name == conversation.address && RegExp(r'^[\d+]').hasMatch(name) ? TextDirection.ltr : null,
                     textAlign: TextAlign.right,
                     style: TextStyle(fontSize: 16, fontWeight: bold ? FontWeight.w800 : FontWeight.w600))),
-                  Text(categoryName(category), style: Theme.of(context).textTheme.labelSmall),
+                  Container(
+                     margin: const EdgeInsetsDirectional.only(start: 5),
+                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                     decoration: BoxDecoration(
+                       color: tint.withValues(alpha: .12),
+                       borderRadius: BorderRadius.circular(9),
+                       border: Border.all(color: tint.withValues(alpha: .16)),
+                     ),
+                     child: Row(mainAxisSize: MainAxisSize.min, children: [
+                       Icon(_categoryIcon(category), size: 11, color: tint),
+                       const SizedBox(width: 3),
+                       Text(categoryName(category), style: TextStyle(
+                         color: tint, fontSize: 10, fontWeight: FontWeight.w700)),
+                     ]),
+                   ),
                   if (pinned)
                     const Padding(padding: EdgeInsetsDirectional.only(start: 4),
                       child: Icon(Icons.push_pin_rounded, size: 16, color: SColor.goldInk)),
