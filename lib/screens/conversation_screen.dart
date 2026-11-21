@@ -675,8 +675,9 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
     try {
       final saved = await ChatPersonalizations.instance.chooseImage(
         widget.address, wallpaper: wallpaper);
-      if (saved) store.onNotice?.call(
-        wallpaper ? 'پس‌زمینه همین گفتگو تغییر کرد.' : 'عکس اختصاصی مخاطب ذخیره شد.');
+      if (saved) {
+        store.onNotice?.call(wallpaper ? 'پس‌زمینه همین گفتگو تغییر کرد.' : 'عکس اختصاصی مخاطب ذخیره شد.');
+      }
     } on FormatException catch (e) {
       store.onNotice?.call(e.message);
     } catch (_) {
