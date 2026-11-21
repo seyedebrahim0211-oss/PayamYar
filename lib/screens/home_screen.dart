@@ -18,6 +18,8 @@ import 'compose_screen.dart';
 import 'conversation_screen.dart';
 import 'reports_screen.dart';
 import 'groups_screen.dart';
+import 'group_inbox_section.dart';
+import 'failed_messages_screen.dart';
 import 'settings_screen.dart';
 import 'widgets.dart';
 import 'dialect_card.dart';
@@ -299,7 +301,9 @@ class _ConversationsPageState extends State<ConversationsPage> {
   }
 
   /// Merged listenable for the rebuild: built once, not on every build.
-  late final Listenable _repaint = Listenable.merge([store, widget.settings, store.folders]);
+  late final Listenable _repaint = Listenable.merge([
+    store, widget.settings, store.folders, store.smsGroups,
+  ]);
 
   @override
   void initState() {
@@ -539,6 +543,9 @@ class _ConversationsPageState extends State<ConversationsPage> {
                     if (v == 'archive') {
                       Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) =>
                         ConversationsPage(store: store, settings: widget.settings, archive: true)));
+                    } else if (v == 'failed') {
+                      Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => FailedMessagesScreen(store: store)));
                     } else if (v == 'read') {
                       store.markAllRead();
                     } else if (v == 'blocked') {
@@ -547,6 +554,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
                   },
                   itemBuilder: (_) => [
                     const PopupMenuItem(value: 'archive', child: Text('بایگانی')),
+                    const PopupMenuItem(value: 'failed', child: Text('پیام‌های ارسال‌نشده')),
                     const PopupMenuItem(value: 'read', child: Text('خواندن همه')),
                     if (SmsBridge.supported) const PopupMenuItem(value: 'blocked', child: Text('شماره‌های مسدود')),
                   ]),
@@ -626,6 +634,12 @@ class _ConversationsPageState extends State<ConversationsPage> {
                       setState(() { unreadOnly = false; category = null; folder = null; }), icon: Icons.apps_rounded),
                     _chip('خوانده‌نشده', unreadOnly, () => setState(() { unreadOnly = !unreadOnly; }),
                       icon: Icons.mark_email_unread_outlined),
+                    _chip(store.failedMessagesCount == 0 ? 'ارسال‌نشده‌ها' :
+                      'ارسال‌نشده‌ها (${Jalali.digits(store.failedMessagesCount)})',
+                      false,
+                      () => Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => FailedMessagesScreen(store: store))),
+                      tint: scheme.error, icon: Icons.outbox_rounded),
                     for (final c in MessageCategory.values)
                       _chip(categoryName(c), category == c, () => setState(() => category = category == c ? null : c),
                         tint: _categoryTint(c), icon: _categoryIcon(c)),
@@ -633,6 +647,8 @@ class _ConversationsPageState extends State<ConversationsPage> {
                       _chip('📁 $title', folder == title, () => setState(() => folder = folder == title ? null : title)),
                     _chip('＋ پوشه', false, _createFolder),
                   ]))),
+              if (!widget.archive && query.isEmpty && store.smsGroups.groups.isNotEmpty)
+                SliverToBoxAdapter(child: GroupInboxSection(store: store)),
               if (store.error != null)
                 SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.all(16),
                   child: Text(store.error!, style: TextStyle(color: scheme.error)))),
