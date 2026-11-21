@@ -22,7 +22,7 @@ List<List<String>> dialectEntries(String body) {
     final word = card.querySelector('h3')?.text.trim() ?? '';
     final meaning = card.querySelector('.gy-mean')?.text.trim() ?? '';
     final url = card.querySelector('[data-au]')?.attributes['data-au'] ?? '';
-    if (word.isNotEmpty && meaning.isNotEmpty && _officialAudio(url)) {
+    if (word.isNotEmpty && !word.contains(RegExp(r'\s')) && meaning.isNotEmpty && _officialAudio(url)) {
       entries.add([word, meaning, url]);
     }
   }
