@@ -1,3 +1,4 @@
+import 'dart:async' show Timer;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -48,6 +49,31 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
   bool _searchVisible = false;
   String _searchQuery = '';
   int _matchIndex = 0;
+  int _searchGeneration = 0;
+  int _searchRevision = -1;
+  Timer? _searchTimer;
+  List<MessageRecord> _matches = const [];
+  Set<MessageRecord> _matchSet = {};
+  bool _searching = false;
+
+  void _scheduleSearch() {
+    _searchTimer?.cancel();
+    final generation = ++_searchGeneration;
+    _searchRevision = store.revision;
+    _matches = const [];
+    _matchSet = {};
+    final tokens = MessageSearch.terms(_searchQuery);
+    _searching = _searchVisible && tokens.isNotEmpty;
+    if (!_searching) return;
+    _searchTimer = Timer(const Duration(milliseconds: 120), () async {
+      bool cancelled() => !mounted || generation != _searchGeneration;
+      final rows = store.conversationFor(widget.address)?.messages ?? const <MessageRecord>[];
+      final hits = await MessageSearch.scan(rows, tokens, Stopwatch()..start(), cancelled);
+      if (cancelled()) return;
+      setState(() { _matches = hits; _matchSet = hits.toSet(); _searching = false; });
+      _scrollToMatch();
+    });
+  }
   bool sending = false;
   final Set<String> _revealedAmounts = {};
   AppStore get store => widget.store;
@@ -64,7 +90,7 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
     _searchQuery = widget.initialSearch;
     _searchVisible = _searchQuery.trim().isNotEmpty;
     _searchController.text = _searchQuery;
-    if (_searchVisible) _scrollToMatch();
+    if (_searchVisible) _scheduleSearch();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _markRead());
     store.addListener(_onStoreChanged);
@@ -72,6 +98,7 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
 
   /// A message that arrives while this conversation is open is marked read right away.
   void _onStoreChanged() {
+    if (_searchVisible && _searchRevision != store.revision) _scheduleSearch();
     if ((store.infoFor(widget.address)?.unread ?? 0) > 0) Future.microtask(_markRead);
   }
 
@@ -93,6 +120,7 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
     WidgetsBinding.instance.removeObserver(this);
     store.removeListener(_onStoreChanged);
     input.dispose();
+    _searchTimer?.cancel();
     _searchController.dispose();
     focus.dispose();
     super.dispose();
@@ -302,6 +330,7 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
       if (!_searchVisible) {
         _searchQuery = '';
         _searchController.clear();
+        _scheduleSearch();
         _matchIndex = 0;
       }
     });
@@ -312,12 +341,11 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
       _searchQuery = value;
       _matchIndex = 0;
     });
-    _scrollToMatch();
+    _scheduleSearch();
   }
 
   void _moveMatch(int direction) {
-    final messages = store.conversationFor(widget.address)?.messages ?? const <MessageRecord>[];
-    final matches = MessageSearch.withinConversation(messages, _searchQuery);
+    final matches = _matches;
     if (matches.isEmpty) return;
     setState(() => _matchIndex = (_matchIndex + direction + matches.length) % matches.length);
     _scrollToMatch();
@@ -327,7 +355,7 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_searchVisible) return;
       final messages = store.conversationFor(widget.address)?.messages ?? const <MessageRecord>[];
-      final matches = MessageSearch.withinConversation(messages, _searchQuery);
+      final matches = _matches;
       if (matches.isEmpty) return;
       final selected = matches[_matchIndex.clamp(0, matches.length - 1)];
       final key = store.key(widget.address);
@@ -372,12 +400,28 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
     return true;
   }
 
+  int _entryRevision = -1;
+  int _entryDay = -1;
+  List<_Entry> _history = const [];
+
   List<_Entry> _entries(List<MessageRecord> messages, List<PendingSend> pending) {
     final now = DateTime.now();
-    final items = <_Entry>[
+    final day = now.year * 10000 + now.month * 100 + now.day;
+    if (_entryRevision != store.revision || _entryDay != day) {
+      _entryRevision = store.revision;
+      _entryDay = day;
+      _history = _historyEntries(messages);
+    }
+    if (pending.isEmpty) return _history;
+    return [
       for (final p in pending.reversed)
         if (_stillLocal(p, messages, now)) _Entry(pending: p),
+      ..._history,
     ];
+  }
+
+  List<_Entry> _historyEntries(List<MessageRecord> messages) {
+    final items = <_Entry>[];
     for (var i = 0; i < messages.length; i++) {
       final m = messages[i];
       items.add(_Entry(message: m));
@@ -413,8 +457,8 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
         final key = store.key(widget.address);
         final pending = store.pendingSends.where((p) => store.key(p.to) == key).toList();
         final items = _entries(messages, pending);
-        final matches = _searchVisible ? MessageSearch.withinConversation(messages, _searchQuery) : const <MessageRecord>[];
-        final matchSet = matches.toSet();
+        final matches = _matches;
+        final matchSet = _matchSet;
         final selectedMatch = matches.isEmpty ? null : matches[_matchIndex.clamp(0, matches.length - 1)];
         final quickReplies = settings.smartReplies && messages.isNotEmpty && !messages.first.outgoing
             ? _repliesFor(messages.first)
@@ -501,7 +545,8 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
                       ),
                     ),
                   ),
-                if (_searchVisible && _searchQuery.trim().isNotEmpty)
+                if (_searching) const LinearProgressIndicator(),
+                if (!_searching && _searchVisible && _searchQuery.trim().isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
                     child: Row(children: [

@@ -76,6 +76,7 @@ class AppStore extends ChangeNotifier {
   final Map<String, String> _keyCache = {};
   /// Bumped whenever messages change; lets screens cache derived data.
   int revision = 0;
+  int directoryRevision = 0;
 
   final Map<String, String> names = {};
   final Set<String> archived = {};
@@ -201,6 +202,7 @@ class AppStore extends ChangeNotifier {
       permissions = await SmsBridge.status();
       if (!permissions.contacts) {
         if (hadContacts) _contactEpoch++;
+        if (names.isNotEmpty) directoryRevision++;
         names.clear();
         _lastNamesLoad = null;
       } else if (!hadContacts) {
@@ -212,6 +214,8 @@ class AppStore extends ChangeNotifier {
         _buffer = [];
         loadingAll = false;
         messages = [];
+        revision++;
+        _report = null;
         _reset();
       }
       access = await SmsBridge.specialAccess();
@@ -481,7 +485,7 @@ class AppStore extends ChangeNotifier {
         names[canonical] = updated; // +98 / 0098 / 09 share the same name
       }
       _lastNamesLoad = now;
-      if (changed) notifyListeners();
+      if (changed) { directoryRevision++; notifyListeners(); }
     } catch (_) {
       // Keep existing names if the contacts provider is temporarily unavailable.
     }
@@ -573,7 +577,7 @@ class AppStore extends ChangeNotifier {
 
   void _scheduleReport() {
     if (_reportRunning || (_reportTimer?.isActive ?? false)) return;
-    _reportTimer = Timer(Duration(milliseconds: loadingAll ? 1200 : 120), _runReport);
+    _reportTimer = Timer(Duration(milliseconds: loadingAll ? 250 : 0), _runReport);
   }
 
   Future<void> _runReport() async {
@@ -583,7 +587,7 @@ class AppStore extends ChangeNotifier {
     try {
       final result = await compute(buildReport, snapshot);
       final top = conversations.toList()..sort((a, b) => b.count.compareTo(a.count));
-      _report = ReportData(rev, result, top.take(5).toList());
+      if (revision == rev) _report = ReportData(rev, result, top.take(5).toList());
     } catch (_) {
       // A failed report must never break the inbox; the next change retries.
     } finally {
@@ -645,6 +649,7 @@ class AppStore extends ChangeNotifier {
 
   void toggleArchive(String address) {
     final k = key(address);
+    directoryRevision++;
     if (!archived.remove(k)) archived.add(k);
     notifyListeners();
     _savePrefs();
@@ -652,6 +657,7 @@ class AppStore extends ChangeNotifier {
 
   void togglePin(String address) {
     final k = key(address);
+    directoryRevision++;
     final nowPinned = !pinned.remove(k);
     if (nowPinned) pinned.add(k);
     notifyListeners();

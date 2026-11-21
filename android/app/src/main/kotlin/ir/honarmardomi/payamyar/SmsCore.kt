@@ -64,14 +64,14 @@ object SmsCore {
         var total = 0
         c.contentResolver.query(Telephony.Sms.CONTENT_URI, COLUMNS, null, null, ORDER)?.use { cur ->
             val slots = simSlots(c)
-            var size = 150
+            var size = 48
             while (true) {
                 requireDefault(c)
                 val page = chunk(cur, size, slots)
                 val n = page["n"] as Int
                 if (n > 0) { total += n; emit(page) }
                 if (n < size) break
-                size = 4000
+                size = 512
             }
         }
         return total

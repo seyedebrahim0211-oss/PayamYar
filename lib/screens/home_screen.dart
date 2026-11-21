@@ -235,21 +235,65 @@ class _ConversationsPageState extends State<ConversationsPage> {
   String? folder;
   Timer? _searchDebounce;
   final search = TextEditingController();
-  int _indexedRevision = -1;
-  final Map<String, List<String>> _normalizedMessages = {};
+  int _generation = 0;
+  int _revision = -1;
+  int _directory = -1;
+  bool _searching = false;
+  List<Conversation> _results = const [];
+  Map<String, ({String query, MessageRecord first, int count})> _hits = {};
 
-  /// Rebuild the normalized SMS search corpus only when messages change.
-  /// Each keystroke filters already-normalized strings instead of re-parsing
-  /// the entire SMS history (including Persian and Arabic digits) repeatedly.
-  void _ensureSearchIndex() {
-    if (_indexedRevision == store.revision) return;
-    _normalizedMessages
-      ..clear()
-      ..addEntries(store.conversations.map((c) => MapEntry(
-        store.key(c.address),
-        [for (final m in c.messages) MessageSearch.indexedBody(m)],
-      )));
-    _indexedRevision = store.revision;
+  @override
+  void initState() {
+    super.initState();
+    store.addListener(_storeChanged);
+  }
+
+  void _storeChanged() {
+    if (query.isNotEmpty && (_revision != store.revision || _directory != store.directoryRevision)) {
+      _queueSearch(query);
+    }
+  }
+
+  void _queueSearch(String value) {
+    _searchDebounce?.cancel();
+    final generation = ++_generation;
+    final tokens = MessageSearch.terms(value);
+    _revision = store.revision;
+    _directory = store.directoryRevision;
+    setState(() {
+      query = value;
+      _results = const [];
+      _hits = {};
+      _searching = tokens.isNotEmpty;
+    });
+    if (_searching) {
+      _searchDebounce = Timer(const Duration(milliseconds: 130), () => _runSearch(tokens, generation));
+    }
+  }
+
+  Future<void> _runSearch(List<String> tokens, int generation) async {
+    bool cancelled() => !mounted || generation != _generation;
+    final rows = [...store.visible(archive: widget.archive), if (!widget.archive) ...store.visible(archive: true)];
+    final results = <Conversation>[];
+    final hits = <String, ({String query, MessageRecord first, int count})>{};
+    final budget = Stopwatch()..start();
+    for (final c in rows) {
+      if (budget.elapsedMicroseconds >= 3500) {
+        await Future<void>.delayed(Duration.zero);
+        if (cancelled()) return;
+        budget.reset();
+      }
+      final sender = MessageSearch.normalize('${store.displayName(c.address)} ${c.address} ${store.key(c.address)}');
+      final remaining = tokens.where((t) => !MessageSearch.containsTerms(sender, [t])).toList();
+      if (remaining.isNotEmpty) {
+        final matches = await MessageSearch.scan(c.messages, remaining, budget, cancelled);
+        if (cancelled()) return;
+        if (matches.isEmpty) continue;
+        hits[c.address] = (query: remaining.join(' '), first: matches.first, count: matches.length);
+      }
+      results.add(c);
+    }
+    if (!cancelled()) setState(() { _results = results; _hits = hits; _searching = false; });
   }
 
   AppStore get store => widget.store;
@@ -257,33 +301,19 @@ class _ConversationsPageState extends State<ConversationsPage> {
   @override
   void dispose() {
     _searchDebounce?.cancel();
+    store.removeListener(_storeChanged);
     search.dispose();
     super.dispose();
   }
 
   List<Conversation> _filtered() {
-    final searchTerms = MessageSearch.terms(query);
-    // Global search includes archived conversations and is not limited
-    // by the inbox's unread/category/folder chips.
-    final all = searchTerms.isNotEmpty && !widget.archive
-        ? [...store.visible(archive: false), ...store.visible(archive: true)]
-        : store.visible(archive: widget.archive);
-    if (!unreadOnly && category == null && folder == null && searchTerms.isEmpty) return all;
-    if (searchTerms.isNotEmpty) _ensureSearchIndex();
+    if (MessageSearch.terms(query).isNotEmpty) return _results;
+    final all = store.visible(archive: widget.archive);
+    if (!unreadOnly && category == null && folder == null) return all;
     return all.where((c) {
-      if (searchTerms.isEmpty) {
-        if (folder != null && store.folders.forAddress(c.address) != folder) return false;
-        if (unreadOnly && store.unreadCount(c) == 0) return false;
-        if (category != null && store.categoryOf(c) != category) return false;
-        return true;
-      }
-      final sender = MessageSearch.normalize(
-          '${store.displayName(c.address)} ${c.address} ${store.key(c.address)}');
-      final remaining = searchTerms.where((t) => !MessageSearch.containsTerms(sender, [t])).toList();
-      if (remaining.isEmpty) return true;
-      // A query can combine the contact's name and a word inside a message.
-      return (_normalizedMessages[store.key(c.address)] ?? const <String>[])
-          .any((body) => MessageSearch.containsTerms(body, remaining));
+      if (folder != null && store.folders.forAddress(c.address) != folder) return false;
+      if (unreadOnly && store.unreadCount(c) == 0) return false;
+      return category == null || store.categoryOf(c) == category;
     }).toList();
   }
 
@@ -439,12 +469,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
                 padding: const EdgeInsets.fromLTRB(14, 2, 14, 6),
                 child: TextField(
                   controller: search,
-                  onChanged: (v) {
-                    _searchDebounce?.cancel();
-                    _searchDebounce = Timer(const Duration(milliseconds: 180), () {
-                      if (mounted) setState(() => query = v);
-                    });
-                  },
+                  onChanged: _queueSearch,
                   textInputAction: TextInputAction.search,
                   decoration: InputDecoration(
                     hintText: 'جست‌وجو در همه پیام‌ها، نام‌ها و شماره‌ها',
@@ -453,7 +478,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
                     suffixIcon: query.isEmpty ? null : IconButton(
                       tooltip: 'پاک کردن جستجو',
                       icon: const Icon(Icons.close_rounded),
-                      onPressed: () => setState(() { _searchDebounce?.cancel(); search.clear(); query = ''; })),
+                      onPressed: () { search.clear(); _queueSearch(''); }),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(28), borderSide: BorderSide.none)),
                 ))),
               if (store.update != null && !store.updateDismissed && !widget.archive)
@@ -493,7 +518,8 @@ class _ConversationsPageState extends State<ConversationsPage> {
               if (store.error != null)
                 SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.all(16),
                   child: Text(store.error!, style: TextStyle(color: scheme.error)))),
-              if (list.isEmpty && !store.loadingAll)
+              if (_searching) const SliverToBoxAdapter(child: LinearProgressIndicator()),
+              if (!_searching && list.isEmpty && !store.loadingAll)
                 SliverToBoxAdapter(child: EmptyState(
                   icon: query.isNotEmpty ? Icons.search_off_rounded : Icons.forum_outlined,
                   title: query.isNotEmpty ? 'نتیجه‌ای پیدا نشد' : widget.archive ? 'بایگانی خالی است' : 'پیامی وجود ندارد',
@@ -510,6 +536,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
                       conversation: c,
                       hidePreview: widget.settings.hidePreview,
                       searchQuery: query,
+                      hit: _hits[c.address],
                       onLongPress: () => _actions(c),
                     );
                   },
@@ -673,8 +700,9 @@ class ConversationTile extends StatelessWidget {
   final Conversation conversation;
   final bool hidePreview;
   final String searchQuery;
+  final ({String query, MessageRecord first, int count})? hit;
   final VoidCallback onLongPress;
-  const ConversationTile({super.key, required this.store, required this.conversation, required this.hidePreview, required this.onLongPress, this.searchQuery = ''});
+  const ConversationTile({super.key, required this.store, required this.conversation, required this.hidePreview, required this.onLongPress, this.searchQuery = '', this.hit});
 
   @override
   Widget build(BuildContext context) {
@@ -685,10 +713,8 @@ class ConversationTile extends StatelessWidget {
     final name = store.displayName(conversation.address);
     final pinned = store.isPinned(conversation.address);
     final bold = unread > 0;
-    final sender = MessageSearch.normalize('$name ${conversation.address} ${store.key(conversation.address)}');
-    final bodyQuery = MessageSearch.terms(searchQuery).where((term) => !MessageSearch.containsTerms(sender, [term])).join(' ');
-    final matches = MessageSearch.withinConversation(conversation.messages, bodyQuery);
-    final previewMessage = matches.isNotEmpty ? matches.first : m;
+    final bodyQuery = hit?.query ?? '';
+    final previewMessage = hit?.first ?? m;
     final preview = hidePreview ? 'متن پیام مخفی است' : '${previewMessage.outgoing ? 'شما: ' : ''}${previewMessage.body.replaceAll('\n', ' ')}';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
@@ -699,7 +725,7 @@ class ConversationTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
             builder: (_) => ConversationScreen(store: store, address: conversation.address,
-              initialSearch: searchQuery.isNotEmpty && matches.isNotEmpty ? bodyQuery : ''))),
+              initialSearch: bodyQuery))),
           onLongPress: onLongPress,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
@@ -727,9 +753,9 @@ class ConversationTile extends StatelessWidget {
                   Expanded(child: Text.rich(searchHighlight(preview, hidePreview ? '' : bodyQuery), maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: TextStyle(color: bold ? scheme.onSurface : scheme.onSurfaceVariant,
                       fontWeight: bold ? FontWeight.w600 : null))),
-                  if (searchQuery.trim().isNotEmpty && matches.isNotEmpty)
+                  if (hit != null)
                     Padding(padding: const EdgeInsetsDirectional.only(start: 5),
-                      child: Text('${Jalali.digits(matches.length)} نتیجه',
+                      child: Text('${Jalali.digits(hit!.count)} نتیجه',
                         style: TextStyle(color: scheme.primary, fontSize: 11))),
                   if (unread > 0)
                     Container(

@@ -70,6 +70,22 @@ class MessageSearch {
   static bool matches(String source, String query) =>
       containsTerms(normalize(source), terms(query));
 
+  /// Give input, scrolling and cancellation a turn during a large local scan.
+  static Future<List<MessageRecord>> scan(List<MessageRecord> rows, List<String> tokens,
+      Stopwatch budget, bool Function() cancelled) async {
+    final hits = <MessageRecord>[];
+    for (var i = 0; i < rows.length; i++) {
+      if (budget.elapsedMicroseconds >= 3500) {
+        await Future<void>.delayed(Duration.zero);
+        if (cancelled()) return const [];
+        budget.reset();
+      }
+      final message = rows[i];
+      if (containsTerms(indexedBody(message), tokens)) hits.add(message);
+    }
+    return hits;
+  }
+
   /// Restrict navigation to messages that actually contain every searched term.
   static List<MessageRecord> withinConversation(
     List<MessageRecord> messages, String query,

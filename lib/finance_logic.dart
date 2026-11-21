@@ -60,6 +60,10 @@ class FinanceLogic {
 
   static FinanceEntry? parse(MessageRecord m) {
     if (MessageLogic.category(m) != MessageCategory.banking) return null;
+    return parseBankMessage(m);
+  }
+
+  static FinanceEntry? parseBankMessage(MessageRecord m) {
     final value = digits(m.body);
     final result = _transaction.firstMatch(value);
     if (result == null) return null;
@@ -79,7 +83,11 @@ class FinanceLogic {
 
   /// Only returns explicit balance values with a currency unit.
   /// Different account suffixes remain separate, and unknown accounts are not summed.
-  static List<AccountBalance> latestBalances(Iterable<MessageRecord> messages) {
+  static List<AccountBalance> latestBalances(Iterable<MessageRecord> messages) =>
+      balancesFromIncomingBankMessages(messages.where((m) =>
+          !m.outgoing && MessageLogic.category(m) == MessageCategory.banking));
+
+  static List<AccountBalance> balancesFromIncomingBankMessages(Iterable<MessageRecord> messages) {
     final latest = <String, AccountBalance>{};
     final balance = RegExp(
       r'(?:موجودی|موجودي|مانده(?:\s+(?:حساب|کارت|سپرده))?|باقی\s*مانده)'
@@ -91,7 +99,6 @@ class FinanceLogic {
       r'([*xX×\-\s\d]{4,40})',
       caseSensitive: false);
     for (final m in messages) {
-      if (m.outgoing || MessageLogic.category(m) != MessageCategory.banking) continue;
       final raw = digits(m.body).replaceAll('ي', 'ی').replaceAll('ك', 'ک')
           .replaceAll('\u200c', ' ');
       final match = balance.firstMatch(raw);

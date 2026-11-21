@@ -5,17 +5,20 @@ import 'message_search.dart';
 TextSpan searchHighlight(String source, String query) {
   final terms = MessageSearch.terms(query);
   if (terms.isEmpty || source.isEmpty) return TextSpan(text: source);
+  final alphabet = <int, String>{};
   final compact = StringBuffer();
   final starts = <int>[];
   final ends = <int>[];
   var offset = 0;
   for (final rune in source.runes) {
     final original = String.fromCharCode(rune);
-    final folded = MessageSearch.normalize(original);
+    final folded = alphabet[rune] ??= MessageSearch.normalize(original);
     compact.write(folded);
-    starts.addAll(List.filled(folded.length, offset));
+    for (var i = 0; i < folded.length; i++) {
+      starts.add(offset);
+      ends.add(offset + original.length);
+    }
     offset += original.length;
-    ends.addAll(List.filled(folded.length, offset));
   }
   final body = compact.toString();
   final ranges = <(int, int)>[];

@@ -247,16 +247,19 @@ ReportResult buildReportAt(List<MessageRecord> messages, DateTime now) {
     }
   }
 
+  final bankMessages = <MessageRecord>[];
+  final oneYear = now.subtract(const Duration(days: 365));
   final twoYears = now.subtract(const Duration(days: 730));
   for (final m in messages) {
     final category = MessageLogic.category(m);
     counts[category] = counts[category]! + 1;
+    if (!m.outgoing && category == MessageCategory.banking) bankMessages.add(m);
     if (!m.date.isAfter(twoYears)) continue;
     FinanceEntry? entry;
     if (category == MessageCategory.banking && !m.outgoing) {
-      entry = FinanceLogic.parse(m);
+      entry = FinanceLogic.parseBankMessage(m);
       if (entry != null) {
-        if (m.date.isAfter(now.subtract(const Duration(days: 365)))) yearEntries.add(entry);
+        if (m.date.isAfter(oneYear)) yearEntries.add(entry);
         if (m.date.isAfter(since30)) recent.add(entry);
       }
     }
@@ -267,6 +270,7 @@ ReportResult buildReportAt(List<MessageRecord> messages, DateTime now) {
     final weekday = (m.date.weekday + 1) % 7; // Saturday = 0
     final isOtp = !m.outgoing && MessageLogic.otp(m.body) != null;
     final isScam = !m.outgoing && MessageLogic.suspicious(m.body);
+    String? bankName;
     List<String>? tokens;
     for (final p in ReportPeriod.values) {
       final a = acc[p]!;
@@ -311,7 +315,7 @@ ReportResult buildReportAt(List<MessageRecord> messages, DateTime now) {
         }
       }
       if (entry != null) {
-        final bank = FinanceLogic.bankOf(m.sender, m.body);
+        final bank = bankName ??= FinanceLogic.bankOf(m.sender, m.body);
         final slot = a.banks[bank] ??= [0, 0, 0];
         if (entry.kind == FinanceKind.deposit) {
           a.deposits += entry.amountTomans;
@@ -410,7 +414,7 @@ ReportResult buildReportAt(List<MessageRecord> messages, DateTime now) {
     withdrawals: FinanceLogic.total(recent, FinanceKind.withdrawal),
     recent: recent,
     biggest: biggest.take(5).toList(),
-    balances: FinanceLogic.latestBalances(messages),
+    balances: FinanceLogic.balancesFromIncomingBankMessages(bankMessages),
     months: months,
     counts: counts,
     periods: periods,

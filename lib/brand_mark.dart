@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 
-/// PayamYar emblem: a white message bubble holding an eight-point star (shamseh), with a gold sparkle.
+/// Approved wagtail mark with breathing room around the silhouette.
 class BrandMark extends StatelessWidget {
   final double size;
   const BrandMark({super.key, this.size = 24});
   @override
   Widget build(BuildContext context) => ClipRRect(
     borderRadius: BorderRadius.circular(size * .22),
-    child: Image.asset('assets/susolang.png', width: size, height: size),
+    child: Container(width: size, height: size, color: const Color(0xFF011437),
+      padding: EdgeInsets.all(size * .085), child: Image.asset('assets/susolang.png')),
   );
 }
 
