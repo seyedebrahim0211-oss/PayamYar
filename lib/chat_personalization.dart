@@ -117,14 +117,20 @@ class ChatPersonalizations extends ChangeNotifier {
   /// Returns false when the Android picker is cancelled.
   Future<bool> chooseImage(String address, {required bool wallpaper}) async {
     final selected = await FilePicker.pickFile(type: FileType.image);
-    final path = selected?.path;
-    if (path == null) return false;
-    final source = File(path);
-    final length = await source.length();
+    if (selected == null) return false;
+    if (selected.size < 12 || selected.size > maxImageBytes) {
+      throw const FormatException('عکس باید کمتر از ۴ مگابایت باشد.');
+    }
+    // Some providers return a cached file path; Google Photos/cloud providers
+    // may only expose a stream. Handle either without loading huge pictures.
+    final path = selected.path;
+    final source = path == null || path.startsWith('content:') ? null : File(path);
+    final bytes = source == null ? await selected.readAsBytes() : null;
+    final length = source == null ? bytes!.length : await source.length();
     if (length < 12 || length > maxImageBytes) {
       throw const FormatException('عکس باید کمتر از ۴ مگابایت باشد.');
     }
-    final header = await source.openRead(0, 12).first;
+    final header = source == null ? bytes!.sublist(0, 12) : await source.openRead(0, 12).first;
     final ext = imageExtension(header);
     if (ext == null) {
       throw const FormatException('فقط عکس‌های JPG، PNG و WebP پشتیبانی می‌شوند.');
@@ -136,7 +142,11 @@ class ChatPersonalizations extends ChangeNotifier {
     final stamp = DateTime.now().microsecondsSinceEpoch;
     final filename = '${id}_${wallpaper ? 'wall' : 'avatar'}_$stamp.$ext';
     final target = File('${directory.path}/$filename');
-    await source.copy(target.path);
+    if (source == null) {
+      await target.writeAsBytes(bytes!, flush: true);
+    } else {
+      await source.copy(target.path);
+    }
 
     final key = canonical(address);
     final previous = forAddress(key);
