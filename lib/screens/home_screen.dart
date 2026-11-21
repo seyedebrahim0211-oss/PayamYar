@@ -156,8 +156,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             borderRadius: BorderRadius.circular(28),
             child: BackdropFilter(
               filter: ImageFilter.blur(
-                sigmaX: widget.settings.reduceEffects ? 0 : 22,
-                sigmaY: widget.settings.reduceEffects ? 0 : 22,
+                sigmaX: widget.settings.reduceEffects ? 0 : 12,
+                sigmaY: widget.settings.reduceEffects ? 0 : 12,
               ),
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -190,7 +190,12 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                         label: Text(Jalali.digits(unread)),
                         child: _RaisedNavIcon(icon: Icons.chat_bubble_outline_rounded, reduceEffects: widget.settings.reduceEffects),
                       ),
-                      selectedIcon: _RaisedNavIcon(icon: Icons.chat_bubble_rounded, selected: true, reduceEffects: widget.settings.reduceEffects),
+                      selectedIcon: Badge(
+                        isLabelVisible: unread > 0,
+                        label: Text(Jalali.digits(unread)),
+                        child: _RaisedNavIcon(icon: Icons.chat_bubble_rounded, selected: true,
+                          reduceEffects: widget.settings.reduceEffects),
+                      ),
                       label: 'گفتگوها',
                     ),
                     NavigationDestination(
