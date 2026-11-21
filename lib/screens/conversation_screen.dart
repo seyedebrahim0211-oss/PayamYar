@@ -1,9 +1,12 @@
-import 'dart:async' show Timer;
+import 'dart:async' show Timer, unawaited;
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import '../app_settings.dart';
+import '../bank_privacy.dart';
+import '../chat_personalization.dart';
 import '../app_store.dart';
 import '../chat_theme.dart';
 import '../design/tokens.dart';
@@ -56,6 +59,7 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
   List<MessageRecord> _matches = const [];
   Set<MessageRecord> _matchSet = {};
   bool _searching = false;
+  late final Listenable _chatChanges;
 
   void _scheduleSearch() {
     _searchTimer?.cancel();
@@ -88,6 +92,8 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
   @override
   void initState() {
     super.initState();
+    _chatChanges = Listenable.merge([store, settings, ChatPersonalizations.instance]);
+    unawaited(ChatPersonalizations.instance.load());
     _searchQuery = widget.initialSearch;
     _searchVisible = _searchQuery.trim().isNotEmpty;
     _searchController.text = _searchQuery;
@@ -449,9 +455,10 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return ListenableBuilder(
-      listenable: Listenable.merge([store, settings]),
+      listenable: _chatChanges,
       builder: (context, _) {
-        final look = ChatLook.of(settings.chatStyle, scheme);
+        final personal = ChatPersonalizations.instance.forAddress(widget.address);
+        final look = ChatLook.of(personal.theme ?? settings.chatStyle, scheme);
         final c = store.conversationFor(widget.address);
         final messages = c?.messages ?? const <MessageRecord>[];
         final name = store.displayName(widget.address);
@@ -522,9 +529,18 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
             ],
           ),
           body: DecoratedBox(
-            decoration: look.background,
+            decoration: personal.wallpaperPath == null ? look.background : BoxDecoration(
+              color: scheme.surface,
+              image: DecorationImage(
+                image: FileImage(File(personal.wallpaperPath!)),
+                fit: BoxFit.cover,
+                colorFilter: ColorFilter.mode(
+                  scheme.surface.withValues(alpha: scheme.brightness == Brightness.dark ? .52 : .40),
+                  BlendMode.srcOver),
+              ),
+            ),
             child: CustomPaint(
-              painter: look.pattern,
+              painter: personal.wallpaperPath == null ? look.pattern : null,
               child: Column(children: [
                 if (_searchVisible)
                   Padding(
@@ -568,11 +584,17 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
                     child: ListTile(
                       dense: true,
                       leading: const Icon(Icons.push_pin_rounded, size: 18, color: SColor.goldInk),
-                      title: Text(pinnedMessage.body.replaceAll('\n', ' '), maxLines: 2, overflow: TextOverflow.ellipsis),
+                      title: Text(BankPrivacy.preview(
+                        MessageLogic.category(pinnedMessage), pinnedMessage.body.replaceAll('\n', ' ')),
+                        maxLines: 2, overflow: TextOverflow.ellipsis),
                       trailing: IconButton(tooltip: 'برداشتن سنجاق پیام', icon: const Icon(Icons.close_rounded, size: 18),
                         onPressed: () => store.togglePinMessage(widget.address, pinnedId!)),
                       onTap: () {
-                        Clipboard.setData(ClipboardData(text: pinnedMessage!.body));
+                        if (MessageLogic.category(pinnedMessage!) == MessageCategory.banking) {
+                          store.onNotice?.call('مبالغ بانکی فقط با لمس همان پیام در گفتگو نمایش داده می‌شوند.');
+                          return;
+                        }
+                        Clipboard.setData(ClipboardData(text: pinnedMessage.body));
                         store.onNotice?.call('متن پیام سنجاق‌شده کپی شد.');
                       },
                     ),
@@ -649,28 +671,78 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
     );
   }
 
+  Future<void> _pickPersonalImage({required bool wallpaper}) async {
+    try {
+      final saved = await ChatPersonalizations.instance.chooseImage(
+        widget.address, wallpaper: wallpaper);
+      if (saved) store.onNotice?.call(
+        wallpaper ? 'پس‌زمینه همین گفتگو تغییر کرد.' : 'عکس اختصاصی مخاطب ذخیره شد.');
+    } on FormatException catch (e) {
+      store.onNotice?.call(e.message);
+    } catch (_) {
+      store.onNotice?.call('انتخاب عکس انجام نشد. یک تصویر JPG، PNG یا WebP انتخاب کنید.');
+    }
+  }
+
   Future<void> _stylePicker() async {
+    final personalize = ChatPersonalizations.instance;
+    await personalize.load();
+    if (!mounted) return;
     await showModalBottomSheet<void>(
-      context: context, showDragHandle: true,
+      context: context, showDragHandle: true, isScrollControlled: true,
       builder: (sheet) => ListenableBuilder(
-        listenable: settings,
-        builder: (context, _) => SafeArea(child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('قالب گفتگو', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 12),
-            SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
-              for (final style in ChatStyle.values)
-                Padding(padding: const EdgeInsetsDirectional.only(end: 10),
-                  child: ChatStylePreview(style: style, selected: settings.chatStyle == style,
-                    onTap: () => settings.update(chatStyle: style))),
-            ])),
-            const SizedBox(height: 10),
-            Text('اندازه متن حباب‌ها: ${Jalali.digits(settings.bubbleText.round())}'),
-            Slider(value: settings.bubbleText, min: 13, max: 20, divisions: 14,
-              onChanged: (v) => settings.update(bubbleText: v)),
-          ]),
-        )),
+        listenable: personalize,
+        builder: (context, _) {
+          final custom = personalize.forAddress(widget.address);
+          return SafeArea(child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+            child: Column(mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('شخصی‌سازی همین گفتگو', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 5),
+              const Text('تغییرات فقط روی همین گوشی ذخیره می‌شوند و سایر گفتگوها را تغییر نمی‌دهند.',
+                style: TextStyle(fontSize: 12)),
+              const SizedBox(height: 12),
+              SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
+                for (final style in ChatStyle.values)
+                  Padding(padding: const EdgeInsetsDirectional.only(end: 10),
+                    child: ChatStylePreview(style: style, selected: (custom.theme ?? settings.chatStyle) == style,
+                      onTap: () => unawaited(personalize.setTheme(widget.address, style)))),
+              ])),
+              TextButton.icon(
+                onPressed: () => unawaited(personalize.setTheme(widget.address, null)),
+                icon: const Icon(Icons.restart_alt_rounded),
+                label: const Text('استفاده از تم پیش‌فرض برنامه')),
+              const Divider(height: 15),
+              ListTile(
+                dense: true, leading: const Icon(Icons.account_circle_outlined),
+                title: const Text('عکس دلخواه برای این مخاطب'),
+                subtitle: const Text('JPG، PNG یا WebP تا ۴ مگابایت'),
+                trailing: const Icon(Icons.photo_library_outlined),
+                onTap: () { Navigator.pop(sheet); _pickPersonalImage(wallpaper: false); }),
+              if (custom.avatarPath != null)
+                TextButton.icon(
+                  onPressed: () => unawaited(personalize.clearImage(widget.address, wallpaper: false)),
+                  icon: const Icon(Icons.delete_outline_rounded),
+                  label: const Text('حذف عکس اختصاصی مخاطب')),
+              ListTile(
+                dense: true, leading: const Icon(Icons.wallpaper_rounded),
+                title: const Text('پس‌زمینه دلخواه همین گفتگو'),
+                subtitle: const Text('تصویر فقط در حافظه خصوصی برنامه می‌ماند'),
+                trailing: const Icon(Icons.photo_library_outlined),
+                onTap: () { Navigator.pop(sheet); _pickPersonalImage(wallpaper: true); }),
+              if (custom.wallpaperPath != null)
+                TextButton.icon(
+                  onPressed: () => unawaited(personalize.clearImage(widget.address, wallpaper: true)),
+                  icon: const Icon(Icons.delete_outline_rounded),
+                  label: const Text('حذف پس‌زمینه اختصاصی')),
+              const SizedBox(height: 8),
+              Text('اندازه متن حباب‌ها: ${Jalali.digits(settings.bubbleText.round())}'),
+              Slider(value: settings.bubbleText, min: 13, max: 20, divisions: 14,
+                onChanged: (v) => settings.update(bubbleText: v)),
+            ]),
+          ));
+        },
       ),
     );
   }
@@ -701,9 +773,7 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
     final financial = MessageLogic.category(m) == MessageCategory.banking;
     final identity = '${m.id ?? m.date.millisecondsSinceEpoch}|${m.sender}';
     final reveal = _revealedAmounts.contains(identity);
-    final masked = financial && !reveal
-      ? m.body.replaceAll(RegExp(r'[0-9۰-۹٠-٩]{3,}'), '••••')
-      : m.body;
+    final masked = financial && !reveal ? BankPrivacy.conceal(m.body) : m.body;
     return _Bubble(
       text: masked,
       searchQuery: searchHit ? _searchQuery : '',
@@ -726,7 +796,7 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
       sensitive: financial,
       onPhoneMessage: (number) => Navigator.of(context).push(MaterialPageRoute<void>(
         builder: (_) => ConversationScreen(store: store, address: number))),
-      trailing: code == null ? null : ActionChip(
+      trailing: code == null || (financial && !reveal) ? null : ActionChip(
         avatar: const Icon(Icons.copy_rounded, size: 16),
         label: Text('کپی کد ${Jalali.digits(code)}'),
         onPressed: () async {
