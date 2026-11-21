@@ -131,7 +131,7 @@ class AppStore extends ChangeNotifier {
   Future<void> init() async {
     unawaited(ChatPersonalizations.instance.load());
     final p = await SharedPreferences.getInstance();
-    await Future.wait([smsGroups.load(), folders.load()]);
+    final localLists = Future.wait([smsGroups.load(), folders.load()]);
     onboarded = p.getBool('onboarded') ?? false;
     archived.addAll(p.getStringList('archived') ?? []);
     pinned.addAll(p.getStringList('pinned') ?? []);
@@ -145,22 +145,22 @@ class AppStore extends ChangeNotifier {
       SmsBridge.listen(_onNativeEvent);
       await checkPermissions();
       if (permissions.isDefault && permissions.canRead) unawaited(loadAll());
+      await localLists;
       initialized = true;
       notifyListeners();
       try {
         final queued = await SmsBridge.pending();
         for (final item in queued) {
           final due = DateTime.fromMillisecondsSinceEpoch((item['due'] as num).toInt());
-          if (due.isAfter(DateTime.now())) {
-            final pending = PendingSend(item['id'] as String, item['to'] as String,
+          final pending = PendingSend(item['id'] as String, item['to'] as String,
               item['body'] as String, due, scheduled: item['scheduled'] == true);
-            pendingSends.add(pending);
-            unawaited(_watch(pending));
-          }
+          pendingSends.add(pending);
         }
+        _scheduleSendPoll();
       } catch (_) { /* A queue read failure must not block the inbox. */ }
       unawaited(checkForUpdate());
     } else {
+      await localLists;
       messages = _sample();
       _rebuild();
     }
@@ -786,8 +786,8 @@ class AppStore extends ChangeNotifier {
   }
 
   /// Queues an SMS with a 5-second undo window. Returns null if sending failed to start.
-  Future<PendingSend?> send(String to, String body, {DateTime? scheduledAt}) async {
-    final text = settings?.withSignature(body) ?? body.trim();
+  Future<PendingSend?> send(String to, String body, {DateTime? scheduledAt, bool exactBody = false, int? groupSim, DateTime? groupTime}) async {
+    final text = exactBody ? body : settings?.withSignature(body) ?? body.trim();
     final target = to.trim();
     if (text.isEmpty || target.isEmpty) return null;
     if (!android) {
@@ -811,12 +811,12 @@ class AppStore extends ChangeNotifier {
         onNotice?.call('زمان ارسال را بین ۵ ثانیه تا ۳۰ روز آینده تنظیم کنید.');
         return null;
       }
-      final id = await SmsBridge.queue(target, text, selectedSim, delay: delay);
+      final id = await SmsBridge.queue(target, text, groupSim ?? selectedSim, delay: delay, group: groupSim != null, groupTime: groupTime);
       final pending = PendingSend(id, target, text, now.add(delay),
           scheduled: scheduledAt != null, window: delay);
       pendingSends.add(pending);
       notifyListeners();
-      unawaited(_watch(pending));
+      _scheduleSendPoll();
       return pending;
     } on PlatformException catch (e) {
       onNotice?.call(e.message ?? 'ارسال ممکن نشد.');
@@ -836,44 +836,55 @@ class AppStore extends ChangeNotifier {
     return ok;
   }
 
-  Future<void> _watch(PendingSend p) async {
-    final wait = p.deadline.difference(DateTime.now());
-    if (wait > Duration.zero) await Future<void>.delayed(wait);
-    // The native queue has now written the real outbox row; show it at once so the
-    // local "queued" copy is replaced instead of appearing twice.
-    notifyListeners();
-    unawaited(Future<void>.delayed(const Duration(milliseconds: 350), refresh));
-    var state = 'queued';
-    for (var i = 0; i < 120 && (state == 'queued' || state == 'pending'); i++) {
-      try {
-        state = await SmsBridge.sendStatus(p.id);
-      } catch (_) {
-        break;
+  Timer? _sendPoll;
+  bool _polling = false;
+  bool _closed = false;
+
+  void _scheduleSendPoll() {
+    if (_closed || _polling || pendingSends.isEmpty) return;
+    final next = pendingSends.map((p) => p.deadline).reduce((a, b) => a.isBefore(b) ? a : b);
+    final wait = next.difference(DateTime.now());
+    // A newly queued short send can precede a previously scheduled send.
+    _sendPoll?.cancel();
+    _sendPoll = Timer(wait > const Duration(seconds: 1) ? wait : const Duration(seconds: 1), _pollSends);
+  }
+
+  Future<void> _pollSends() async {
+    if (_closed || _polling) return;
+    _polling = true;
+    final now = DateTime.now();
+    final due = pendingSends.where((p) => !p.deadline.isAfter(now)).toList();
+    var changed = false;
+    try {
+      // One channel read for the whole group keeps inbox and SIM operations responsive.
+      for (var i = 0; i < due.length && !_closed; i += 500) {
+        final batch = due.skip(i).take(500).toList();
+        final states = await SmsBridge.sendStates(batch.map((p) => p.id).toList());
+        if (_closed) return;
+        for (final pending in batch) {
+          final state = states[pending.id];
+          if (state == 'queued' || (state == 'pending' &&
+              now.difference(pending.deadline) < const Duration(minutes: 2))) continue;
+          if (state == null || !pendingSends.remove(pending)) continue;
+          changed = true;
+          if (state.startsWith('send_failed')) {
+            onNotice?.call('ارسال به ${pending.to} انجام نشد: ${state.split(':').skip(1).join(':')}');
+          } else if (state == 'delivery_failed') {
+            onNotice?.call('تحویل پیام به ${pending.to} ناموفق بود.');
+          }
+        }
       }
-      if (state == 'cancelled') break;
-      if (state == 'queued' || state == 'pending') {
-        await Future<void>.delayed(
-          p.scheduled ? const Duration(seconds: 3) : const Duration(milliseconds: 600));
+    } on PlatformException {
+      // Keep durable queue entries visible while the channel reconnects.
+    } finally {
+      _polling = false;
+      if (!_closed && changed) {
+        notifyListeners();
+        _debounce?.cancel();
+        _debounce = Timer(const Duration(milliseconds: 350), refresh);
       }
+      _scheduleSendPoll();
     }
-    pendingSends.remove(p);
-    if (state.startsWith('send_failed')) {
-      final reason = state.contains(':') ? state.substring(state.indexOf(':') + 1) : '';
-      onNotice?.call(reason.isEmpty
-          ? 'ارسال پیامک ناموفق بود. سیم‌کارت، اعتبار و آنتن را بررسی کنید.'
-          : 'ارسال پیامک انجام نشد: $reason');
-    } else if (state == 'delivery_failed') {
-      onNotice?.call('گزارش تحویل پیامک ناموفق است؛ ممکن است پیام در شبکه پذیرفته شده باشد.');
-    } else if (state == 'send_unconfirmed') {
-      // Vendor ROMs can return RESULT_CANCELED even when the SMS leaves the device.
-      // This is not an error: do not show a failure snackbar or encourage a duplicate send.
-      // The conversation retains a neutral status until a real network receipt arrives.
-    }
-    notifyListeners();
-    // Coalesce per-recipient confirmations; a 500-recipient batch must not
-    // re-query the entire SMS inbox hundreds of times.
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 800), () => unawaited(refresh()));
   }
 
   static MessageRecord _copy(MessageRecord m, {bool? read}) => MessageRecord(
@@ -882,6 +893,8 @@ class AppStore extends ChangeNotifier {
 
   @override
   void dispose() {
+    _closed = true;
+    _sendPoll?.cancel();
     _debounce?.cancel();
     _reportTimer?.cancel();
     if (android) SmsBridge.stopListening();

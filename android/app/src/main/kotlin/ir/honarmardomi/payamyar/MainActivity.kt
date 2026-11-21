@@ -17,12 +17,14 @@ import android.provider.Telephony
 import android.telecom.TelecomManager
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import io.flutter.embedding.android.FlutterActivity
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.util.concurrent.Executors
 
-open class MainActivity : FlutterActivity() {
+open class MainActivity : FlutterFragmentActivity() {
     companion object {
         /** Set while a PayamYar screen is in front; Notifier then shows the in-app glass banner instead. */
         @Volatile @JvmStatic var foregroundChannel: MethodChannel? = null
@@ -61,6 +63,40 @@ open class MainActivity : FlutterActivity() {
         }
     }
 
+    private val biometricStrength = BiometricManager.Authenticators.BIOMETRIC_STRONG
+    private var activePrompt: BiometricPrompt? = null
+
+    private fun authenticate(result: MethodChannel.Result) {
+        if (activePrompt != null || isFinishing || isDestroyed ||
+            BiometricManager.from(this).canAuthenticate(biometricStrength) != BiometricManager.BIOMETRIC_SUCCESS) {
+            result.success(false)
+            return
+        }
+        var finished = false
+        fun finish(ok: Boolean) {
+            if (finished) return
+            finished = true
+            activePrompt = null
+            result.success(ok)
+        }
+        val prompt = BiometricPrompt(this, ContextCompat.getMainExecutor(this),
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(auth: BiometricPrompt.AuthenticationResult) = finish(true)
+                override fun onAuthenticationError(code: Int, message: CharSequence) = finish(false)
+                override fun onAuthenticationFailed() {
+                    activePrompt?.cancelAuthentication()
+                    finish(false)
+                }
+            })
+        activePrompt = prompt
+        try {
+            prompt.authenticate(BiometricPrompt.PromptInfo.Builder()
+                .setTitle("ورود به پیام‌یار")
+                .setNegativeButtonText("ورود با رمز")
+                .setAllowedAuthenticators(biometricStrength).build())
+        } catch (_: RuntimeException) { finish(false) }
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "ir.honarmardomi.payamyar/sms")
@@ -68,6 +104,9 @@ open class MainActivity : FlutterActivity() {
         VaultChannel(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
+                "biometricAvailable" -> result.success(BiometricManager.from(this)
+                    .canAuthenticate(biometricStrength) == BiometricManager.BIOMETRIC_SUCCESS)
+                "authenticate" -> authenticate(result)
                 "pickContact" -> {
                     if (contactResult != null) result.error("BUSY", "Contact picker is already open", null)
                     else {
@@ -102,8 +141,20 @@ open class MainActivity : FlutterActivity() {
                     val generation = call.argument<Int>("generation") ?: 0
                     Thread {
                         try {
+                            // Bound outstanding pages so a large inbox cannot flood
+                            // the platform/UI thread while it paints the first screen.
+                            val slots = java.util.concurrent.Semaphore(2)
                             val total = SmsCore.stream(this) { page ->
-                                runOnUiThread { channel.invokeMethod("messagesPage", page + ("generation" to generation)) }
+                                check(slots.tryAcquire(30, java.util.concurrent.TimeUnit.SECONDS))
+                                check(!isDestroyed)
+                                runOnUiThread {
+                                    channel.invokeMethod("messagesPage", page + ("generation" to generation),
+                                        object : MethodChannel.Result {
+                                            override fun success(result: Any?) { slots.release() }
+                                            override fun error(code: String, message: String?, details: Any?) { slots.release() }
+                                            override fun notImplemented() { slots.release() }
+                                        })
+                                }
                             }
                             runOnUiThread { result.success(total) }
                         } catch (e: Exception) {
@@ -304,6 +355,7 @@ open class MainActivity : FlutterActivity() {
                             "isAvailable" -> packageManager.hasSystemFeature(if (Build.VERSION.SDK_INT >= 33) PackageManager.FEATURE_TELEPHONY_MESSAGING else PackageManager.FEATURE_TELEPHONY)
                             "permissionStatus" -> permissionMap()
                             "readMessages" -> SmsCore.read(this, call.argument<Int>("limit") ?: 300)
+                            "resolveSendSim" -> SmsCore.resolveSubscription(this, call.argument<Int>("sim") ?: -1)
                             "subscriptions" -> SmsCore.subscriptions(this)
                             "pendingSms" -> SmsCore.pending(this)
                             "contactNames" -> {
@@ -315,13 +367,16 @@ open class MainActivity : FlutterActivity() {
                             "blockNumber" -> blockNumber(call.argument<String>("address").orEmpty())
                             "queueSms" -> SmsCore.queue(this, call.argument<String>("to").orEmpty(),
                                 call.argument<String>("body").orEmpty(), call.argument<Int>("subscriptionId") ?: -1,
-                                (call.argument<Number>("delayMs")?.toLong() ?: 5000L)).also { id ->
+                                (call.argument<Number>("delayMs")?.toLong() ?: 5000L), call.argument<Boolean>("group") == true,
+                                call.argument<Number>("groupTime")?.toLong()).also { id ->
                                     // The alarm owns scheduled sends, even after the UI is closed.
                                     // Only the short five-second undo gets a foreground fallback.
                                     val delay = call.argument<Number>("delayMs")?.toLong() ?: 5000L
-                                    if (delay <= 10000L) handler.postDelayed({ worker.execute { SmsCore.dispatch(this, id) } }, delay + 100L)
+                                    if (delay <= 10000L && call.argument<Boolean>("group") != true) handler.postDelayed({ worker.execute { SmsCore.dispatch(this, id) } }, delay + 100L)
                                 }
                             "cancelSms" -> SmsCore.cancel(this, call.argument<String>("requestId").orEmpty())
+                            "sendStates" -> call.argument<List<String>>("ids").orEmpty()
+                                .take(500).associateWith { SmsCore.status(this, it) }
                             "sendStatus" -> SmsCore.status(this, call.argument<String>("requestId").orEmpty())
                             "readBanner" -> {
                                 check(SmsCore.isDefault(this))

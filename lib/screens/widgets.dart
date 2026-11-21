@@ -1,5 +1,5 @@
 import 'dart:typed_data';
-import 'dart:io';
+import 'chat_image_frame.dart';
 import '../chat_personalization.dart';
 import 'package:flutter/material.dart';
 import '../design/tokens.dart';
@@ -48,15 +48,15 @@ class SenderAvatar extends StatelessWidget {
           }, child: child));
     // An explicit per-chat avatar has priority over the phone-book picture,
     // bank logo and letter fallback, and is read only from private app storage.
-    final chosen = ChatPersonalizations.instance.forAddress(address).avatarPath;
+    final room = ChatPersonalizations.instance.forAddress(address);
+    final chosen = room.avatarPath;
     if (chosen != null) {
       final pixels = (radius * 2 * MediaQuery.devicePixelRatioOf(context)).round();
       return ClipRRect(
         borderRadius: BorderRadius.circular(radius * .68),
-        child: Image.file(File(chosen),
-          width: radius * 2, height: radius * 2, fit: BoxFit.cover,
-          cacheWidth: pixels.clamp(48, 512), gaplessPlayback: true,
-          errorBuilder: (_, __, ___) => fallback),
+        child: SizedBox.square(dimension: radius * 2,
+          child: FramedChatImage(chosen, room.avatarFrame, pixels: (pixels * 3).clamp(96, 768),
+            fallback: fallback)),
       );
     }
     final phone = SmsBridge.normalizeNumber(address).replaceAll(RegExp(r'[^0-9]'), '');

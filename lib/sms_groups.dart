@@ -30,19 +30,20 @@ class SmsGroupBatch {
   final String groupId;
   final Map<String, int> acceptedAt;
   final DateTime createdAt;
-  const SmsGroupBatch(this.id, this.groupId, this.acceptedAt, this.createdAt);
+  final bool exactTime;
+  const SmsGroupBatch(this.id, this.groupId, this.acceptedAt, this.createdAt, {this.exactTime = false});
 
   factory SmsGroupBatch.fromJson(Map<String, dynamic> json) => SmsGroupBatch(
     json['id'] as String,
     json['groupId'] as String,
     (json['acceptedAt'] as Map).map((k, v) =>
       MapEntry(k.toString(), (v as num).toInt())),
-    DateTime.fromMillisecondsSinceEpoch((json['createdAt'] as num).toInt()),
+    DateTime.fromMillisecondsSinceEpoch((json['createdAt'] as num).toInt()), exactTime: json['exactTime'] == true,
   );
 
   Map<String, Object> toJson() => {
     'id': id,
-    'groupId': groupId,
+    'groupId': groupId, 'exactTime': exactTime,
     'acceptedAt': acceptedAt,
     'createdAt': createdAt.millisecondsSinceEpoch,
   };
@@ -87,13 +88,13 @@ class SmsGroupStore extends ChangeNotifier {
 
   /// Record only numbers accepted into Android's queue, not all selected recipients.
   /// Message body is encrypted and never written to SharedPreferences or group JSON.
-  Future<void> recordBatch(String groupId, String body, Map<String, DateTime> accepted) async {
+  Future<void> recordBatch(String groupId, String body, Map<String, DateTime> accepted, {bool exactTime = false}) async {
     if (accepted.isEmpty || body.trim().isEmpty) return;
     final id = DateTime.now().microsecondsSinceEpoch.toRadixString(36);
     final batch = SmsGroupBatch(id, groupId, {
       for (final entry in accepted.entries)
         normalize(entry.key): entry.value.millisecondsSinceEpoch,
-    }, DateTime.now());
+    }, DateTime.now(), exactTime: exactTime);
     await Vault.put(batch.vaultKey, body); // Throws if secure storage is unavailable.
     _batches.insert(0, batch);
     final old = _batches.length > 80 ? _batches.sublist(80) : <SmsGroupBatch>[];
@@ -101,6 +102,22 @@ class SmsGroupStore extends ChangeNotifier {
     final p = await SharedPreferences.getInstance();
     await p.setStringList(batchKey, _batches.map((e) => jsonEncode(e.toJson())).toList());
     for (final expired in old) { await Vault.remove(expired.vaultKey); }
+    notifyListeners();
+  }
+
+  Future<void> removeRecipientFromBatch(String id, String recipient) async {
+    final index = _batches.indexWhere((batch) => batch.id == id);
+    if (index < 0) return;
+    final batch = _batches[index];
+    final remaining = Map.of(batch.acceptedAt)..remove(normalize(recipient));
+    if (remaining.isEmpty) {
+      _batches.removeAt(index);
+    } else {
+      _batches[index] = SmsGroupBatch(id, batch.groupId, remaining, batch.createdAt, exactTime: batch.exactTime);
+    }
+    final p = await SharedPreferences.getInstance();
+    await p.setStringList(batchKey, _batches.map((e) => jsonEncode(e.toJson())).toList());
+    if (remaining.isEmpty) await Vault.remove(batch.vaultKey);
     notifyListeners();
   }
 

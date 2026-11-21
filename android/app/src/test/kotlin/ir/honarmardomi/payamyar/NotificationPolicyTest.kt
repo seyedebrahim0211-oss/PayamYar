@@ -4,6 +4,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class NotificationPolicyTest {
+    @Test fun deliveryReportsDistinguishModemFormatAndIntermediateStatus() {
+        assertEquals(false, deliveryReportFailure(0, "3gpp"))
+        assertEquals(true, deliveryReportFailure(64, "3gpp"))
+        assertNull(deliveryReportFailure(32, "3gpp"))
+        assertNull(deliveryReportFailure(255, "3gpp"))
+        assertEquals(false, deliveryReportFailure(2 shl 16, "3gpp2"))
+        assertNull(deliveryReportFailure(2 shl 24, "3gpp2"))
+        assertEquals(true, deliveryReportFailure(3 shl 24, "3gpp2"))
+    }
     @Test fun callRelatedCarrierFailuresHaveSpecificDiagnostic() {
         for (code in listOf(121, 123)) {
             assertTrue(SmsSendDiagnostic.describe(code).contains("تماس"))

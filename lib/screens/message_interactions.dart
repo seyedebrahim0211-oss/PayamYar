@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../contacts/contacts_data.dart';
 import '../search_highlight.dart';
+import '../sms_bridge.dart';
 import 'contact_action_card.dart';
 
 /// Shared contact actions for ordinary SMS and the optional provider inbox.
@@ -23,9 +24,15 @@ class InteractiveMessageText extends StatelessWidget {
   const InteractiveMessageText({super.key, required this.text, this.searchQuery = '', this.style,
     this.senderName, this.onPhoneMessage});
 
+  static const _digit = '[0-9۰-۹٠-٩]';
+  static const _numeric = r'(?:IR[ \t-]*(?:D[ \t-]*){23}D|(?:D{4}[ -]){3}D{4}|(?:\+?D+[\-/.])+D+|\+?D+)';
   static final _pattern = RegExp(
-    r'((?:https?://|www\.)[^\s<>"،؛]+|(?:[a-z0-9-]+\.)+(?:ir|com|net|org|io|app)(?![a-z0-9.-])(?:[/\?#][^\s<>"،؛]*)?|(?:\+98|0098|0|\+۹۸|۰۰۹۸|۰|\+٩٨|٠٠٩٨|٠)[9۹٩](?:[0-9۰-۹٠-٩][\s-]?){8}[0-9۰-۹٠-٩])',
-    caseSensitive: false);
+    r'(?:https?://|www\.)[^\s<>"،؛]+|(?:[a-z0-9-]+\.)+(?:ir|com|net|org|io|app)(?![a-z0-9.-])(?:[/\?#][^\s<>"،؛]*)?|'
+    r'(?:\+98|0098|0|\+۹۸|۰۰۹۸|۰|\+٩٨|٠٠٩٨|٠)[9۹٩](?:[0-9۰-۹٠-٩][ -]?){8}[0-9۰-۹٠-٩](?![0-9۰-۹٠-٩])|'
+    "${_numeric.replaceAll('D', _digit)}", caseSensitive: false);
+
+  static final _urlStart = RegExp(r'^(?:https?://|www\.|(?:[a-z0-9-]+\.)+(?:ir|com|net|org|io|app))', caseSensitive: false);
+  static final _mobile = RegExp(r'^(?:\+98|0098|0)9[0-9]{9}$');
 
   static String _cleanUrl(String value) => value.replaceFirst(RegExp(r'[.,،؛!?؟]+$'), '');
 
@@ -36,20 +43,27 @@ class InteractiveMessageText extends StatelessWidget {
     for (final match in _pattern.allMatches(text).take(45)) {
       if (match.start > start) spans.add(searchHighlight(text.substring(start, match.start), searchQuery));
       final raw = match.group(0)!;
-      final url = raw.contains('.') || raw.contains('://');
+      final url = _urlStart.hasMatch(raw);
       if (match.start > 0 && text[match.start - 1] == '@' && url) {
         spans.add(TextSpan(text: raw));
         start = match.end;
         continue;
       }
       final value = url ? _cleanUrl(raw) : raw;
+      final compact = SmsBridge.normalizeNumber(value).toUpperCase().replaceAll(RegExp(r'[ \t-]'), '');
+      final mobile = !url && _mobile.hasMatch(compact);
       spans.add(WidgetSpan(alignment: PlaceholderAlignment.baseline, baseline: TextBaseline.alphabetic,
         child: InkWell(
           borderRadius: BorderRadius.circular(5),
+          onLongPress: mobile ? () => showPhoneActions(context, value,
+            onMessage: onPhoneMessage == null ? null : () => onPhoneMessage!(phoneKey(value))) : null,
           onTap: () async {
             if (!url) {
-              await showPhoneActions(context, value,
-                onMessage: onPhoneMessage == null ? null : () => onPhoneMessage!(phoneKey(value)));
+              await Clipboard.setData(ClipboardData(text: compact));
+              if (context.mounted) {
+                ScaffoldMessenger.of(context)..hideCurrentSnackBar()
+                  ..showSnackBar(const SnackBar(content: Text('شماره کپی شد.')));
+              }
               return;
             }
             final uri = Uri.tryParse(value.contains('://') ? value : 'https://$value');
@@ -81,6 +95,9 @@ class InteractiveMessageText extends StatelessWidget {
                 style: (style ?? DefaultTextStyle.of(context).style).copyWith(
                   color: Theme.of(context).colorScheme.primary,
                   fontWeight: FontWeight.w800, decoration: TextDecoration.underline)))
+            : !mobile ? Text(value, textDirection: TextDirection.ltr,
+                style: (style ?? DefaultTextStyle.of(context).style).copyWith(
+                  fontWeight: FontWeight.w700, decoration: TextDecoration.underline))
             : FutureBuilder<String?>(
                 future: ContactNameLookup.resolve(phoneKey(value)),
                 builder: (ctx, result) {

@@ -13,6 +13,7 @@ class MessageRecord {
   final bool read;
   final int type;
   final int delivery;
+  bool get failedSendOrDelivery => outgoing && (type == 5 || (type == 2 && delivery >= 64 && delivery <= 127));
   final String sender;
   final String body;
   final DateTime date;

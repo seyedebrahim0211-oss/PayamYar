@@ -17,6 +17,32 @@ class AppLock extends ChangeNotifier {
 
   bool enabled = false;
   bool secureScreen = false;
+  int? pinLength;
+  bool biometric = false;
+  bool biometricAvailable = false;
+  int _lockGeneration = 0;
+
+  Future<bool> _authenticate() async {
+    try { return await _channel.invokeMethod<bool>('authenticate') == true; }
+    catch (_) { return false; }
+  }
+
+  Future<void> setBiometric(bool value) async {
+    if (!enabled || locked || (value && !await _authenticate())) return;
+    if (!enabled || locked) return;
+    biometric = value;
+    await _save();
+    notifyListeners();
+  }
+
+  Future<void> unlockBiometric() async {
+    final generation = _lockGeneration;
+    if (!enabled || !locked || !biometric || !biometricAvailable) return;
+    if (await _authenticate() && generation == _lockGeneration && enabled && biometric) {
+      locked = false;
+      notifyListeners();
+    }
+  }
   /// Seconds in the background before the lock comes back (0 = immediately).
   int relockSeconds = 30;
   bool locked = false;
@@ -33,6 +59,12 @@ class AppLock extends ChangeNotifier {
       // Never disable a persisted lock when the device's Keystore key is lost.
       // Such a state needs explicit recovery, never automatic unrestricted access.
       locked = enabled;
+      pinLength = p.getInt('appPinLength');
+      biometric = p.getBool('appBiometric') ?? false;
+      if (Platform.isAndroid) {
+        try { biometricAvailable = await _channel.invokeMethod<bool>('biometricAvailable') == true; }
+        catch (_) { biometricAvailable = false; }
+      }
       await _applySecure();
     } catch (_) {
       // A storage failure must not silently grant access to private SMS.
@@ -47,6 +79,8 @@ class AppLock extends ChangeNotifier {
   Future<void> _save() async {
     final p = await SharedPreferences.getInstance();
     await p.setBool('appLock', enabled);
+    await p.setBool('appBiometric', biometric);
+    if (pinLength != null) await p.setInt('appPinLength', pinLength!);
     await p.setBool('secureScreen', secureScreen);
     await p.setInt('relockSeconds', relockSeconds);
   }
@@ -61,6 +95,7 @@ class AppLock extends ChangeNotifier {
 
   Future<void> enable(String pin) async {
     await Vault.setPin(vaultName, pin);
+    pinLength = pin.length;
     enabled = true;
     locked = false;
     await _save();
@@ -70,6 +105,7 @@ class AppLock extends ChangeNotifier {
 
   Future<void> disable() async {
     await Vault.remove(vaultName);
+    biometric = false;
     enabled = false;
     locked = false;
     await _save();
@@ -93,13 +129,20 @@ class AppLock extends ChangeNotifier {
   Future<PinCheck> unlock(String pin) async {
     final r = await Vault.verifyPin(vaultName, pin);
     if (r.ok) {
+      if (pinLength != pin.length) {
+        pinLength = pin.length;
+        await _save();
+      }
       locked = false;
       notifyListeners();
     }
     return r;
   }
 
-  void paused() => _backgroundTimer ??= (Stopwatch()..start());
+  void paused() {
+    _lockGeneration++;
+    _backgroundTimer ??= (Stopwatch()..start());
+  }
 
   void resumed() {
     final at = _backgroundTimer;
@@ -161,6 +204,9 @@ class _LockGateState extends State<LockGate> with WidgetsBindingObserver {
                 behavior: HitTestBehavior.opaque,
                 onTap: () {},
                 child: PinScreen(
+                  autoLength: widget.lock.pinLength,
+                  onBiometric: widget.lock.biometric && widget.lock.biometricAvailable
+                      ? widget.lock.unlockBiometric : null,
                   title: 'پیام‌یار قفل است',
                   subtitle: 'رمز برنامه را وارد کنید',
                   onSubmit: (pin) async {
@@ -179,10 +225,12 @@ class PinScreen extends StatefulWidget {
   final String title;
   final String subtitle;
   final int minLength;
+  final int? autoLength;
+  final Future<void> Function()? onBiometric;
   final Future<String?> Function(String pin) onSubmit;
   final VoidCallback? onCancel;
   const PinScreen({super.key, required this.title, required this.subtitle, required this.onSubmit,
-      this.minLength = 4, this.onCancel});
+      this.minLength = 4, this.autoLength, this.onBiometric, this.onCancel});
 
   @override
   State<PinScreen> createState() => _PinScreenState();
@@ -192,6 +240,19 @@ class _PinScreenState extends State<PinScreen> {
   String pin = '';
   String? error;
   bool busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.onBiometric != null) {
+      busy = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        await widget.onBiometric?.call();
+        if (mounted) setState(() => busy = false);
+      });
+    }
+  }
 
   Future<void> _submit() async {
     if (pin.length < widget.minLength || busy) return;
@@ -217,6 +278,7 @@ class _PinScreenState extends State<PinScreen> {
         pin += d;
       }
     });
+    if (d != '<' && pin.length == widget.autoLength) unawaited(_submit());
   }
 
   @override
@@ -389,6 +451,13 @@ class AppLockSettingsPage extends StatelessWidget {
                 },
               ),
               if (lock.enabled) ...[
+                if (lock.biometricAvailable) SwitchListTile(
+                  secondary: const Icon(Icons.fingerprint),
+                  title: const Text('ورود با اثر انگشت'),
+                  subtitle: const Text('ابتدا اثر انگشت بررسی می‌شود. با لغو یا عدم تطابق، رمز را وارد کنید.'),
+                  value: lock.biometric,
+                  onChanged: lock.setBiometric,
+                ),
                 ListTile(
                   leading: Icon(Icons.password_rounded, color: scheme.primary),
                   title: const Text('تغییر رمز'),
