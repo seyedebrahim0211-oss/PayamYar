@@ -284,11 +284,13 @@ open class MainActivity : FlutterActivity() {
                         ?.takeIf { data.getStringExtra("open_token") == launchToken(this) }
                     // External text shares are drafts only; never send automatically.
                     // Accept plain text, not arbitrary files or parcelable payloads.
-                    val shared = if (data.action == Intent.ACTION_SEND &&
-                        data.type == "text/plain") {
-                        data.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
-                            ?.trim()?.take(20000)?.takeIf { it.isNotEmpty() }
-                    } else null
+                    val shared = when {
+                        data.action == Intent.ACTION_SEND && data.type?.startsWith("text/") == true ->
+                            data.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
+                        data.action == Intent.ACTION_PROCESS_TEXT && data.type == "text/plain" ->
+                            data.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
+                        else -> null
+                    }?.trim()?.take(2000)?.takeIf { it.isNotEmpty() }
                     result.success(if (open != null) mapOf("open" to open)
                         else if (data.action == Intent.ACTION_SENDTO) mapOf("to" to address,
                             "body" to (data.getStringExtra("sms_body") ?: ""))
