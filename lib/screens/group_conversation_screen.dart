@@ -250,8 +250,8 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
           _key(p.to) == _key(entry.recipient) && p.body.trim() == entry.body.trim());
     final status = failed
         ? (record!.type == 5 ? 'ارسال نشد' : 'تحویل ناموفق')
-        : entry.incoming ? 'پاسخ خصوصی عضو'
-        : entry.privateMessage ? 'پیام خصوصی'
+        : entry.incoming ? 'پیام خصوصی دریافتی'
+        : entry.privateMessage ? 'پیام خصوصی ارسالی'
         : record?.type == 4 || record?.type == 6 || inQueue ? 'در صف ارسال'
         : record?.delivery == 0 ? 'تحویل تأیید شد'
         : entry.confirmed ? 'ارسال ثبت شد؛ تحویل قطعی نیست'
