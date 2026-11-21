@@ -123,6 +123,64 @@ class SmsGroupStore extends ChangeNotifier {
 
   Future<String?> batchBody(SmsGroupBatch batch) => Vault.get(batch.vaultKey);
 
+  /// Match only an explicitly recorded group broadcast, never infer a group
+  /// from a contact who happens to be a member of several groups.
+  Future<SmsGroupBatch?> matchingFailedBatch({
+    required String recipient,
+    required String body,
+    required DateTime messageDate,
+  }) async {
+    final phone = normalize(recipient);
+    final candidates = _batches.where((batch) {
+      final at = batch.acceptedAt[phone];
+      return at != null &&
+          (messageDate.millisecondsSinceEpoch - at).abs() <
+              const Duration(minutes: 11).inMilliseconds;
+    }).toList()
+      ..sort((a, b) {
+        final da = (messageDate.millisecondsSinceEpoch - a.acceptedAt[phone]!).abs();
+        final db = (messageDate.millisecondsSinceEpoch - b.acceptedAt[phone]!).abs();
+        return da.compareTo(db);
+      });
+    for (final batch in candidates) {
+      try {
+        final text = await batchBody(batch);
+        if (text?.trim() == body.trim()) return batch;
+      } catch (_) {
+        // History is still usable even if one encrypted batch is unreadable.
+      }
+    }
+    return null;
+  }
+
+  /// Keep retries from the global failed inbox attached to their true group.
+  Future<void> recordRetryForFailed({
+    required String recipient,
+    required String originalBody,
+    required DateTime originalDate,
+    required String newBody,
+    required DateTime queuedAt,
+  }) async {
+    final original = await matchingFailedBatch(
+      recipient: recipient, body: originalBody, messageDate: originalDate);
+    if (original == null) return;
+    await recordBatch(original.groupId, newBody, {recipient: queuedAt}, exactTime: true);
+  }
+
+  /// After deleting the real failed provider row, remove its group-history
+  /// membership; do not remove any unrelated personal or sent SMS.
+  Future<void> removeFailedFromHistory({
+    required String recipient,
+    required String body,
+    required DateTime messageDate,
+  }) async {
+    final matched = await matchingFailedBatch(
+      recipient: recipient, body: body, messageDate: messageDate);
+    if (matched == null) return;
+    await removeRecipientFromBatch(matched.id, recipient);
+  }
+
+
   Future<SmsGroup> save(String name, Iterable<String> numbers, {String? id}) async {
     final title = name.trim();
     final members = uniqueRecipients(numbers);
