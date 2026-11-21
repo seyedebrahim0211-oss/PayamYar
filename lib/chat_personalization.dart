@@ -118,8 +118,9 @@ class ChatPersonalizations extends ChangeNotifier {
   Future<bool> chooseImage(String address, {required bool wallpaper}) async {
     final selected = await FilePicker.pickFile(type: FileType.image);
     if (selected == null) return false;
-    if (selected.size < 12 || selected.size > maxImageBytes) {
-      throw const FormatException('عکس باید کمتر از ۴ مگابایت باشد.');
+    final reportedLength = selected.lengthSync() ?? await selected.length();
+    if (reportedLength == null || reportedLength < 12 || reportedLength > maxImageBytes) {
+      throw const FormatException('اندازه عکس باید مشخص و کمتر از ۴ مگابایت باشد.');
     }
     // Some providers return a cached file path; Google Photos/cloud providers
     // may only expose a stream. Handle either without loading huge pictures.
