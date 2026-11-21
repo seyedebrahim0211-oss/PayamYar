@@ -1,3 +1,4 @@
+import 'dart:async' show Timer, unawaited;
 import 'package:flutter/material.dart';
 import '../jalali.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -46,6 +47,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
   final Map<String, String> contactNames = {};
   List<Map<String, String>> _contacts = const [];
   Map<String, int> _frequency = const {};
+  Timer? _draftTimer;
   final List<PendingSend> undoGroup = [];
   String lastSentBody = '';
   bool sending = false;
@@ -102,15 +104,32 @@ class _ComposeScreenState extends State<ComposeScreen> {
     _saveDraft();
   }
 
-  Future<void> _saveDraft() async {
+  /// Delay writes during typing. Sending and recipient changes can still
+  /// flush immediately; no SMS content leaves the device.
+  Future<void> _saveDraft({bool immediate = false}) async {
+    _draftTimer?.cancel();
+    if (immediate) {
+      await _flushDraft();
+    } else {
+      _draftTimer = Timer(const Duration(milliseconds: 350), () =>
+        unawaited(_flushDraft()));
+    }
+  }
+
+  Future<void> _flushDraft() async {
+    final number = to.text;
+    final message = body.text;
+    final selected = recipients.toList(growable: false);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('draft_to', to.text);
-    await prefs.setString('draft_body', body.text);
-    await prefs.setStringList('draft_recipients', recipients.toList());
+    await prefs.setString('draft_to', number);
+    await prefs.setString('draft_body', message);
+    await prefs.setStringList('draft_recipients', selected);
   }
 
   @override
   void dispose() {
+    _draftTimer?.cancel();
+    unawaited(_flushDraft());
     to.dispose();
     body.dispose();
     groupName.dispose();
@@ -169,7 +188,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
           ..clear()
           ..addAll(selected.map(_normalize));
       });
-      await _saveDraft();
+      await _saveDraft(immediate: true);
     } catch (_) {
       store.onNotice?.call('خواندن مخاطبان ممکن نشد. مجوز دفترچه تلفن را بررسی کنید.');
     } finally {
@@ -313,7 +332,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
           ..addAll(targets);
         body.text = text;
       });
-      await _saveDraft();
+      await _saveDraft(immediate: true);
       return;
     }
     setState(() { sending = false; });
@@ -322,7 +341,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
       to.clear();
       body.clear();
       recipients.clear();
-      await _saveDraft();
+      await _saveDraft(immediate: true);
       if (!mounted) return;
       Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
         builder: (_) => ConversationScreen(store: store, address: address)));
@@ -335,7 +354,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
       to.clear();
       if (failed.isEmpty) body.clear();
     });
-    await _saveDraft();
+    await _saveDraft(immediate: true);
     if (!mounted) return;
     if (failed.isNotEmpty) {
       store.onNotice?.call('${failed.length} شماره در صف قرار نگرفت؛ متن برای ارسال مجدد محفوظ است.');
@@ -404,7 +423,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
     ));
     if (apply != true || !mounted) return;
     setState(() => body.text = compact);
-    await _saveDraft();
+    await _saveDraft(immediate: true);
   }
 
   Future<void> _pickOccasion() async {
