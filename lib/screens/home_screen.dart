@@ -133,8 +133,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           ? FloatingActionButton.extended(
               onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
                 builder: (_) => ComposeScreen(store: widget.store))),
-              icon: const Icon(Icons.edit_rounded),
-              label: const Text('پیام جدید'))
+              tooltip: 'نوشتن پیام جدید',
+              icon: const Icon(Icons.edit_note_rounded),
+              label: const Text('پیام جدید', textAlign: TextAlign.center))
           : null,
       bottomNavigationBar: SafeArea(
         top: false,
@@ -155,8 +156,8 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
             borderRadius: BorderRadius.circular(28),
             child: BackdropFilter(
               filter: ImageFilter.blur(
-                sigmaX: widget.settings.reduceEffects ? 0 : 22,
-                sigmaY: widget.settings.reduceEffects ? 0 : 22,
+                sigmaX: widget.settings.reduceEffects ? 0 : 12,
+                sigmaY: widget.settings.reduceEffects ? 0 : 12,
               ),
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -176,9 +177,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                 child: NavigationBar(
                   elevation: 0,
                   height: 70,
+                  labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
                   backgroundColor: Colors.transparent,
                   surfaceTintColor: Colors.transparent,
-                  indicatorColor: Theme.of(context).colorScheme.primary.withValues(alpha: .16),
+                  indicatorColor: Colors.transparent,
                   selectedIndex: tab,
                   onDestinationSelected: _selectTab,
                   destinations: [
@@ -186,29 +188,34 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                       icon: Badge(
                         isLabelVisible: unread > 0,
                         label: Text(Jalali.digits(unread)),
-                        child: const Icon(Icons.chat_bubble_outline_rounded),
+                        child: _RaisedNavIcon(icon: Icons.chat_bubble_outline_rounded, reduceEffects: widget.settings.reduceEffects),
                       ),
-                      selectedIcon: const Icon(Icons.chat_bubble_rounded),
+                      selectedIcon: Badge(
+                        isLabelVisible: unread > 0,
+                        label: Text(Jalali.digits(unread)),
+                        child: _RaisedNavIcon(icon: Icons.chat_bubble_rounded, selected: true,
+                          reduceEffects: widget.settings.reduceEffects),
+                      ),
                       label: 'گفتگوها',
                     ),
-                    const NavigationDestination(
-                      icon: Icon(Icons.contacts_outlined),
-                      selectedIcon: Icon(Icons.contacts_rounded),
+                    NavigationDestination(
+                      icon: _RaisedNavIcon(icon: Icons.contacts_outlined, reduceEffects: widget.settings.reduceEffects),
+                      selectedIcon: _RaisedNavIcon(icon: Icons.contacts_rounded, selected: true, reduceEffects: widget.settings.reduceEffects),
                       label: 'مخاطبین',
                     ),
-                    const NavigationDestination(
-                      icon: Icon(Icons.groups_outlined),
-                      selectedIcon: Icon(Icons.groups_rounded),
+                    NavigationDestination(
+                      icon: _RaisedNavIcon(icon: Icons.groups_outlined, reduceEffects: widget.settings.reduceEffects),
+                      selectedIcon: _RaisedNavIcon(icon: Icons.groups_rounded, selected: true, reduceEffects: widget.settings.reduceEffects),
                       label: 'گروه‌ها',
                     ),
-                    const NavigationDestination(
-                      icon: Icon(Icons.insights_outlined),
-                      selectedIcon: Icon(Icons.insights_rounded),
+                    NavigationDestination(
+                      icon: _RaisedNavIcon(icon: Icons.insights_outlined, reduceEffects: widget.settings.reduceEffects),
+                      selectedIcon: _RaisedNavIcon(icon: Icons.insights_rounded, selected: true, reduceEffects: widget.settings.reduceEffects),
                       label: 'گزارش‌ها',
                     ),
-                    const NavigationDestination(
-                      icon: Icon(Icons.settings_outlined),
-                      selectedIcon: Icon(Icons.settings_rounded),
+                    NavigationDestination(
+                      icon: _RaisedNavIcon(icon: Icons.settings_outlined, reduceEffects: widget.settings.reduceEffects),
+                      selectedIcon: _RaisedNavIcon(icon: Icons.settings_rounded, selected: true, reduceEffects: widget.settings.reduceEffects),
                       label: 'تنظیمات',
                     ),
                   ],
@@ -218,6 +225,38 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// A lightweight raised icon: only the selected tab gets depth and motion.
+class _RaisedNavIcon extends StatelessWidget {
+  final IconData icon;
+  final bool selected;
+  final bool reduceEffects;
+  const _RaisedNavIcon({required this.icon, required this.reduceEffects, this.selected = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+    return AnimatedContainer(
+      duration: reduceEffects ? Duration.zero : SMotion.fast,
+      width: 34,
+      height: 34,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        gradient: selected
+            ? LinearGradient(begin: Alignment.topRight, end: Alignment.bottomLeft,
+                colors: [primary.withValues(alpha: .23), primary.withValues(alpha: .07)])
+            : null,
+        border: selected ? Border.all(color: primary.withValues(alpha: .20)) : null,
+        boxShadow: selected && !reduceEffects
+            ? [BoxShadow(color: primary.withValues(alpha: .16),
+                blurRadius: 10, offset: const Offset(0, 3))]
+            : null,
+      ),
+      child: Icon(icon, size: 22, color: selected ? primary : null),
     );
   }
 }
@@ -455,20 +494,44 @@ class _ConversationsPageState extends State<ConversationsPage> {
         final unread = store.unreadConversations;
         return Scaffold(
           appBar: AppBar(
-            titleSpacing: 16,
+            centerTitle: true,
+            titleSpacing: 8,
             toolbarHeight: 64,
             title: widget.archive
-                ? const Text('بایگانی')
-                : Row(mainAxisSize: MainAxisSize.min, children: [
-                    const BrandTile(size: 42),
-                    const SizedBox(width: 12),
-                    Flexible(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                      const Text('پیام‌یار', style: TextStyle(fontFamily: 'Vazirmatn', fontWeight: FontWeight.w900, fontSize: 21)),
-                      Text(unread > 0 ? '${Jalali.digits(unread)} گفتگوی خوانده‌نشده' : 'همه پیام‌ها خوانده شده',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w400,
-                          color: unread > 0 ? scheme.primary : scheme.onSurfaceVariant), maxLines: 1, overflow: TextOverflow.ellipsis),
-                    ])),
-                  ]),
+                ? const Text('بایگانی', textAlign: TextAlign.center)
+                : Semantics(
+                    header: true,
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: widget.settings.reduceEffects ? const [] : [
+                            BoxShadow(color: scheme.primary.withValues(alpha: .20),
+                              blurRadius: 12, offset: const Offset(0, 4)),
+                          ],
+                        ),
+                        child: const BrandTile(size: 38),
+                      ),
+                      const SizedBox(width: 10),
+                      Flexible(child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          const Text('پیام‌یار', textAlign: TextAlign.center,
+                            maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontFamily: 'Vazirmatn',
+                              fontWeight: FontWeight.w900, fontSize: 21)),
+                          Text(unread > 0
+                              ? '${Jalali.digits(unread)} گفتگوی خوانده‌نشده'
+                              : 'همه پیام‌ها خوانده شده',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600,
+                              color: unread > 0 ? scheme.primary : scheme.onSurfaceVariant),
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                        ],
+                      )),
+                    ]),
+                  ),
             actions: [
               if (!widget.archive)
                 PopupMenuButton<String>(
@@ -499,19 +562,38 @@ class _ConversationsPageState extends State<ConversationsPage> {
             child: CustomScrollView(slivers: [
               SliverToBoxAdapter(child: Padding(
                 padding: const EdgeInsets.fromLTRB(14, 2, 14, 6),
-                child: TextField(
-                  controller: search,
-                  onChanged: _queueSearch,
-                  textInputAction: TextInputAction.search,
-                  decoration: InputDecoration(
-                    hintText: 'جست‌وجو در همه پیام‌ها، نام‌ها و شماره‌ها',
-                    isDense: true,
-                    prefixIcon: const Icon(Icons.search_rounded),
-                    suffixIcon: query.isEmpty ? null : IconButton(
-                      tooltip: 'پاک کردن جستجو',
-                      icon: const Icon(Icons.close_rounded),
-                      onPressed: () { search.clear(); _queueSearch(''); }),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(28), borderSide: BorderSide.none)),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(21),
+                    boxShadow: widget.settings.reduceEffects ? const [] : [
+                      BoxShadow(color: scheme.primary.withValues(alpha: .08),
+                        blurRadius: 14, offset: const Offset(0, 4)),
+                    ],
+                  ),
+                  child: TextField(
+                    controller: search,
+                    onChanged: _queueSearch,
+                    textAlign: TextAlign.right,
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      hintText: 'جست‌وجوی پیام‌ها و مخاطبین',
+                      hintStyle: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13.5),
+                      filled: true,
+                      fillColor: scheme.surface,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 9, horizontal: 14),
+                      prefixIcon: Icon(Icons.manage_search_rounded, color: scheme.primary, size: 25),
+                      suffixIcon: query.isEmpty ? null : IconButton(
+                        tooltip: 'پاک کردن جستجو',
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () { search.clear(); _queueSearch(''); }),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(21),
+                        borderSide: BorderSide(color: scheme.primary.withValues(alpha: .13))),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(21),
+                        borderSide: BorderSide(color: scheme.primary, width: 1.4)),
+                    ),
+                  ),
                 ))),
               if (store.android && !widget.archive && query.isEmpty)
                 const SliverToBoxAdapter(child: DialectCard()),
@@ -559,7 +641,21 @@ class _ConversationsPageState extends State<ConversationsPage> {
                 SliverToBoxAdapter(child: EmptyState(
                   icon: query.isNotEmpty ? Icons.search_off_rounded : Icons.forum_outlined,
                   title: query.isNotEmpty ? 'نتیجه‌ای پیدا نشد' : widget.archive ? 'بایگانی خالی است' : 'پیامی وجود ندارد',
-                  subtitle: widget.archive ? 'گفتگوها را با کشیدن به کنار بایگانی کنید.' : null)),
+                  subtitle: widget.archive
+                      ? 'برای بایگانی، روی گفتگو نگه دارید و «بایگانی» را انتخاب کنید.'
+                      : query.isNotEmpty
+                          ? 'عبارت کوتاه‌تری جست‌وجو کنید یا فیلترها را تغییر دهید.'
+                          : 'برای شروع، اولین پیام خود را بنویسید.',
+                  actionLabel: widget.archive ? null : query.isNotEmpty ? 'پاک کردن جست‌وجو' : 'پیام جدید',
+                  onAction: widget.archive ? null : () {
+                    if (query.isNotEmpty) {
+                      search.clear();
+                      _queueSearch('');
+                    } else {
+                      Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => ComposeScreen(store: store)));
+                    }
+                  })),
               SliverPadding(
                 padding: EdgeInsets.fromLTRB(8, 0, 8, 96 + MediaQuery.paddingOf(context).bottom),
                 sliver: SliverList.builder(
@@ -662,8 +758,10 @@ class UpdateBanner extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(error != null ? 'دریافت به‌روزرسانی کامل نشد' : 'پیام‌یار تازه‌تر آماده است',
-                      style: const TextStyle(color: ink, fontWeight: FontWeight.w800, fontSize: 15.5)),
-                    Text(meta, style: const TextStyle(color: Color(0xFFCFE9E4), fontSize: 12)),
+                      textAlign: TextAlign.center,
+                       style: const TextStyle(color: ink, fontWeight: FontWeight.w800, fontSize: 15.5)),
+                    Text(meta, textAlign: TextAlign.center,
+                       style: const TextStyle(color: Color(0xFFCFE9E4), fontSize: 12)),
                   ])),
                   if (!downloading)
                     IconButton(tooltip: 'بعداً', onPressed: store.dismissUpdate,
@@ -678,7 +776,8 @@ class UpdateBanner extends StatelessWidget {
                       child: Text(error, style: const TextStyle(color: Color(0xFFFFE2D6), fontSize: 12.5, height: 1.7))))
                 else if (info.notes.isNotEmpty && !downloading)
                   Padding(padding: const EdgeInsets.only(top: 10),
-                    child: Text(info.notes, maxLines: 4, overflow: TextOverflow.ellipsis,
+                    child: Text(info.notes, textAlign: TextAlign.center,
+                      maxLines: 4, overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: Color(0xFFE6F4F1), fontSize: 13, height: 1.75))),
                 const SizedBox(height: 12),
                 if (progress != null) ...[
@@ -735,9 +834,22 @@ class _ActionBanner extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
           child: Row(children: [
-            Icon(icon, color: scheme.onPrimaryContainer),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                gradient: LinearGradient(colors: [
+                  scheme.primary.withValues(alpha: .18),
+                  scheme.primary.withValues(alpha: .07),
+                ]),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(9),
+                child: Icon(icon, color: scheme.onPrimaryContainer, size: 21),
+              ),
+            ),
             const SizedBox(width: 10),
-            Expanded(child: Text(text, style: TextStyle(color: scheme.onPrimaryContainer))),
+            Expanded(child: Text(text, textAlign: TextAlign.center,
+              style: TextStyle(color: scheme.onPrimaryContainer, fontSize: 13))),
             const SizedBox(width: 8),
             FilledButton.tonal(
               style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
