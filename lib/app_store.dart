@@ -108,6 +108,7 @@ class AppStore extends ChangeNotifier {
   int _generation = 0;
   List<MessageRecord> _buffer = [];
   bool _progressive = false;
+  int _reportRevision = 0;
   ReportData? _report;
   bool _reportRunning = false;
   Timer? _reportTimer;
@@ -215,6 +216,7 @@ class AppStore extends ChangeNotifier {
         loadingAll = false;
         messages = [];
         revision++;
+    _reportRevision++;
         _report = null;
         _reset();
       }
@@ -380,6 +382,7 @@ class AppStore extends ChangeNotifier {
       messages = _buffer;
       _ingest(page);
       revision++;
+    _reportRevision++;
       if (firstPage) {
         unawaited(_loadNames());
         notifyListeners();
@@ -520,6 +523,7 @@ class AppStore extends ChangeNotifier {
     _reset();
     _ingest(messages);
     revision++;
+    _reportRevision++;
   }
 
   /// Exercises the production ingestion path without native Android channels.
@@ -579,12 +583,12 @@ class AppStore extends ChangeNotifier {
   /// Returns the previous result (or an empty one) while a new one is being built.
   ReportData get report {
     final cached = _report;
-    if (cached == null || cached.revision != revision) _scheduleReport();
+    if (cached == null || cached.revision != _reportRevision) _scheduleReport();
     return cached ?? ReportData(-1, ReportResult.empty, const []);
   }
 
   /// True until the first report for the current messages is ready.
-  bool get reportPending => _report == null || _report!.revision != revision;
+  bool get reportPending => _report == null || _report!.revision != _reportRevision;
 
   void _scheduleReport() {
     if (_reportRunning || (_reportTimer?.isActive ?? false)) return;
@@ -593,12 +597,12 @@ class AppStore extends ChangeNotifier {
 
   Future<void> _runReport() async {
     _reportRunning = true;
-    final rev = revision;
+    final rev = _reportRevision;
     final snapshot = messages;
     try {
       final result = await compute(buildReport, snapshot);
       final top = conversations.toList()..sort((a, b) => b.count.compareTo(a.count));
-      if (revision == rev) _report = ReportData(rev, result, top.take(5).toList());
+      if (_reportRevision == rev) _report = ReportData(rev, result, top.take(5).toList());
     } catch (_) {
       // A failed report must never break the inbox; the next change retries.
     } finally {

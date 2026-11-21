@@ -14,17 +14,23 @@ class BankBadge extends StatelessWidget {
   static final _separators = RegExp(r'[\s._‌-]');
   static String senderKey(String value) => value.toLowerCase().replaceAll(_separators, '')
       .replaceAll('ك', 'ک').replaceAll('ي', 'ی');
+  static Map<String, String>? _loaded;
   static final _catalog = rootBundle.loadString('assets/banks/senders.json')
-      .then((raw) => Map<String, String>.from(jsonDecode(raw) as Map));
+      .then((raw) => _loaded = Map<String, String>.from(jsonDecode(raw) as Map));
 
   @override
   Widget build(BuildContext context) {
     final key = senderKey(sender);
     if (key.isEmpty || key.startsWith('+') || key.startsWith('09')) return fallback;
+    final catalog = _loaded;
+    if (catalog != null) return _badge(catalog[key]);
     return FutureBuilder<Map<String, String>>(
       future: _catalog,
-      builder: (context, snapshot) {
-        final bank = snapshot.data?[key];
+      builder: (context, snapshot) => _badge(snapshot.data?[key]),
+    );
+  }
+
+  Widget _badge(String? bank) {
         if (bank == null) return fallback;
         return Container(
           width: size, height: size, padding: EdgeInsets.all(size * .12),
@@ -34,7 +40,5 @@ class BankBadge extends StatelessWidget {
           child: Image.asset('assets/banks/$bank.png', fit: BoxFit.contain,
             excludeFromSemantics: true),
         );
-      },
-    );
   }
 }
