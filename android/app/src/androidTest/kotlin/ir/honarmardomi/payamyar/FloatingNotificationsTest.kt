@@ -94,6 +94,21 @@ class FloatingNotificationsTest {
         context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).edit()
             .putBoolean("flutter.appLock", false).commit()
     }
+    @Test fun androidTextSharesheetCanResolvePayamYar() {
+        val send = Intent(Intent.ACTION_SEND).setType("text/plain")
+            .putExtra(Intent.EXTRA_TEXT, "پیام آزمایشی")
+        val targets = context.packageManager.queryIntentActivities(
+            send, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+        assertTrue("PayamYar must be visible for Android text shares",
+            targets.any { it.activityInfo.packageName == context.packageName &&
+                it.activityInfo.name.endsWith("MainActivity") })
+        val rich = Intent(Intent.ACTION_SEND).setType("text/html")
+        val richTargets = context.packageManager.queryIntentActivities(
+            rich, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+        assertTrue("HTML shared text must also offer PayamYar",
+            richTargets.any { it.activityInfo.packageName == context.packageName })
+    }
+
     @Test fun longMessageFitsWindowAndCanScrollToActions() {
         val body = (1..40).joinToString("\n") { "خط $it از پیام فارسی بلند برای آزمایش نمایش کامل" } + "\nکد: 12345"
         displayWhileAppVisible("+989000000000", "آزمون اعلان", body, true)
