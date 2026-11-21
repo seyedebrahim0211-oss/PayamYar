@@ -780,14 +780,20 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
         type: FileType.custom, allowedExtensions: ['txt'],
       );
       if (file == null) return null;
-      // Check the size before reading the file into memory.
+      const limit = 1024 * 1024;
       final length = file.lengthSync() ?? await file.length();
-      if (!file.name.toLowerCase().endsWith('.txt') ||
-          length == null || length > 1024 * 1024) {
+      if (!file.name.toLowerCase().endsWith('.txt') || (length != null && length > limit)) {
         _notice('فقط فایل TXT تا حجم یک مگابایت پذیرفته می‌شود.');
         return null;
       }
-      final bytes = await file.readAsBytes();
+      final bytes = <int>[];
+      await for (final chunk in file.readAsByteStream()) {
+        if (bytes.length + chunk.length > limit) {
+          _notice('حجم فایل بیش از یک مگابایت است.');
+          return null;
+        }
+        bytes.addAll(chunk);
+      }
       if (bytes.isEmpty) {
         _notice('فایل خالی است یا قابل خواندن نیست.');
         return null;

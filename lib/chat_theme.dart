@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'app_settings.dart';
+import 'design/tokens.dart';
 
 /// Visual recipe for one chat look: background, bubbles and composer.
 class ChatLook {
@@ -19,11 +20,12 @@ class ChatLook {
     final dark = s.brightness == Brightness.dark;
     switch (style) {
       case ChatStyle.traditional:
-        const gold = Color(0xFFC9A45C);
+        const gold = SColor.goldDeep;
         return ChatLook(
           background: BoxDecoration(color: dark ? const Color(0xFF13211F) : const Color(0xFFF5EEDF)),
-          pattern: GirihPainter(color: (dark ? const Color(0xFFC9A45C) : const Color(0xFF8A6A2C)).withValues(alpha: dark ? .07 : .08)),
-          radius: 18,
+          pattern: GirihPainter(color: (dark ? SColor.gold : SColor.goldDeep).withValues(alpha: dark ? .07 : .08)),
+          // شعاع از مقیاس طراحی می‌آید تا با کارت‌ها و فیلدها هم‌خانواده بماند.
+          radius: SRadius.card,
           bubble: (out, failed) => BoxDecoration(
             gradient: failed ? null : out
                 ? LinearGradient(begin: Alignment.topRight, end: Alignment.bottomLeft,
@@ -36,13 +38,13 @@ class ChatLook {
           ink: (out, failed) => failed ? s.onErrorContainer : out ? Colors.white : (dark ? const Color(0xFFF2E9D6) : const Color(0xFF2B2416)),
           composer: BoxDecoration(
             color: dark ? const Color(0xFF1B2A27) : const Color(0xFFFFFCF4),
-            borderRadius: BorderRadius.circular(28),
+            borderRadius: BorderRadius.circular(SRadius.sheet),
             border: Border.all(color: gold.withValues(alpha: .7), width: 1.2)),
           dayChip: BoxDecoration(
             color: dark ? const Color(0xFF2A3A35) : const Color(0xFFFBF3E2),
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(SRadius.chip),
             border: Border.all(color: gold.withValues(alpha: .6))),
-          dayInk: dark ? const Color(0xFFE7D3A6) : const Color(0xFF7A5B22),
+          dayInk: dark ? SColor.goldNight : const Color(0xFF7A5B22),
         );
       case ChatStyle.glass:
         return ChatLook(
@@ -51,7 +53,7 @@ class ChatLook {
                 ? const [Color(0xFF0C2B33), Color(0xFF1C2140), Color(0xFF2A1C33)]
                 : [s.primary.withValues(alpha: .28), const Color(0xFFE9E4FA), const Color(0xFFFCE7D4)])),
           pattern: BlobPainter(dark: dark, tint: s.primary),
-          radius: 22,
+          radius: SRadius.sheet - 6,
           bubble: (out, failed) => BoxDecoration(
             color: failed ? s.errorContainer.withValues(alpha: .85)
                 : out ? s.primary.withValues(alpha: dark ? .45 : .62)
@@ -62,35 +64,35 @@ class ChatLook {
           ink: (out, failed) => failed ? s.onErrorContainer : out ? Colors.white : (dark ? Colors.white : const Color(0xFF1D2433)),
           composer: BoxDecoration(
             color: Colors.white.withValues(alpha: dark ? .10 : .7),
-            borderRadius: BorderRadius.circular(28),
+            borderRadius: BorderRadius.circular(SRadius.sheet),
             border: Border.all(color: Colors.white.withValues(alpha: dark ? .2 : .9))),
-          dayChip: BoxDecoration(color: Colors.white.withValues(alpha: dark ? .12 : .6), borderRadius: BorderRadius.circular(14)),
+          dayChip: BoxDecoration(color: Colors.white.withValues(alpha: dark ? .12 : .6), borderRadius: BorderRadius.circular(SRadius.tile - 2)),
           dayInk: dark ? Colors.white70 : const Color(0xFF3B4256),
         );
       case ChatStyle.minimal:
         return ChatLook(
           background: BoxDecoration(color: s.surface),
-          radius: 14,
+          radius: SRadius.tile - 2,
           bubble: (out, failed) => BoxDecoration(
             color: failed ? s.errorContainer : out ? s.primary : s.surfaceContainerHigh),
           ink: (out, failed) => failed ? s.onErrorContainer : out ? s.onPrimary : s.onSurface,
-          composer: BoxDecoration(color: s.surfaceContainerHigh, borderRadius: BorderRadius.circular(24)),
-          dayChip: BoxDecoration(color: Colors.transparent, borderRadius: BorderRadius.circular(8)),
+          composer: BoxDecoration(color: s.surfaceContainerHigh, borderRadius: BorderRadius.circular(SRadius.card + 2)),
+          dayChip: BoxDecoration(color: Colors.transparent, borderRadius: BorderRadius.circular(SRadius.chip)),
           dayInk: s.onSurfaceVariant,
         );
       case ChatStyle.classic:
         return ChatLook(
           background: BoxDecoration(gradient: LinearGradient(begin: Alignment.topRight, end: Alignment.bottomLeft,
-            colors: [s.primary.withValues(alpha: .055), s.surfaceContainerLowest, const Color(0xFFD6B779).withValues(alpha: .055)])),
-          radius: 20,
+            colors: [s.primary.withValues(alpha: .055), s.surfaceContainerLowest, SColor.goldDeep.withValues(alpha: .055)])),
+          radius: SRadius.card - 2,
           bubble: (out, failed) => BoxDecoration(
             color: failed ? s.errorContainer : out ? (dark ? const Color(0xFF174D4E) : const Color(0xFFD9EFEB))
                 : (dark ? const Color(0xFF263A40) : Colors.white),
             boxShadow: [BoxShadow(color: s.shadow.withValues(alpha: .05), blurRadius: 6, offset: const Offset(0, 2))]),
           ink: (out, failed) => failed ? s.onErrorContainer : out && dark ? const Color(0xFFF1F8F6) : s.onSurface,
-          composer: BoxDecoration(color: s.surface, borderRadius: BorderRadius.circular(26),
+          composer: BoxDecoration(color: s.surface, borderRadius: BorderRadius.circular(SRadius.card + 4),
             border: Border.all(color: s.outlineVariant)),
-          dayChip: BoxDecoration(color: s.surfaceContainerHighest, borderRadius: BorderRadius.circular(12)),
+          dayChip: BoxDecoration(color: s.surfaceContainerHighest, borderRadius: BorderRadius.circular(SRadius.field)),
           dayInk: s.onSurfaceVariant,
         );
     }

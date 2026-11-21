@@ -700,7 +700,9 @@ class AppStore extends ChangeNotifier {
     if (android) unawaited(SmsBridge.clearNotifications(c.address));
     final ids = <int>{for (final m in c.messages) if (!m.read && !m.outgoing && m.id != null) m.id!};
     if (ids.isEmpty) return;
-    if (android && !isDefault) return;
+    // Clearing the badge is a UI concern and must work even when PayamYar is not the default
+    // SMS app; only the write back to the phone's database needs that role. Returning early
+    // here left the unread badge stuck forever on non-default devices.
     void patch(List<MessageRecord> list) {
       for (var i = 0; i < list.length; i++) {
         if (ids.contains(list[i].id)) list[i] = _copy(list[i], read: true);
@@ -711,7 +713,7 @@ class AppStore extends ChangeNotifier {
     _info[k]?.unread = 0;
     revision++;
     notifyListeners();
-    if (!android) return;
+    if (!android || !isDefault) return;
     try {
       await SmsBridge.markRead(ids.toList());
     } catch (_) {
