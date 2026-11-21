@@ -60,12 +60,24 @@ class _FailedMessagesScreenState extends State<FailedMessagesScreen> {
     try {
       for (final message in chosen) {
         // Real queue IDs are the only evidence a retry was accepted.
+        final at = DateTime.now();
         final pending = await widget.store.send(
             message.sender, message.body, exactBody: true);
         if (pending != null) {
           queued++;
           _retried.add(message.id!);
           _selected.remove(message.id);
+          try {
+            await widget.store.smsGroups.recordRetryForFailed(
+              recipient: message.sender,
+              originalBody: message.body,
+              originalDate: message.date,
+              newBody: pending.body,
+              queuedAt: at,
+            );
+          } catch (_) {
+            widget.store.onNotice?.call('پیام در صف قرار گرفت، اما ثبت سابقهٔ گروه ممکن نشد.');
+          }
         }
       }
     } finally {
@@ -104,6 +116,17 @@ class _FailedMessagesScreenState extends State<FailedMessagesScreen> {
       if (deleted) {
         _selected.removeAll(ids);
         _retried.removeAll(ids);
+        for (final message in failures.where((m) => ids.contains(m.id))) {
+          try {
+            await widget.store.smsGroups.removeFailedFromHistory(
+              recipient: message.sender,
+              body: message.body,
+              messageDate: message.date,
+            );
+          } catch (_) {
+            widget.store.onNotice?.call('حذف از گوشی انجام شد، اما پاک‌سازی سوابق گروه کامل نشد.');
+          }
+        }
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -224,7 +247,24 @@ class _FailedMessagesScreenState extends State<FailedMessagesScreen> {
                               onPressed: _busy || alreadyRetried
                                   ? null
                                   : () async {
-                                    await failedMessageActions(context, widget.store, m);
+                                    await failedMessageActions(
+                                      context, widget.store, m,
+                                      onRetried: (pending, at) async {
+                                        _retried.add(id);
+                                        await widget.store.smsGroups.recordRetryForFailed(
+                                          recipient: m.sender,
+                                          originalBody: m.body,
+                                          originalDate: m.date,
+                                          newBody: pending.body,
+                                          queuedAt: at,
+                                        );
+                                      },
+                                      onDeleted: () => widget.store.smsGroups.removeFailedFromHistory(
+                                        recipient: m.sender,
+                                        body: m.body,
+                                        messageDate: m.date,
+                                      ),
+                                    );
                                     if (mounted) setState(() {});
                                   },
                             ),
