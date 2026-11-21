@@ -12,6 +12,14 @@ class GroupsScreen extends StatelessWidget {
   final AppStore store;
   const GroupsScreen({super.key, required this.store});
 
+  String _groupSubtitle(SmsGroup group) {
+    final batches = store.smsGroups.batchesFor(group.id);
+    final info = batches.isEmpty
+        ? 'هنوز ارسال نشده'
+        : 'آخرین ارسال: ${Jalali.short(batches.first.createdAt)}';
+    return '${Jalali.digits(group.recipients.length)} عضو · $info';
+  }
+
   Future<void> _delete(BuildContext context, SmsGroup group) async {
     final confirmed = await showDialog<bool>(context: context, builder: (ctx) =>
       AlertDialog(
@@ -112,15 +120,27 @@ class GroupsScreen extends StatelessWidget {
               border: Border.all(color: scheme.primary.withValues(alpha: .15)),
             ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Row(children: [
-                Icon(Icons.groups_2_outlined, color: scheme.primary, size: 30),
-                const SizedBox(width: 12),
-                Expanded(child: Text('ارسال یک متن به چند مخاطب',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800))),
-              ]),
-              const SizedBox(height: 8),
-              const Text('گروه پیامکی فقط یک فهرست ذخیره‌شده از شماره‌هاست؛ '
-                'برای حفظ حریم خصوصی، پیام هر عضو جداگانه ارسال می‌شود و پاسخ او در صفحه شخصی خودش می‌آید.'),
+              Center(child: Container(
+                width: 54, height: 54,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(colors: [
+                    scheme.primary,
+                    scheme.primary.withValues(alpha: .7),
+                  ]),
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: [BoxShadow(color: scheme.primary.withValues(alpha: .2),
+                    blurRadius: 12, offset: const Offset(0, 4))],
+                ),
+                child: Icon(Icons.groups_2_rounded, color: scheme.onPrimary, size: 28),
+              )),
+              const SizedBox(height: 10),
+              Text('مدیریت پیام‌های گروهی',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900)),
+              const SizedBox(height: 6),
+              const Text('به هر عضو پیامک جداگانه می‌رسد. وضعیت هر گیرنده '
+                'در تاریخچهٔ گروه نمایش داده می‌شود و پاسخ او خصوصی است.',
+                textAlign: TextAlign.center),
               const SizedBox(height: 12),
               FilledButton.icon(
                 onPressed: () => _compose(context),
@@ -141,10 +161,20 @@ class GroupsScreen extends StatelessWidget {
               child: Column(children: [
                 ListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                  leading: CircleAvatar(backgroundColor: scheme.primaryContainer,
-                    child: Icon(Icons.groups_rounded, color: scheme.primary)),
+                  leading: Container(
+                    width: 45, height: 45,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: [
+                        scheme.primaryContainer,
+                        scheme.surface,
+                      ]),
+                      borderRadius: BorderRadius.circular(15),
+                      border: Border.all(color: scheme.primary.withValues(alpha: .2)),
+                    ),
+                    child: Icon(Icons.groups_rounded, color: scheme.primary),
+                  ),
                   title: Text(group.name, style: const TextStyle(fontWeight: FontWeight.w800)),
-                  subtitle: Text('${Jalali.digits(group.recipients.length)} عضو · ${store.smsGroups.batchesFor(group.id).isEmpty ? "هنوز ارسال گروهی ثبت نشده" : "سابقه ارسال گروهی موجود است"}'),
+                  subtitle: Text(_groupSubtitle(group)),
                   trailing: PopupMenuButton<String>(
                     tooltip: 'مدیریت گروه',
                     onSelected: (choice) {
@@ -165,7 +195,7 @@ class GroupsScreen extends StatelessWidget {
                   child: SizedBox(width: double.infinity, child: FilledButton.tonalIcon(
                     onPressed: () => _compose(context, group: group, lockGroupRecipients: true),
                     icon: const Icon(Icons.send_rounded),
-                    label: const Text('ارسال پیام گروهی (جداگانه برای هر نفر)'),
+                    label: const Text('ارسال به اعضای گروه'),
                   )),
                 ),
               ])),

@@ -117,6 +117,7 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
     }
     final output = <_GroupRow>[];
     final shownIncoming = <String>{};
+    final matchedOutgoing = <int>{};
     for (final entry in history) {
       if (entry.text == null || entry.text!.isEmpty) continue;
       final body = entry.text!;
@@ -125,13 +126,16 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
         final records = indexed[_key(sent.key)] ?? const <MessageRecord>[];
         final candidates = records.where((m) => m.outgoing &&
           m.body.trim() == body.trim() &&
-          (entry.batch.exactTime ? m.date == at :
-            !m.date.isBefore(at.subtract(const Duration(seconds: 30))) &&
-            !m.date.isAfter(at.add(const Duration(minutes: 10))))).toList()
+          (m.id == null || !matchedOutgoing.contains(m.id)) &&
+          !m.date.isBefore(at.subtract(
+            Duration(seconds: entry.batch.exactTime ? 5 : 30))) &&
+          !m.date.isAfter(at.add(const Duration(minutes: 10)))).toList()
           ..sort((a, b) => a.date.difference(at).abs().compareTo(b.date.difference(at).abs()));
         if (candidates.isNotEmpty) {
           final actual = candidates.first;
-          output.add(_GroupRow(sent.key, actual.body, actual.date, record: actual, batch: entry.batch, confirmed: true));
+          if (actual.id != null) matchedOutgoing.add(actual.id!);
+          output.add(_GroupRow(sent.key, actual.body, actual.date,
+            record: actual, batch: entry.batch, confirmed: true));
         } else {
           // Accepted into the queue != delivered to recipient. Show a truthful
           // unconfirmed state instead of a fabricated sent message.
@@ -245,7 +249,19 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
     final known = name != entry.recipient;
     final record = entry.record;
     final failed = record?.failedSendOrDelivery == true;
-    final color = entry.incoming ? scheme.surfaceContainerHigh : scheme.primaryContainer;
+    final inQueue = !failed && !entry.incoming && !entry.privateMessage &&
+      store.pendingSends.any((p) =>
+          _key(p.to) == _key(entry.recipient) && p.body.trim() == entry.body.trim());
+    final status = failed
+        ? (record!.type == 5 ? 'ارسال نشد' : 'تحویل ناموفق')
+        : entry.incoming ? 'پیام خصوصی دریافتی'
+        : entry.privateMessage ? 'پیام خصوصی ارسالی'
+        : record?.type == 4 || record?.type == 6 || inQueue ? 'در صف ارسال'
+        : record?.delivery == 0 ? 'تحویل تأیید شد'
+        : entry.confirmed ? 'ثبت‌شده در پیامک‌های گوشی'
+        : 'وضعیت ارسال نیاز به بررسی دارد';
+    final color = failed ? scheme.errorContainer
+        : entry.incoming ? scheme.surfaceContainerHigh : scheme.primaryContainer;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
@@ -278,9 +294,9 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
                       Expanded(child: Text(name,
                         maxLines: 1, overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontWeight: FontWeight.w800))),
-                      Icon(failed ? Icons.error_outline : entry.incoming ? Icons.call_received_rounded :
-                        entry.confirmed ? Icons.done_all_rounded : Icons.schedule_rounded,
-                        size: 17, color: entry.confirmed ? scheme.primary : scheme.error),
+                      Icon(failed ? Icons.error_outline_rounded : entry.incoming ? Icons.call_received_rounded :
+                        entry.confirmed && !inQueue ? Icons.done_all_rounded : Icons.schedule_rounded,
+                        size: 18, color: failed ? scheme.error : scheme.primary),
                     ]),
                     if (known) Padding(padding: const EdgeInsets.only(top: 2),
                       child: Text(Jalali.digits(entry.recipient),
@@ -292,16 +308,28 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
                     const SizedBox(height: 8),
                     Row(children: [
                       Expanded(child: Text(
-                        failed ? (record!.type == 5 ? 'ارسال نشد' : 'تحویل ناموفق') :
-                        record?.type == 4 || record?.type == 6 ? 'در انتظار تأیید شبکه' :
-                        entry.incoming ? 'پیام خصوصی دریافتی' :
-                          entry.privateMessage ? 'پیام خصوصی ارسالی' :
-                          entry.confirmed ? 'ثبت‌شده در پیامک‌های گوشی' :
-                          'در صف قرار گرفت؛ ثبت نهایی در گوشی تأیید نشد',
+                        status,
                         style: Theme.of(context).textTheme.labelSmall)),
                       Text(Jalali.time(entry.date),
                         style: Theme.of(context).textTheme.labelSmall),
                     ]),
+                    if (failed) ...[
+                      const SizedBox(height: 6),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.build_circle_outlined, size: 17),
+                          label: const Text('ویرایش / ارسال مجدد / حذف'),
+                          onPressed: () => failedMessageActions(context, store, record!,
+                            onRetried: entry.batch == null ? null : (pending, at) =>
+                              store.smsGroups.recordBatch(group.id, pending.body,
+                                {pending.to: at}, exactTime: true),
+                            onDeleted: entry.batch == null ? null : () =>
+                              store.smsGroups.removeRecipientFromBatch(
+                                entry.batch!.id, entry.recipient)),
+                        ),
+                      ),
+                    ],
                   ],
                 )),
             ),
@@ -381,11 +409,34 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
                     : 'هنوز ارسال ثبت‌شده از این گروه وجود ندارد. پیام‌های شخصی را از تب پیام‌های اعضا ببینید.',
                     textAlign: TextAlign.center)));
               }
-              return ListView.builder(
-                reverse: true, itemCount: rows.length,
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
-                itemBuilder: (context, i) => _item(rows[i], scheme),
-              );
+              final sent = rows.where((r) => !r.incoming && !r.privateMessage).toList();
+              final failedCount = sent.where((r) => r.record?.failedSendOrDelivery == true).length;
+              final registered = sent.where((r) => r.confirmed &&
+                  r.record?.failedSendOrDelivery != true && r.record?.type == 2).length;
+              final unknown = sent.length - failedCount - registered;
+              return Column(children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 5, 12, 3),
+                  child: Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 8, runSpacing: 5,
+                    children: [
+                      Chip(avatar: const Icon(Icons.done_rounded, size: 16),
+                          label: Text('${Jalali.digits(registered)} ثبت‌شده')),
+                      Chip(avatar: Icon(Icons.error_outline, size: 16, color: scheme.error),
+                          label: Text('${Jalali.digits(failedCount)} ناموفق')),
+                      Chip(avatar: const Icon(Icons.schedule_rounded, size: 16),
+                          label: Text('${Jalali.digits(unknown)} در انتظار بررسی')),
+                    ],
+                  ),
+                ),
+                Expanded(child: ListView.builder(
+                  reverse: true,
+                  itemCount: rows.length,
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
+                  itemBuilder: (context, i) => _item(rows[i], scheme),
+                )),
+              ]);
             },
           ),
         )),
