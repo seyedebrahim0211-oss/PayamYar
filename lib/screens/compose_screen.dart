@@ -47,6 +47,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
   final Map<String, String> contactNames = {};
   List<Map<String, String>> _contacts = const [];
   Map<String, int> _frequency = const {};
+  List<Map<String, String>> _suggestions = const [];
   Timer? _draftTimer;
   final List<PendingSend> undoGroup = [];
   String lastSentBody = '';
@@ -90,6 +91,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
         _contacts = valid;
         _frequency = RecipientSuggestions.frequency(store.messages);
         contactNames.addAll({for (final c in valid) c['number']!: c['name']!});
+        _refreshSuggestions();
       });
     } catch (_) { /* Manual number entry remains available. */ }
   }
@@ -100,12 +102,20 @@ class _ComposeScreenState extends State<ComposeScreen> {
     setState(() {
       recipients.add(number);
       to.clear();
+      _refreshSuggestions();
     });
     _saveDraft();
   }
 
   /// Delay writes during typing. Sending and recipient changes can still
   /// flush immediately; no SMS content leaves the device.
+  void _refreshSuggestions() {
+    _suggestions = _contacts.isEmpty ? const [] : RecipientSuggestions.rank(
+      _contacts, _frequency, to.text,
+      excluded: recipients.map(RecipientSuggestions.key).toSet(),
+      limit: to.text.trim().isEmpty ? 4 : 5);
+  }
+
   Future<void> _saveDraft({bool immediate = false}) async {
     _draftTimer?.cancel();
     if (immediate) {
@@ -156,6 +166,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
     setState(() {
       recipients.addAll(incoming);
       to.clear();
+      _refreshSuggestions();
     });
     _saveDraft();
   }
@@ -513,7 +524,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
                   keyboardType: TextInputType.phone,
                   textInputAction: TextInputAction.done,
                   onSubmitted: (_) => _addTyped(),
-                  onChanged: (_) { _saveDraft(); setState(() {}); },
+                  onChanged: (_) { _refreshSuggestions(); _saveDraft(); setState(() {}); },
                   decoration: const InputDecoration(
                     hintText: 'نام یا شماره گیرنده',
                     prefixIcon: Icon(Icons.person_outline_rounded),
@@ -531,17 +542,31 @@ class _ComposeScreenState extends State<ComposeScreen> {
                 const SizedBox(height: 6),
                 Text(to.text.trim().isEmpty ? 'مخاطبین پرکاربرد' : 'پیشنهاد بر اساس نام و شماره',
                   style: Theme.of(context).textTheme.labelMedium?.copyWith(color: scheme.primary)),
-                for (final item in RecipientSuggestions.rank(_contacts, _frequency, to.text,
-                    excluded: recipients.map(RecipientSuggestions.key).toSet(), limit: 5))
-                  ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.person_add_alt_1_outlined),
-                    title: Text(item['name']?.isNotEmpty == true ? item['name']! : item['number']!),
-                    subtitle: Text(item['number'] ?? '', textDirection: TextDirection.ltr),
-                    trailing: const Icon(Icons.add_circle_outline),
-                    onTap: () => _chooseSuggestion(item),
-                  ),
+                if (to.text.trim().isNotEmpty)
+                  for (final item in _suggestions)
+                    ListTile(
+                      dense: true, visualDensity: VisualDensity.compact,
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.person_add_alt_1_outlined),
+                      title: Text(item['name']?.isNotEmpty == true ? item['name']! : item['number']!),
+                      subtitle: Text(item['number'] ?? '', textDirection: TextDirection.ltr),
+                      trailing: const Icon(Icons.add_circle_outline),
+                      onTap: () => _chooseSuggestion(item)),
+                if (to.text.trim().isEmpty && _suggestions.isNotEmpty)
+                  SizedBox(height: 40, child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: [
+                      for (final item in _suggestions)
+                        Padding(
+                          padding: const EdgeInsetsDirectional.only(end: 6),
+                          child: ActionChip(
+                            visualDensity: VisualDensity.compact,
+                            avatar: const Icon(Icons.person_add_alt_rounded, size: 16),
+                            label: Text(item['name']?.isNotEmpty == true ? item['name']! : item['number']!),
+                            onPressed: () => _chooseSuggestion(item)),
+                        ),
+                    ],
+                  )),
               ],
               if (recipients.isNotEmpty) ...[
                 const SizedBox(height: 4),
