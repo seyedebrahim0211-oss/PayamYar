@@ -116,7 +116,7 @@ object SmsCore {
             else "سیم‌کارت فعال شناسایی نشد. وضعیت سیم‌کارت و دسترسی تلفن را بررسی کنید.")
     }
 
-    @Synchronized fun queue(c: Context, address: String, body: String, sim: Int, delayMs: Long = 5000, group: Boolean = false): String {
+    @Synchronized fun queue(c: Context, address: String, body: String, sim: Int, delayMs: Long = 5000, group: Boolean = false, groupTime: Long? = null): String {
         requireDefault(c)
         require(delayMs in 0L..(30L * 24 * 60 * 60 * 1000)) { "زمان ارسال باید حداکثر ۳۰ روز آینده باشد." }
         val to = address.map { it.digitToIntOrNull()?.digitToChar() ?: it }.joinToString("").replace(Regex("[\\s()-]"), "")
@@ -127,6 +127,7 @@ object SmsCore {
         val id = UUID.randomUUID().toString()
         val item = JSONObject().put("to", to).put("body", body).put("sim", subscriptionId)
             .put("due", System.currentTimeMillis() + delayMs).put("scheduled", delayMs > 10000)
+        if (groupTime != null) item.put("groupTime", groupTime)
         val grouped = group && delayMs <= 10000
         val due = item.getLong("due")
         val edit = prefs(c).edit().putString("queue:$id", SecureVault.encryptQueue(item.toString()))
@@ -277,7 +278,7 @@ object SmsCore {
             val parts = manager.divideMessage(item.getString("body"))
             row = c.contentResolver.insert(Telephony.Sms.Outbox.CONTENT_URI, ContentValues().apply {
                 put("address", item.getString("to")); put("body", item.getString("body"))
-                put("date", System.currentTimeMillis()); put("read", 1); put("type", 4); put("status", 32); put("sub_id", selected)
+                put("date", item.optLong("groupTime", System.currentTimeMillis())); put("read", 1); put("type", 4); put("status", 32); put("sub_id", selected)
                 put("thread_id", Telephony.Threads.getOrCreateThreadId(c, item.getString("to")))
             })
             check(row != null) { "ذخیره پیام ممکن نشد." }

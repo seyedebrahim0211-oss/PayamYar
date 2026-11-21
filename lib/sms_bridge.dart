@@ -117,12 +117,8 @@ class SmsBridge {
     }).join();
   }
 
-  static Future<String> sendStatus(String requestId) async {
-    if (!supported) return 'unsupported';
-    return await _channel.invokeMethod<String>('sendStatus', {
-      'requestId': requestId,
-    }) ?? 'unknown';
-  }
+  static Future<Map<String, String>> sendStates(List<String> ids) async =>
+    await _channel.invokeMapMethod<String, String>('sendStates', {'ids': ids}) ?? {};
 
   static void listen(Future<void> Function(String method, Object? arguments) callback) {
     _channel.setMethodCallHandler((call) => callback(call.method, call.arguments));
@@ -199,9 +195,9 @@ class SmsBridge {
   static Future<int> resolveSendSim(int sim) async =>
     (await _channel.invokeMethod<int>('resolveSendSim', {'sim': sim}))!;
 
-  static Future<String> queue(String to, String body, int sim, {Duration delay = const Duration(seconds: 5), bool group = false}) async =>
+  static Future<String> queue(String to, String body, int sim, {Duration delay = const Duration(seconds: 5), bool group = false, DateTime? groupTime}) async =>
     await _channel.invokeMethod<String>('queueSms', {
-      'to': normalizeNumber(to), 'body': body, 'group': group, 'subscriptionId': sim, 'delayMs': delay.inMilliseconds,
+      'to': normalizeNumber(to), 'body': body, 'group': group, 'groupTime': groupTime?.millisecondsSinceEpoch, 'subscriptionId': sim, 'delayMs': delay.inMilliseconds,
     }) ?? '';
   /// Native queue survives the conversation screen and can be restored after restart.
   static Future<List<Map<dynamic, dynamic>>> pending() async {

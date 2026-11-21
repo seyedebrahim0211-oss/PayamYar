@@ -141,8 +141,20 @@ open class MainActivity : FlutterFragmentActivity() {
                     val generation = call.argument<Int>("generation") ?: 0
                     Thread {
                         try {
+                            // Bound outstanding pages so a large inbox cannot flood
+                            // the platform/UI thread while it paints the first screen.
+                            val slots = java.util.concurrent.Semaphore(2)
                             val total = SmsCore.stream(this) { page ->
-                                runOnUiThread { channel.invokeMethod("messagesPage", page + ("generation" to generation)) }
+                                check(slots.tryAcquire(30, java.util.concurrent.TimeUnit.SECONDS))
+                                check(!isDestroyed)
+                                runOnUiThread {
+                                    channel.invokeMethod("messagesPage", page + ("generation" to generation),
+                                        object : MethodChannel.Result {
+                                            override fun success(result: Any?) { slots.release() }
+                                            override fun error(code: String, message: String?, details: Any?) { slots.release() }
+                                            override fun notImplemented() { slots.release() }
+                                        })
+                                }
                             }
                             runOnUiThread { result.success(total) }
                         } catch (e: Exception) {
@@ -355,13 +367,16 @@ open class MainActivity : FlutterFragmentActivity() {
                             "blockNumber" -> blockNumber(call.argument<String>("address").orEmpty())
                             "queueSms" -> SmsCore.queue(this, call.argument<String>("to").orEmpty(),
                                 call.argument<String>("body").orEmpty(), call.argument<Int>("subscriptionId") ?: -1,
-                                (call.argument<Number>("delayMs")?.toLong() ?: 5000L), call.argument<Boolean>("group") == true).also { id ->
+                                (call.argument<Number>("delayMs")?.toLong() ?: 5000L), call.argument<Boolean>("group") == true,
+                                call.argument<Number>("groupTime")?.toLong()).also { id ->
                                     // The alarm owns scheduled sends, even after the UI is closed.
                                     // Only the short five-second undo gets a foreground fallback.
                                     val delay = call.argument<Number>("delayMs")?.toLong() ?: 5000L
                                     if (delay <= 10000L && call.argument<Boolean>("group") != true) handler.postDelayed({ worker.execute { SmsCore.dispatch(this, id) } }, delay + 100L)
                                 }
                             "cancelSms" -> SmsCore.cancel(this, call.argument<String>("requestId").orEmpty())
+                            "sendStates" -> call.argument<List<String>>("ids").orEmpty()
+                                .take(500).associateWith { SmsCore.status(this, it) }
                             "sendStatus" -> SmsCore.status(this, call.argument<String>("requestId").orEmpty())
                             "readBanner" -> {
                                 check(SmsCore.isDefault(this))

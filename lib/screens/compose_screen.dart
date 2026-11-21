@@ -306,6 +306,10 @@ class _ComposeScreenState extends State<ComposeScreen> {
     }
     int? groupSim;
     if (targets.length > 1 && store.android) {
+      if (!store.permissions.isDefault || !store.permissions.canSend) {
+        store.onNotice?.call('برای ارسال گروهی، پیام‌یار را پیام‌رسان پیش‌فرض کنید و مجوز ارسال را بدهید.');
+        return;
+      }
       groupSim = await _groupSim();
       if (!mounted || groupSim == null) return;
     }
@@ -326,7 +330,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
     for (final number in targets) {
       if (stopQueueing) break;
       final queuedAt = DateTime.now();
-      final pending = await store.send(number, text, groupSim: groupSim);
+      final pending = await store.send(number, text, groupSim: groupSim, groupTime: savedGroup == null ? null : queuedAt);
       processed++;
       if (stopQueueing && pending != null) {
         await store.undo(pending);
@@ -353,7 +357,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
     if (savedGroup != null && acceptedAt.isNotEmpty) {
       try {
         await store.smsGroups.recordBatch(savedGroup.id,
-          store.settings?.withSignature(text) ?? text, acceptedAt);
+          store.settings?.withSignature(text) ?? text, acceptedAt, exactTime: true);
       } catch (_) {
         store.onNotice?.call('ثبت سابقه ارسال گروه در حافظه امن ممکن نشد؛ پیام‌های صف‌شده حذف نشده‌اند.');
       }

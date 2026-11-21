@@ -3,7 +3,7 @@ import '../app_store.dart';
 import '../message_logic.dart';
 
 Future<void> failedMessageActions(BuildContext context, AppStore store, MessageRecord message,
-    {Future<void> Function(PendingSend)? onRetried, Future<void> Function()? onDeleted}) async {
+    {Future<void> Function(PendingSend, DateTime)? onRetried, Future<void> Function()? onDeleted}) async {
   if (!message.failedSendOrDelivery || message.id == null) return;
   final retry = await showModalBottomSheet<bool>(context: context, showDragHandle: true,
     builder: (sheet) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -16,10 +16,12 @@ Future<void> failedMessageActions(BuildContext context, AppStore store, MessageR
     ])));
   if (retry == null || !context.mounted) return;
   if (retry) {
-    final pending = await store.send(message.sender, message.body, exactBody: true);
+    final at = DateTime.now();
+    final pending = await store.send(message.sender, message.body, exactBody: true,
+      groupTime: onRetried == null ? null : at);
     if (pending != null) {
       store.onNotice?.call('ارسال مجدد برای همین شماره در صف قرار گرفت.');
-      await onRetried?.call(pending);
+      await onRetried?.call(pending, at);
     }
   } else {
     final confirmed = await showDialog<bool>(context: context, builder: (dialog) =>

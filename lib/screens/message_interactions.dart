@@ -29,7 +29,7 @@ class InteractiveMessageText extends StatelessWidget {
   static final _pattern = RegExp(
     r'(?:https?://|www\.)[^\s<>"،؛]+|(?:[a-z0-9-]+\.)+(?:ir|com|net|org|io|app)(?![a-z0-9.-])(?:[/\?#][^\s<>"،؛]*)?|'
     r'(?:\+98|0098|0|\+۹۸|۰۰۹۸|۰|\+٩٨|٠٠٩٨|٠)[9۹٩](?:[0-9۰-۹٠-٩][ -]?){8}[0-9۰-۹٠-٩](?![0-9۰-۹٠-٩])|'
-    + _numeric.replaceAll('D', _digit), caseSensitive: false);
+    "${_numeric.replaceAll('D', _digit)}", caseSensitive: false);
 
   static final _urlStart = RegExp(r'^(?:https?://|www\.|(?:[a-z0-9-]+\.)+(?:ir|com|net|org|io|app))', caseSensitive: false);
   static final _mobile = RegExp(r'^(?:\+98|0098|0)9[0-9]{9}$');

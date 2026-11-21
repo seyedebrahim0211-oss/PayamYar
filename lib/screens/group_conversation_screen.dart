@@ -125,8 +125,9 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
         final records = indexed[_key(sent.key)] ?? const <MessageRecord>[];
         final candidates = records.where((m) => m.outgoing &&
           m.body.trim() == body.trim() &&
-          !m.date.isBefore(at.subtract(const Duration(seconds: 30))) &&
-          !m.date.isAfter(at.add(const Duration(minutes: 10)))).toList()
+          (entry.batch.exactTime ? m.date == at :
+            !m.date.isBefore(at.subtract(const Duration(seconds: 30))) &&
+            !m.date.isAfter(at.add(const Duration(minutes: 10))))).toList()
           ..sort((a, b) => a.date.difference(at).abs().compareTo(b.date.difference(at).abs()));
         if (candidates.isNotEmpty) {
           final actual = candidates.first;
@@ -263,8 +264,8 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
             child: InkWell(
               borderRadius: BorderRadius.circular(20),
               onTap: failed ? () => failedMessageActions(context, store, record!,
-                onRetried: entry.batch == null ? null : (pending) => store.smsGroups.recordBatch(
-                  group.id, pending.body, {pending.to: DateTime.now()}),
+                onRetried: entry.batch == null ? null : (pending, at) => store.smsGroups.recordBatch(
+                  group.id, pending.body, {pending.to: at}, exactTime: true),
                 onDeleted: entry.batch == null ? null : () =>
                   store.smsGroups.removeRecipientFromBatch(entry.batch!.id, entry.recipient))
                 : () => _openChat(entry.recipient),
