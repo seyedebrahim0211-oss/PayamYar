@@ -106,19 +106,18 @@ class ChatPersonalizations extends ChangeNotifier {
   /// photo/media library permission, remote URL or third-party upload is used.
   static String? imageExtension(List<int> h) {
     if (h.length < 12) return null;
-    if (h[0] == 0xFF && h[1] == 0xD8 && h[2] == 0xFF) return 'jpg';
+    if (h[0] == 0xFF && h[1] == 0xD8 && h[2] == 0xFF) { return 'jpg'; }
     if (h[0] == 0x89 && h[1] == 0x50 && h[2] == 0x4E && h[3] == 0x47 &&
-        h[4] == 0x0D && h[5] == 0x0A && h[6] == 0x1A && h[7] == 0x0A) return 'png';
+        h[4] == 0x0D && h[5] == 0x0A && h[6] == 0x1A && h[7] == 0x0A) { return 'png'; }
     if (String.fromCharCodes(h.sublist(0, 4)) == 'RIFF' &&
-        String.fromCharCodes(h.sublist(8, 12)) == 'WEBP') return 'webp';
+        String.fromCharCodes(h.sublist(8, 12)) == 'WEBP') { return 'webp'; }
     return null;
   }
 
   /// Returns false when the Android picker is cancelled.
   Future<bool> chooseImage(String address, {required bool wallpaper}) async {
-    final selected = await FilePicker.platform.pickFiles(
-      type: FileType.image, allowMultiple: false, withData: false);
-    final path = selected?.files.singleOrNull?.path;
+    final selected = await FilePicker.pickFile(type: FileType.image);
+    final path = selected?.path;
     if (path == null) return false;
     final source = File(path);
     final length = await source.length();
