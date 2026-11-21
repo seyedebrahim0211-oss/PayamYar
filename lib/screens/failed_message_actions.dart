@@ -26,7 +26,7 @@ Future<void> failedMessageActions(
         ),
         ListTile(
           leading: const Icon(Icons.refresh_rounded),
-          title: const Text('ارسال مجدد همین متن'),
+          title: const Text('ارسال مجدد'),
           onTap: () => Navigator.pop(sheet, 'retry'),
         ),
         ListTile(
@@ -36,7 +36,7 @@ Future<void> failedMessageActions(
         ),
         ListTile(
           leading: const Icon(Icons.delete_outline_rounded),
-          title: const Text('حذف پیام ناموفق از گوشی'),
+          title: const Text('پاک کردن'),
           onTap: () => Navigator.pop(sheet, 'delete'),
         ),
       ]),
