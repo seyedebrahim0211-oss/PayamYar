@@ -78,6 +78,8 @@ class AppStore extends ChangeNotifier {
   /// Bumped whenever messages change; lets screens cache derived data.
   int revision = 0;
   int directoryRevision = 0;
+  /// Kept in sync while pages ingest, avoiding a full SMS scan on every UI rebuild.
+  int failedMessagesCount = 0;
 
   final Map<String, String> names = {};
   final Set<String> archived = {};
@@ -500,6 +502,7 @@ class AppStore extends ChangeNotifier {
   // ───────────── grouping ─────────────
 
   void _reset() {
+    failedMessagesCount = 0;
     _groups.clear();
     _info.clear();
     conversations = [];
@@ -509,6 +512,7 @@ class AppStore extends ChangeNotifier {
   void _ingest(List<MessageRecord> page) {
     for (final m in page) {
       if (m.sender.isEmpty) continue;
+      if (m.id != null && m.failedSendOrDelivery) failedMessagesCount++;
       final k = key(m.sender);
       var list = _groups[k];
       if (list == null) {
