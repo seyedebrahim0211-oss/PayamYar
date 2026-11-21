@@ -636,7 +636,7 @@ class AppearanceSettingsPage extends StatelessWidget {
             onSelectionChanged: (value) => settings.update(fontChoice: value.first))),
           const SizedBox(height: 16),
           Text('اندازه متن برنامه: ${Jalali.digits((settings.scale * 100).round())}٪'),
-          Slider(value: settings.scale, min: .9, max: 1.5, divisions: 12, onChanged: (v) => settings.update(scale: v)),
+          Slider(value: settings.scale, min: 1.0, max: 1.5, divisions: 10, onChanged: (v) => settings.update(scale: v)),
         ])),
       ]),
     ],

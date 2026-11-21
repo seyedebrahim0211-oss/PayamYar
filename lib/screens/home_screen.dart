@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../app_settings.dart';
 import '../app_store.dart';
 import '../brand_mark.dart';
+import '../design/tokens.dart';
 import '../conversation_logic.dart';
 import '../jalali.dart';
 import '../message_logic.dart';
@@ -242,6 +243,9 @@ class _ConversationsPageState extends State<ConversationsPage> {
   List<Conversation> _results = const [];
   Map<String, ({String query, MessageRecord first, int count})> _hits = {};
 
+  /// Merged listenable for the rebuild: built once, not on every build.
+  late final Listenable _repaint = Listenable.merge([store, widget.settings, store.folders]);
+
   @override
   void initState() {
     super.initState();
@@ -417,7 +421,9 @@ class _ConversationsPageState extends State<ConversationsPage> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return ListenableBuilder(
-      listenable: Listenable.merge([store, widget.settings, store.folders]),
+      // Created once per state object: a fresh Listenable.merge on every build made
+      // AnimatedWidget detach and re-attach its listener on each frame.
+      listenable: _repaint,
       builder: (context, _) {
         final list = _filtered();
         final unread = store.unreadConversations;
@@ -593,7 +599,7 @@ class UpdateBanner extends StatelessWidget {
           ),
           child: Stack(children: [
             const Positioned(left: -18, top: -22, child: Opacity(opacity: .10,
-              child: Icon(Icons.auto_awesome_rounded, size: 120, color: Color(0xFFFFD27A)))),
+              child: Icon(Icons.auto_awesome_rounded, size: 120, color: SColor.gold))),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -602,7 +608,7 @@ class UpdateBanner extends StatelessWidget {
                     width: 44, height: 44,
                     decoration: BoxDecoration(color: const Color(0x26FFFFFF), borderRadius: BorderRadius.circular(14)),
                     child: Icon(error != null ? Icons.wifi_off_rounded : Icons.rocket_launch_rounded,
-                      color: const Color(0xFFFFD27A)),
+                      color: SColor.gold),
                   ),
                   const SizedBox(width: 12),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -632,7 +638,7 @@ class UpdateBanner extends StatelessWidget {
                     child: LinearProgressIndicator(
                       minHeight: 8,
                       value: progress == 0 ? null : progress,
-                      color: const Color(0xFFFFD27A),
+                      color: SColor.gold,
                       backgroundColor: const Color(0x33FFFFFF)),
                   ),
                   const SizedBox(height: 8),
@@ -650,7 +656,7 @@ class UpdateBanner extends StatelessWidget {
                   FilledButton.icon(
                     style: FilledButton.styleFrom(
                       minimumSize: const Size.fromHeight(48),
-                      backgroundColor: const Color(0xFFFFD27A),
+                      backgroundColor: SColor.gold,
                       foregroundColor: const Color(0xFF3A2A05)),
                     onPressed: store.installUpdate,
                     icon: Icon(error != null ? Icons.refresh_rounded : Icons.download_for_offline_rounded, size: 20),
@@ -740,7 +746,7 @@ class ConversationTile extends StatelessWidget {
                     style: TextStyle(fontSize: 16, fontWeight: bold ? FontWeight.w800 : FontWeight.w600))),
                   if (pinned)
                     const Padding(padding: EdgeInsetsDirectional.only(start: 4),
-                      child: Icon(Icons.push_pin_rounded, size: 16, color: Color(0xFFB8862E))),
+                      child: Icon(Icons.push_pin_rounded, size: 16, color: SColor.goldInk)),
                   const SizedBox(width: 6),
                   Text(Jalali.short(m.date), style: TextStyle(fontSize: 12,
                     color: bold ? scheme.primary : scheme.onSurfaceVariant, fontWeight: bold ? FontWeight.w700 : null)),

@@ -6,6 +6,7 @@ import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import '../app_settings.dart';
 import '../app_store.dart';
 import '../chat_theme.dart';
+import '../design/tokens.dart';
 import '../jalali.dart';
 import '../message_logic.dart';
 import '../message_search.dart';
@@ -502,7 +503,7 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
               IconButton(
                 tooltip: pinned ? 'برداشتن سنجاق' : 'سنجاق کردن گفتگو',
                 icon: Icon(pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
-                  color: pinned ? const Color(0xFFB8862E) : null),
+                  color: pinned ? SColor.goldInk : null),
                 onPressed: () => store.togglePin(widget.address)),
               PopupMenuButton<String>(
                 onSelected: (v) {
@@ -566,7 +567,7 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
                     color: scheme.primaryContainer.withValues(alpha: .7),
                     child: ListTile(
                       dense: true,
-                      leading: const Icon(Icons.push_pin_rounded, size: 18, color: Color(0xFFB8862E)),
+                      leading: const Icon(Icons.push_pin_rounded, size: 18, color: SColor.goldInk),
                       title: Text(pinnedMessage.body.replaceAll('\n', ' '), maxLines: 2, overflow: TextOverflow.ellipsis),
                       trailing: IconButton(tooltip: 'برداشتن سنجاق پیام', icon: const Icon(Icons.close_rounded, size: 18),
                         onPressed: () => store.togglePinMessage(widget.address, pinnedId!)),
@@ -930,7 +931,7 @@ class _Bubble extends StatelessWidget {
             decoration: base.copyWith(
               border: selectedHit ? Border.all(color: const Color(0xFF009688), width: 2.5)
                 : searchHit ? Border.all(color: const Color(0xFF5BB5A9), width: 1.5)
-                : pinned ? Border.all(color: const Color(0xFFD4A94E), width: 1.6) : base.border,
+                : pinned ? Border.all(color: SColor.goldInk, width: 1.6) : base.border,
               borderRadius: BorderRadiusDirectional.only(
                 topStart: r, topEnd: r,
                 bottomStart: outgoing ? r : const Radius.circular(5),
@@ -997,7 +998,10 @@ class _Bubble extends StatelessWidget {
                 if (status != null) ...[
                   if (time.isNotEmpty) const SizedBox(width: 6),
                   if (statusIcon != null)
-                    Icon(statusIcon, size: 14, color: delivered ? const Color(0xFF7FD3FF) : fg.withValues(alpha: .75)),
+                    Icon(statusIcon, size: 14,
+                        // آبی روشن قبلی روی حباب فیروزه‌ای در حالت تاریک کنتراست کافی
+                        // نداشت؛ طلایی برند در هر دو حالت خوانا است.
+                        color: delivered ? SColor.gold : fg.withValues(alpha: .75)),
                   const SizedBox(width: 3),
                   Text(status!, style: TextStyle(color: fg.withValues(alpha: .75), fontSize: 11)),
                 ],

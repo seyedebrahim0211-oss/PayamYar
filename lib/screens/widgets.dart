@@ -1,15 +1,12 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import '../design/tokens.dart';
 import '../message_logic.dart';
 import '../bank_badge.dart';
 import '../sms_bridge.dart';
 
-const _avatarColors = [
-  Color(0xFF087F81), Color(0xFF305F91), Color(0xFF75539A), Color(0xFF9F5369),
-  Color(0xFF47765F), Color(0xFFA17A37), Color(0xFFC0583B), Color(0xFF3A7CA5),
-];
-
-/// Round avatar: first letter for people, an icon for banks/services/ads and short codes.
+/// آواتار فرستنده: حرف اول برای افراد، آیکن برای بانک/خدمات/تبلیغات.
+/// شکلش مربع نرم است (نه دایره) تا با نشان برنامه هم‌خانواده باشد.
 class SenderAvatar extends StatelessWidget {
   final String name;
   final String address;
@@ -21,10 +18,9 @@ class SenderAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = _avatarColors[address.hashCode.abs() % _avatarColors.length];
     final person = name != address || RegExp(r'^\+?[\d\s۰-۹]{7,}$').hasMatch(address);
     Widget child;
-    if (category == MessageCategory.personal && person && name != address) {
+    if (category == MessageCategory.personal && person && name.isNotEmpty && name != address) {
       child = Text(name.characters.first, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: radius * .8));
     } else {
       final icon = switch (category) {
@@ -36,7 +32,7 @@ class SenderAvatar extends StatelessWidget {
       child = Icon(icon, color: Colors.white, size: radius * .95);
     }
     final fallback = BankBadge(sender: address, size: radius * 2,
-        fallback: CircleAvatar(radius: radius, backgroundColor: color, child: child));
+        fallback: SoftAvatar(seed: address, size: radius * 2, child: child));
     final phone = SmsBridge.normalizeNumber(address).replaceAll(RegExp(r'[^0-9]'), '');
     if (!SmsBridge.supported || category != MessageCategory.personal || phone.length < 7) {
       return fallback;
@@ -48,17 +44,74 @@ class SenderAvatar extends StatelessWidget {
       builder: (context, snapshot) {
         final bytes = snapshot.data;
         if (bytes == null || bytes.isEmpty) return fallback;
-        return CircleAvatar(
-          radius: radius,
-          backgroundColor: color,
-          child: ClipOval(
-            child: Image.memory(bytes,
+        // Decode at the size actually drawn: without cacheWidth the full-size contact photo
+        // was decoded again for every row on every rebuild (a real cost on long inboxes).
+        final pixels = (radius * 2 * MediaQuery.devicePixelRatioOf(context)).round();
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(radius * .68),
+          child: Image.memory(bytes,
               width: radius * 2, height: radius * 2, fit: BoxFit.cover,
+              cacheWidth: pixels.clamp(48, 512),
               gaplessPlayback: true,
               errorBuilder: (context, error, stackTrace) => fallback),
-          ),
         );
       },
+    );
+  }
+}
+
+/// آواتار مربع نرم با هایلایت شیشه‌ای — هم‌خانوادهٔ نشان لانچر.
+///
+/// جای دایرهٔ تخت قبلی را می‌گیرد. شعاع ۳۴٪ همان نسبتی است که در آیکن برنامه
+/// استفاده شده، و هایلایت بالا با تم «شیشه‌ای» گفتگو یکی می‌شود.
+class SoftAvatar extends StatelessWidget {
+  final String seed;
+  final double size;
+  final Widget child;
+  final Color? color;
+
+  const SoftAvatar({super.key, required this.seed, required this.size, required this.child, this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    // `hashCode.abs()` stays negative for the single value -2^63 and would produce a
+    // negative index; masking the sign bit is always safe.
+    final base = color ?? SColor.avatar[(seed.hashCode & 0x7FFFFFFF) % SColor.avatar.length];
+    final radius = size * .34;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        gradient: LinearGradient(
+          begin: Alignment.topRight,
+          end: Alignment.bottomLeft,
+          colors: [Color.lerp(base, Colors.white, .18)!, base, Color.lerp(base, Colors.black, .18)!],
+          stops: const [0, .55, 1],
+        ),
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Center(child: child),
+          // هایلایت شیشه: نیمهٔ بالایی، محو به پایین.
+          Positioned(
+            top: 0, left: 0, right: 0, height: size * .46,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(radius)),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.white.withValues(alpha: .3), Colors.white.withValues(alpha: 0)],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -75,20 +128,54 @@ class EmptyState extends StatelessWidget {
   final IconData icon;
   final String title;
   final String? subtitle;
-  const EmptyState({super.key, required this.icon, required this.title, this.subtitle});
+  /// دکمهٔ اقدام؛ حالت خالی باید دعوت به کار باشد، نه بن‌بست.
+  final String? actionLabel;
+  final VoidCallback? onAction;
+  const EmptyState({super.key, required this.icon, required this.title, this.subtitle,
+      this.actionLabel, this.onAction});
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 60),
+      padding: const EdgeInsets.symmetric(horizontal: SSpace.xxl, vertical: 56),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        CircleAvatar(radius: 40, backgroundColor: scheme.primaryContainer,
-          child: Icon(icon, size: 38, color: scheme.onPrimaryContainer)),
-        const SizedBox(height: 18),
-        Text(title, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+        Container(
+          width: 76, height: 76,
+          decoration: BoxDecoration(
+            borderRadius: SRadius.all(26),
+            gradient: LinearGradient(
+              begin: Alignment.topRight,
+              end: Alignment.bottomLeft,
+              colors: [
+                scheme.primary.withValues(alpha: .14),
+                SColor.gold.withValues(alpha: .22),
+              ],
+            ),
+          ),
+          child: Icon(icon, size: 34, color: scheme.primary),
+        ),
+        const SizedBox(height: SSpace.lg),
+        Text(title, textAlign: TextAlign.center,
+          style: TextStyle(fontSize: SType.h3, fontWeight: FontWeight.w800, color: scheme.onSurface)),
         if (subtitle != null) ...[
-          const SizedBox(height: 8),
-          Text(subtitle!, textAlign: TextAlign.center, style: TextStyle(color: scheme.onSurfaceVariant)),
+          const SizedBox(height: SSpace.sm),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 260),
+            child: Text(subtitle!, textAlign: TextAlign.center,
+              style: TextStyle(fontSize: SType.small, height: 1.75, color: scheme.onSurfaceVariant)),
+          ),
+        ],
+        if (actionLabel != null && onAction != null) ...[
+          const SizedBox(height: SSpace.xl),
+          FilledButton.tonalIcon(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(0, 44),
+              shape: RoundedRectangleBorder(borderRadius: SRadius.all(SRadius.field)),
+            ),
+            onPressed: onAction,
+            icon: const Icon(Icons.add_rounded, size: 18),
+            label: Text(actionLabel!),
+          ),
         ],
       ]),
     );

@@ -152,7 +152,7 @@ class AppSettings extends ChangeNotifier {
     autoNight = p.getBool('autoNight') ?? false;
     nightStart = (p.getInt('nightStart') ?? 20 * 60).clamp(0, 1439).toInt();
     nightEnd = (p.getInt('nightEnd') ?? 7 * 60).clamp(0, 1439).toInt();
-    scale = (p.getDouble('scale') ?? 1).clamp(.9, 1.5).toDouble();
+    scale = (p.getDouble('scale') ?? 1).clamp(1.0, 1.5).toDouble();
     fontChoice = (p.getInt('fontChoice') ?? 0).clamp(0, 2).toInt();
     hidePreview = p.getBool('privatePreview') ?? true;
     notifyPreview = p.getBool('notifyPreview') ?? false;
@@ -223,7 +223,7 @@ class AppSettings extends ChangeNotifier {
     this.autoNight = autoNight ?? this.autoNight;
     this.nightStart = (nightStart ?? this.nightStart).clamp(0, 1439).toInt();
     this.nightEnd = (nightEnd ?? this.nightEnd).clamp(0, 1439).toInt();
-    this.scale = scale ?? this.scale;
+    this.scale = (scale ?? this.scale).clamp(1.0, 1.5).toDouble();
     this.fontChoice = fontChoice ?? this.fontChoice;
     this.hidePreview = hidePreview ?? this.hidePreview;
     this.notifyPreview = notifyPreview ?? this.notifyPreview;
@@ -419,7 +419,7 @@ class AppSettings extends ChangeNotifier {
     await update(
       palette: i('palette')?.clamp(0, palettes.length - 1).toInt(),
       mode: i('theme') == null ? null : ThemeMode.values[i('theme')!.clamp(0, 2).toInt()],
-      scale: d('scale')?.clamp(.9, 1.5).toDouble(),
+      scale: d('scale')?.clamp(1.0, 1.5).toDouble(),
       fontChoice: i('fontChoice')?.clamp(0, 2).toInt(),
       hidePreview: v<bool>('privatePreview'), notifyPreview: v<bool>('notifyPreview'),
       notifyIncoming: v<bool>('notifyIncoming'), notifySent: v<bool>('notifySent'),

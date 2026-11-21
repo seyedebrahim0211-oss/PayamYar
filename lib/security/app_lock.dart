@@ -153,13 +153,21 @@ class _LockGateState extends State<LockGate> with WidgetsBindingObserver {
             Positioned.fill(child: ColoredBox(color: Theme.of(context).scaffoldBackgroundColor)),
           if (widget.lock.locked)
             Positioned.fill(
-              child: PinScreen(
-                title: 'سوسلنگ قفل است',
-                subtitle: 'رمز برنامه را وارد کنید',
-                onSubmit: (pin) async {
-                  final r = await widget.lock.unlock(pin);
-                  return r.ok ? null : r.message;
-                },
+              // The PIN screen must swallow every pointer event. Its Container only paints a
+              // gradient and does not absorb hits, so without this opaque barrier a tap on a
+              // blank part of the lock screen reached the app underneath (chats, tabs, buttons)
+              // and let anyone scroll private messages without entering the PIN.
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {},
+                child: PinScreen(
+                  title: 'سوسلنگ قفل است',
+                  subtitle: 'رمز برنامه را وارد کنید',
+                  onSubmit: (pin) async {
+                    final r = await widget.lock.unlock(pin);
+                    return r.ok ? null : r.message;
+                  },
+                ),
               ),
             ),
         ]),

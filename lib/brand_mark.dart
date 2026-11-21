@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'design/tokens.dart';
 
 /// Approved wagtail mark with breathing room around the silhouette.
 class BrandMark extends StatelessWidget {
@@ -13,13 +14,16 @@ class BrandMark extends StatelessWidget {
 }
 
 /// Brand colours shared by the logotype, icons and website.
+///
+/// This is a thin view over [SColor] so the whole app has a single palette.
+/// [gold] stays the decorative gold (never text); [goldInk] is the readable one.
 class BrandColors {
-  static const teal = Color(0xFF087F81);
-  static const tealLight = Color(0xFF12A7A2);
-  static const tealDeep = Color(0xFF05545A);
-  static const gold = Color(0xFFFFD27A);
-  static const goldDeep = Color(0xFFB8862B);
-  static const paper = Color(0xFFFAF8F3);
+  static const teal = SColor.teal;
+  static const tealLight = SColor.tealBright;
+  static const tealDeep = SColor.tealDeep;
+  static const gold = SColor.gold;
+  static const goldDeep = SColor.goldInk;
+  static const paper = SColor.paper;
 }
 
 /// The emblem on its rounded teal tile, as on the launcher icon.
