@@ -1,5 +1,6 @@
 import 'dart:async' show Timer, unawaited;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../jalali.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app_store.dart';
@@ -258,6 +259,23 @@ class _ComposeScreenState extends State<ComposeScreen> {
     }
   }
 
+  Future<int?> _groupSim() async {
+    try {
+      return await SmsBridge.resolveSendSim(store.selectedSim);
+    } on PlatformException catch (e) {
+      final sims = (await SmsBridge.subscriptions()).where((sim) => (sim['id'] as int) >= 0);
+      if (!mounted) return null;
+      if (sims.isEmpty) {
+        store.onNotice?.call(e.message ?? 'سیم‌کارت فعال پیدا نشد.');
+        return null;
+      }
+      return showDialog<int>(context: context, builder: (ctx) => SimpleDialog(
+        title: const Text('ارسال گروه با کدام سیم‌کارت؟'),
+        children: [for (final sim in sims) SimpleDialogOption(
+          onPressed: () => Navigator.pop(ctx, sim['id'] as int), child: Text(sim['label'].toString()))]));
+    }
+  }
+
   Future<void> _send() async {
     if (sending) return;
     final targets = _targets();
@@ -286,6 +304,11 @@ class _ComposeScreenState extends State<ComposeScreen> {
         ));
       if (confirmed != true || !mounted) return;
     }
+    int? groupSim;
+    if (targets.length > 1 && store.android) {
+      groupSim = await _groupSim();
+      if (!mounted || groupSim == null) return;
+    }
     // Never create a new group merely because the confirmation dialog opened.
     final savedGroup = groupMode ? await _saveGroup(targets) : null;
     if (groupMode && savedGroup == null) return;
@@ -303,7 +326,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
     for (final number in targets) {
       if (stopQueueing) break;
       final queuedAt = DateTime.now();
-      final pending = await store.send(number, text);
+      final pending = await store.send(number, text, groupSim: groupSim);
       processed++;
       if (stopQueueing && pending != null) {
         await store.undo(pending);

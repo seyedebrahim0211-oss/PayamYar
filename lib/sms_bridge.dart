@@ -196,9 +196,12 @@ class SmsBridge {
   static Future<List<Map<dynamic, dynamic>>> subscriptions() async =>
     (await _channel.invokeListMethod<dynamic>('subscriptions') ?? []).map((e) => Map<dynamic, dynamic>.from(e as Map)).toList();
   static Future<Map<String, dynamic>?> composeIntent() => _channel.invokeMapMethod<String, dynamic>('takeComposeIntent');
-  static Future<String> queue(String to, String body, int sim, {Duration delay = const Duration(seconds: 5)}) async =>
+  static Future<int> resolveSendSim(int sim) async =>
+    (await _channel.invokeMethod<int>('resolveSendSim', {'sim': sim}))!;
+
+  static Future<String> queue(String to, String body, int sim, {Duration delay = const Duration(seconds: 5), bool group = false}) async =>
     await _channel.invokeMethod<String>('queueSms', {
-      'to': normalizeNumber(to), 'body': body, 'subscriptionId': sim, 'delayMs': delay.inMilliseconds,
+      'to': normalizeNumber(to), 'body': body, 'group': group, 'subscriptionId': sim, 'delayMs': delay.inMilliseconds,
     }) ?? '';
   /// Native queue survives the conversation screen and can be restored after restart.
   static Future<List<Map<dynamic, dynamic>>> pending() async {

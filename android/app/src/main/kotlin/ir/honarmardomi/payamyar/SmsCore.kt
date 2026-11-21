@@ -96,7 +96,7 @@ object SmsCore {
      * Android returns INVALID_SUBSCRIPTION_ID when the device is set to "Ask every time".
      * On single-SIM devices we can select the sole active subscription automatically.
      */ 
-    private fun resolveSubscription(c: Context, requested: Int): Int {
+    fun resolveSubscription(c: Context, requested: Int): Int {
         val service = c.getSystemService(SubscriptionManager::class.java)
         val active = if (ContextCompat.checkSelfPermission(c, Manifest.permission.READ_PHONE_STATE) ==
             PackageManager.PERMISSION_GRANTED) {
@@ -116,7 +116,7 @@ object SmsCore {
             else "سیم‌کارت فعال شناسایی نشد. وضعیت سیم‌کارت و دسترسی تلفن را بررسی کنید.")
     }
 
-    @Synchronized fun queue(c: Context, address: String, body: String, sim: Int, delayMs: Long = 5000): String {
+    @Synchronized fun queue(c: Context, address: String, body: String, sim: Int, delayMs: Long = 5000, group: Boolean = false): String {
         requireDefault(c)
         require(delayMs in 0L..(30L * 24 * 60 * 60 * 1000)) { "زمان ارسال باید حداکثر ۳۰ روز آینده باشد." }
         val to = address.map { it.digitToIntOrNull()?.digitToChar() ?: it }.joinToString("").replace(Regex("[\\s()-]"), "")
@@ -127,10 +127,56 @@ object SmsCore {
         val id = UUID.randomUUID().toString()
         val item = JSONObject().put("to", to).put("body", body).put("sim", subscriptionId)
             .put("due", System.currentTimeMillis() + delayMs).put("scheduled", delayMs > 10000)
-        check(prefs(c).edit().putString("queue:$id", SecureVault.encryptQueue(item.toString())).putString("status:$id", "queued").commit())
-        arm(c, id, item.getLong("due"))
+        val grouped = group && delayMs <= 10000
+        val due = item.getLong("due")
+        val edit = prefs(c).edit().putString("queue:$id", SecureVault.encryptQueue(item.toString()))
+            .putString("status:$id", "queued")
+        if (grouped) edit.putLong("group:$id", due)
+        check(edit.commit())
+        try {
+            if (grouped) scheduleGroup(c.applicationContext, due) else arm(c, id, due)
+        } catch (e: RuntimeException) {
+            prefs(c).edit().remove("queue:$id").remove("group:$id").remove("status:$id").commit()
+            throw e
+        }
         return id
     }
+    private const val GROUP_WAKE = "group-wake"
+    private val groupWorker = java.util.concurrent.Executors.newSingleThreadScheduledExecutor()
+    private var groupTimer: java.util.concurrent.ScheduledFuture<*>? = null
+    private var groupDue = Long.MAX_VALUE
+
+    // One durable alarm backs the whole group. An in-process timer avoids waiting
+    // for an inexact alarm while the application is running.
+    private fun scheduleGroup(c: Context, due: Long) {
+        if (groupDue <= due && groupTimer?.isDone == false) return
+        arm(c, GROUP_WAKE, due)
+        groupTimer?.cancel(false)
+        groupDue = due
+        groupTimer = groupWorker.schedule({ drainGroup(c) },
+            (due - System.currentTimeMillis()).coerceAtLeast(0), java.util.concurrent.TimeUnit.MILLISECONDS)
+    }
+
+    @Synchronized fun drainGroup(c: Context) {
+        groupTimer?.cancel(false)
+        groupTimer = null
+        groupDue = Long.MAX_VALUE
+        val rows = prefs(c).all.entries.filter { it.key.startsWith("group:") && it.value is Long }
+            .sortedBy { it.value as Long }
+        val first = rows.firstOrNull() ?: return
+        val due = first.value as Long
+        val now = System.currentTimeMillis()
+        if (due > now) { scheduleGroup(c, due); return }
+        // Arm the next wake before claiming this message, including recovery
+        // if the process exits before dispatch writes its durable claim.
+        scheduleGroup(c, now + 650)
+        dispatch(c, first.key.removePrefix("group:"))
+    }
+
+    fun receiveAlarm(c: Context, id: String) {
+        if (id == GROUP_WAKE) drainGroup(c) else dispatch(c, id)
+    }
+
     private fun alarmIntent(c: Context, id: String) = PendingIntent.getBroadcast(c, 0,
         Intent(c, QueueReceiver::class.java).setData(Uri.parse("payamyar:queue/$id")).putExtra("id", id),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
@@ -166,7 +212,7 @@ object SmsCore {
         if (status(c, id) != "queued") return false
         val item = runCatching { JSONObject(SecureVault.decryptQueue(prefs(c).getString("queue:$id", "{}")!!)) }.getOrNull() ?: return false
         if (System.currentTimeMillis() >= item.optLong("due")) return false
-        prefs(c).edit().remove("queue:$id").putString("status:$id", "cancelled").commit()
+        prefs(c).edit().remove("queue:$id").remove("group:$id").putString("status:$id", "cancelled").commit()
         c.getSystemService(AlarmManager::class.java).cancel(alarmIntent(c, id))
         return true
     }
@@ -193,7 +239,7 @@ object SmsCore {
             if (entry != null && entry.optBoolean("scheduled") && entry.optLong("due") > now + 5000) {
                 arm(c, id, entry.getLong("due"))
             } else {
-                prefs(c).edit().remove(key).putString("status:$id", "cancelled_after_restart").commit()
+                prefs(c).edit().remove(key).remove("group:$id").putString("status:$id", "cancelled_after_restart").commit()
             }
         }
     }
@@ -215,12 +261,12 @@ object SmsCore {
             JSONObject(SecureVault.decryptQueue(raw))
         } catch (_: Exception) {
             // A missing Keystore key or tampered queue must never send an SMS.
-            prefs(c).edit().remove("queue:$id").putString("status:$id", "queue_unreadable").commit()
+            prefs(c).edit().remove("queue:$id").remove("group:$id").putString("status:$id", "queue_unreadable").commit()
             return
         }
         if (System.currentTimeMillis() < item.getLong("due")) { arm(c, id, item.getLong("due")); return }
         // Commit before the radio call: never automatically retry an ambiguous send.
-        prefs(c).edit().remove("queue:$id").putString("status:$id", "pending").commit()
+        check(prefs(c).edit().remove("queue:$id").remove("group:$id").putString("status:$id", "pending").commit())
         var row: Uri? = null
         try {
             requireDefault(c)
@@ -229,7 +275,7 @@ object SmsCore {
             val manager = if (Build.VERSION.SDK_INT >= 31) c.getSystemService(SmsManager::class.java).createForSubscriptionId(selected)
                 else SmsManager.getSmsManagerForSubscriptionId(selected)
             val parts = manager.divideMessage(item.getString("body"))
-            row = c.contentResolver.insert(Telephony.Sms.CONTENT_URI, ContentValues().apply {
+            row = c.contentResolver.insert(Telephony.Sms.Outbox.CONTENT_URI, ContentValues().apply {
                 put("address", item.getString("to")); put("body", item.getString("body"))
                 put("date", System.currentTimeMillis()); put("read", 1); put("type", 4); put("status", 32); put("sub_id", selected)
                 put("thread_id", Telephony.Threads.getOrCreateThreadId(c, item.getString("to")))
@@ -265,8 +311,7 @@ object SmsCore {
             val report = intent.getStringExtra("format")?.let { android.telephony.SmsMessage.createFromPdu(pdu, it) }
                 ?: android.telephony.SmsMessage.createFromPdu(pdu)
             val reportStatus = report?.status ?: return
-            if (reportStatus < 0 || reportStatus in 32..63) return
-            deliveryFailure = reportStatus >= 64
+            deliveryFailure = deliveryReportFailure(reportStatus, intent.getStringExtra("format")) ?: return
         }
         val count = intent.getIntExtra("parts", 1).coerceIn(1, 255)
         val part = intent.getIntExtra("part", 0)
@@ -430,7 +475,7 @@ class QueueReceiver : BroadcastReceiver() {
         Thread {
             try {
                 if (intent.action == SmsCore.ACTION_DRAIN) SmsCore.drainAndReschedule(context, 15 * 60_000L)
-                else SmsCore.dispatch(context, intent.getStringExtra("id") ?: "")
+                else SmsCore.receiveAlarm(context, intent.getStringExtra("id") ?: "")
             } catch (_: Exception) {
             } finally { pending.finish() }
         }.start()

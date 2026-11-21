@@ -1,5 +1,6 @@
 import 'dart:async' show Timer, unawaited;
-import 'dart:io';
+import 'chat_image_frame.dart';
+import 'failed_message_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -53,6 +54,7 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
   bool _searchVisible = false;
   String _searchQuery = '';
   int _matchIndex = 0;
+  final _wallKey = GlobalKey();
   int _searchGeneration = 0;
   int _searchRevision = -1;
   Timer? _searchTimer;
@@ -529,20 +531,14 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
             ],
           ),
           body: DecoratedBox(
-            decoration: personal.wallpaperPath == null ? look.background : BoxDecoration(
-              color: scheme.surface,
-              image: DecorationImage(
-                // Decode to screen-scale dimensions to avoid memory spikes
-                // from very large camera photos used as chat wallpapers.
-                image: ResizeImage(FileImage(File(personal.wallpaperPath!)),
-                  width: 1080, height: 1920),
-                fit: BoxFit.cover,
-                colorFilter: ColorFilter.mode(
-                  scheme.surface.withValues(alpha: scheme.brightness == Brightness.dark ? .52 : .40),
-                  BlendMode.srcOver),
-              ),
-            ),
-            child: CustomPaint(
+            key: _wallKey,
+            decoration: look.background,
+            child: Stack(fit: StackFit.expand, children: [
+              if (personal.wallpaperPath != null) ...[
+                FramedChatImage(personal.wallpaperPath!, personal.wallFrame),
+                ColoredBox(color: scheme.surface.withValues(alpha: scheme.brightness == Brightness.dark ? .52 : .40)),
+              ],
+              CustomPaint(
               painter: personal.wallpaperPath == null ? look.pattern : null,
               child: Column(children: [
                 if (_searchVisible)
@@ -668,6 +664,7 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
                     style: TextStyle(color: scheme.onSurfaceVariant))),
               ]),
             ),
+            ]),
           ),
         );
       },
@@ -678,7 +675,8 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
     try {
       final saved = await ChatPersonalizations.instance.chooseImage(
         widget.address, wallpaper: wallpaper);
-      if (saved) {
+      if (saved && mounted) {
+        await _editFrame(wallpaper);
         store.onNotice?.call(wallpaper ? 'پس‌زمینه همین گفتگو تغییر کرد.' : 'عکس اختصاصی مخاطب ذخیره شد.');
       }
     } on FormatException catch (e) {
@@ -686,6 +684,18 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
     } catch (_) {
       store.onNotice?.call('انتخاب عکس انجام نشد. یک تصویر JPG، PNG یا WebP انتخاب کنید.');
     }
+  }
+
+  Future<void> _editFrame(bool wallpaper) async {
+    final rooms = ChatPersonalizations.instance;
+    final room = rooms.forAddress(widget.address);
+    final path = wallpaper ? room.wallpaperPath : room.avatarPath;
+    if (path == null) return;
+    final size = _wallKey.currentContext?.size ?? MediaQuery.sizeOf(context);
+    final frame = await Navigator.push<ImageFrame>(context, MaterialPageRoute(builder: (_) =>
+      ChatFrameEditor(path: path, initial: wallpaper ? room.wallFrame : room.avatarFrame,
+        aspect: wallpaper ? size.aspectRatio : 1, wallpaper: wallpaper)));
+    if (frame != null && mounted) await rooms.setFrame(widget.address, wallpaper, path, frame);
   }
 
   Future<void> _stylePicker() async {
@@ -726,6 +736,9 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
                 trailing: const Icon(Icons.photo_library_outlined),
                 onTap: () { Navigator.pop(sheet); _pickPersonalImage(wallpaper: false); }),
               if (custom.avatarPath != null)
+                TextButton.icon(onPressed: () { Navigator.pop(sheet); _editFrame(false); },
+                  icon: const Icon(Icons.crop), label: const Text('تنظیم اندازه و جای عکس')),
+              if (custom.avatarPath != null)
                 TextButton.icon(
                   onPressed: () => unawaited(personalize.clearImage(widget.address, wallpaper: false)),
                   icon: const Icon(Icons.delete_outline_rounded),
@@ -736,6 +749,9 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
                 subtitle: const Text('تصویر فقط در حافظه خصوصی برنامه می‌ماند'),
                 trailing: const Icon(Icons.photo_library_outlined),
                 onTap: () { Navigator.pop(sheet); _pickPersonalImage(wallpaper: true); }),
+              if (custom.wallpaperPath != null)
+                TextButton.icon(onPressed: () { Navigator.pop(sheet); _editFrame(true); },
+                  icon: const Icon(Icons.crop), label: const Text('تنظیم اندازه و جای عکس')),
               if (custom.wallpaperPath != null)
                 TextButton.icon(
                   onPressed: () => unawaited(personalize.clearImage(widget.address, wallpaper: true)),
@@ -768,7 +784,7 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
         status = 'پیش‌نویس'; icon = Icons.edit_note_rounded;
       } else if (m.delivery == 0) {
         status = 'تحویل شد'; icon = Icons.done_all_rounded;
-      } else if (m.delivery >= 64) {
+      } else if (m.failedSendOrDelivery) {
         status = 'تحویل ناموفق'; icon = Icons.report_gmailerrorred_rounded;
       } else {
         status = 'ارسال شد'; icon = Icons.done_rounded;
@@ -785,7 +801,7 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
       outgoing: m.outgoing,
       look: look,
       textSize: settings.bubbleText,
-      failed: m.type == 5,
+      failed: m.failedSendOrDelivery,
       pinned: m.id != null && m.id == pinnedId,
       searchHit: searchHit,
       selectedHit: selectedHit,
@@ -794,11 +810,11 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
       status: status,
       statusIcon: icon,
       onLongPress: () => _messageActions(m),
-      onTap: financial ? () => setState(() {
+      onTap: m.failedSendOrDelivery ? () => failedMessageActions(context, store, m) : financial ? () => setState(() {
         if (reveal) { _revealedAmounts.remove(identity); }
         else { _revealedAmounts.add(identity); }
       }) : null,
-      sensitive: financial,
+      sensitive: financial && !m.failedSendOrDelivery,
       onPhoneMessage: (number) => Navigator.of(context).push(MaterialPageRoute<void>(
         builder: (_) => ConversationScreen(store: store, address: number))),
       trailing: code == null || (financial && !reveal) ? null : ActionChip(
@@ -1041,7 +1057,8 @@ class _Bubble extends StatelessWidget {
               if (sensitive) Padding(padding: const EdgeInsets.only(bottom: 4),
                 child: Text('برای نمایش یا مخفی‌کردن اعداد لمس کنید',
                   style: TextStyle(color: fg.withValues(alpha: .68), fontSize: 11))),
-              InteractiveMessageText(searchQuery: searchQuery, text: text.trim().isEmpty ? 'پیام بدون متن' : text.trim(),
+              if (failed) Text(text, style: TextStyle(color: fg, fontSize: textSize, height: 1.7))
+              else InteractiveMessageText(searchQuery: searchQuery, text: text.trim().isEmpty ? 'پیام بدون متن' : text.trim(),
                 style: TextStyle(color: fg, fontSize: textSize, height: 1.7),
                 onPhoneMessage: onPhoneMessage),
               if (text.length > 260 || text.split('\n').length > 8)

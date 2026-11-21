@@ -43,3 +43,22 @@ object SmsSendDiagnostic {
         else -> "ارسال از سوی شبکه تأیید نشد (کد $code). از ارسال تکراری بدون بررسی سابقه خودداری کنید."
     }
 }
+
+/** Null means intermediate, reserved, or insufficient evidence of delivery. */
+internal fun deliveryReportFailure(status: Int, format: String?): Boolean? {
+    if (status < 0) return null
+    if (format == "3gpp2" || status > 255) {
+        val errorClass = (status ushr 24) and 3
+        val code = (status ushr 16) and 255
+        return when {
+            errorClass == 3 -> true
+            errorClass == 0 && code == 2 -> false
+            else -> null
+        }
+    }
+    return when (status) {
+        0 -> false
+        in 64..127 -> true
+        else -> null
+    }
+}

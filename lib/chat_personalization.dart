@@ -12,23 +12,39 @@ import 'app_settings.dart';
 /// Local-only visual preferences. SMS content, photos and wallpaper are never
 /// transferred to the website. Pictures are copied out of the picker cache into
 /// app-private storage; deleting the application removes them.
+class ImageFrame {
+  final double zoom, x, y;
+  const ImageFrame([this.zoom = 1, this.x = 0, this.y = 0]);
+  List<double> toJson() => [zoom, x, y];
+  static ImageFrame read(Object? data) {
+    if (data is! List || data.length != 3 || data.any((v) => v is! num || !v.isFinite)) {
+      return const ImageFrame();
+    }
+    return ImageFrame((data[0] as num).clamp(.25, 5).toDouble(),
+      (data[1] as num).clamp(-.9, .9).toDouble(), (data[2] as num).clamp(-.9, .9).toDouble());
+  }
+}
+
 class ChatRoomStyle {
+  final ImageFrame avatarFrame, wallFrame;
   final ChatStyle? theme;
   final String? avatarPath;
   final String? wallpaperPath;
 
-  const ChatRoomStyle({this.theme, this.avatarPath, this.wallpaperPath});
+  const ChatRoomStyle({this.theme, this.avatarPath, this.wallpaperPath,
+    this.avatarFrame = const ImageFrame(), this.wallFrame = const ImageFrame()});
 
   ChatRoomStyle withTheme(ChatStyle? next) => ChatRoomStyle(
-    theme: next, avatarPath: avatarPath, wallpaperPath: wallpaperPath);
+    theme: next, avatarFrame: avatarFrame, wallFrame: wallFrame, avatarPath: avatarPath, wallpaperPath: wallpaperPath);
 
   ChatRoomStyle withImage({required bool wallpaper, String? path}) => ChatRoomStyle(
-    theme: theme,
+    theme: theme, wallFrame: wallpaper ? const ImageFrame() : wallFrame,
+    avatarFrame: wallpaper ? avatarFrame : const ImageFrame(),
     avatarPath: wallpaper ? avatarPath : path,
     wallpaperPath: wallpaper ? path : wallpaperPath);
 
   Map<String, Object?> toJson() => {
-    'theme': theme?.index,
+    'theme': theme?.index, 'af': avatarFrame.toJson(), 'wf': wallFrame.toJson(),
     'avatar': avatarPath,
     'wallpaper': wallpaperPath,
   };
@@ -38,6 +54,7 @@ class ChatRoomStyle {
     final rawTheme = value['theme'];
     final index = rawTheme is int ? rawTheme : -1;
     return ChatRoomStyle(
+      avatarFrame: ImageFrame.read(value['af']), wallFrame: ImageFrame.read(value['wf']),
       theme: index >= 0 && index < ChatStyle.values.length ? ChatStyle.values[index] : null,
       avatarPath: value['avatar'] is String ? value['avatar'] as String : null,
       wallpaperPath: value['wallpaper'] is String ? value['wallpaper'] as String : null,
@@ -156,6 +173,16 @@ class ChatPersonalizations extends ChangeNotifier {
     await _persist();
     await _deleteOldImage(obsolete);
     return true;
+  }
+
+  Future<void> setFrame(String address, bool wallpaper, String path, ImageFrame frame) async {
+    final key = canonical(address);
+    final room = forAddress(key);
+    if ((wallpaper ? room.wallpaperPath : room.avatarPath) != path) return;
+    _rooms[key] = ChatRoomStyle(theme: room.theme, avatarPath: room.avatarPath,
+      wallpaperPath: room.wallpaperPath, wallFrame: wallpaper ? frame : room.wallFrame,
+      avatarFrame: wallpaper ? room.avatarFrame : frame);
+    await _persist();
   }
 
   Future<void> clearImage(String address, {required bool wallpaper}) async {

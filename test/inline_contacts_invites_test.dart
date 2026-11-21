@@ -23,7 +23,7 @@ void main() {
     ));
     await tester.pumpAndSettle();
     expect(find.text('09100000000'), findsOneWidget);
-    await tester.tap(find.text('09100000000'));
+    await tester.longPress(find.text('09100000000'));
     await tester.pumpAndSettle();
     expect(find.text('تماس'), findsOneWidget);
     expect(find.text('اطلاعات'), findsOneWidget);

@@ -104,6 +104,22 @@ class SmsGroupStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> removeRecipientFromBatch(String id, String recipient) async {
+    final index = _batches.indexWhere((batch) => batch.id == id);
+    if (index < 0) return;
+    final batch = _batches[index];
+    final remaining = Map.of(batch.acceptedAt)..remove(normalize(recipient));
+    if (remaining.isEmpty) {
+      _batches.removeAt(index);
+    } else {
+      _batches[index] = SmsGroupBatch(id, batch.groupId, remaining, batch.createdAt);
+    }
+    final p = await SharedPreferences.getInstance();
+    await p.setStringList(batchKey, _batches.map((e) => jsonEncode(e.toJson())).toList());
+    if (remaining.isEmpty) await Vault.remove(batch.vaultKey);
+    notifyListeners();
+  }
+
   Future<String?> batchBody(SmsGroupBatch batch) => Vault.get(batch.vaultKey);
 
   Future<SmsGroup> save(String name, Iterable<String> numbers, {String? id}) async {

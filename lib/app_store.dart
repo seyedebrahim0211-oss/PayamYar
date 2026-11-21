@@ -131,7 +131,7 @@ class AppStore extends ChangeNotifier {
   Future<void> init() async {
     unawaited(ChatPersonalizations.instance.load());
     final p = await SharedPreferences.getInstance();
-    await Future.wait([smsGroups.load(), folders.load()]);
+    final localLists = Future.wait([smsGroups.load(), folders.load()]);
     onboarded = p.getBool('onboarded') ?? false;
     archived.addAll(p.getStringList('archived') ?? []);
     pinned.addAll(p.getStringList('pinned') ?? []);
@@ -145,6 +145,7 @@ class AppStore extends ChangeNotifier {
       SmsBridge.listen(_onNativeEvent);
       await checkPermissions();
       if (permissions.isDefault && permissions.canRead) unawaited(loadAll());
+      await localLists;
       initialized = true;
       notifyListeners();
       try {
@@ -161,6 +162,7 @@ class AppStore extends ChangeNotifier {
       } catch (_) { /* A queue read failure must not block the inbox. */ }
       unawaited(checkForUpdate());
     } else {
+      await localLists;
       messages = _sample();
       _rebuild();
     }
@@ -786,8 +788,8 @@ class AppStore extends ChangeNotifier {
   }
 
   /// Queues an SMS with a 5-second undo window. Returns null if sending failed to start.
-  Future<PendingSend?> send(String to, String body, {DateTime? scheduledAt}) async {
-    final text = settings?.withSignature(body) ?? body.trim();
+  Future<PendingSend?> send(String to, String body, {DateTime? scheduledAt, bool exactBody = false, int? groupSim}) async {
+    final text = exactBody ? body : settings?.withSignature(body) ?? body.trim();
     final target = to.trim();
     if (text.isEmpty || target.isEmpty) return null;
     if (!android) {
@@ -811,7 +813,7 @@ class AppStore extends ChangeNotifier {
         onNotice?.call('زمان ارسال را بین ۵ ثانیه تا ۳۰ روز آینده تنظیم کنید.');
         return null;
       }
-      final id = await SmsBridge.queue(target, text, selectedSim, delay: delay);
+      final id = await SmsBridge.queue(target, text, groupSim ?? selectedSim, delay: delay, group: groupSim != null);
       final pending = PendingSend(id, target, text, now.add(delay),
           scheduled: scheduledAt != null, window: delay);
       pendingSends.add(pending);
@@ -842,7 +844,8 @@ class AppStore extends ChangeNotifier {
     // The native queue has now written the real outbox row; show it at once so the
     // local "queued" copy is replaced instead of appearing twice.
     notifyListeners();
-    unawaited(Future<void>.delayed(const Duration(milliseconds: 350), refresh));
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), refresh);
     var state = 'queued';
     for (var i = 0; i < 120 && (state == 'queued' || state == 'pending'); i++) {
       try {

@@ -6,6 +6,7 @@ import '../message_logic.dart';
 import '../sms_bridge.dart';
 import '../sms_groups.dart';
 import 'compose_screen.dart';
+import 'failed_message_actions.dart';
 import 'conversation_screen.dart';
 import 'message_interactions.dart';
 
@@ -25,11 +26,13 @@ class _GroupRow {
   final String recipient;
   final String body;
   final DateTime date;
+  final MessageRecord? record;
+  final SmsGroupBatch? batch;
   final bool confirmed;
   final bool incoming;
   final bool privateMessage;
   const _GroupRow(this.recipient, this.body, this.date,
-      {required this.confirmed, this.incoming = false, this.privateMessage = false});
+      {required this.confirmed, this.record, this.batch, this.incoming = false, this.privateMessage = false});
 }
 
 class _BatchBody {
@@ -127,7 +130,7 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
           ..sort((a, b) => a.date.difference(at).abs().compareTo(b.date.difference(at).abs()));
         if (candidates.isNotEmpty) {
           final actual = candidates.first;
-          output.add(_GroupRow(sent.key, actual.body, actual.date, confirmed: true));
+          output.add(_GroupRow(sent.key, actual.body, actual.date, record: actual, batch: entry.batch, confirmed: true));
         } else {
           // Accepted into the queue != delivered to recipient. Show a truthful
           // unconfirmed state instead of a fabricated sent message.
@@ -158,7 +161,7 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
       for (final m in store.messages)
         if (members.contains(_key(m.sender)))
           _GroupRow(m.sender, m.body, m.date,
-            confirmed: true, incoming: !m.outgoing, privateMessage: true),
+            record: m, confirmed: true, incoming: !m.outgoing, privateMessage: true),
     ]..sort((a, b) => b.date.compareTo(a.date));
     return rows.take(300).toList(growable: false);
   }
@@ -239,6 +242,8 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
   Widget _item(_GroupRow entry, ColorScheme scheme) {
     final name = _displayName(entry.recipient);
     final known = name != entry.recipient;
+    final record = entry.record;
+    final failed = record?.failedSendOrDelivery == true;
     final color = entry.incoming ? scheme.surfaceContainerHigh : scheme.primaryContainer;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
@@ -257,7 +262,12 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
             borderRadius: BorderRadius.circular(20),
             child: InkWell(
               borderRadius: BorderRadius.circular(20),
-              onTap: () => _openChat(entry.recipient),
+              onTap: failed ? () => failedMessageActions(context, store, record!,
+                onRetried: entry.batch == null ? null : (pending) => store.smsGroups.recordBatch(
+                  group.id, pending.body, {pending.to: DateTime.now()}),
+                onDeleted: entry.batch == null ? null : () =>
+                  store.smsGroups.removeRecipientFromBatch(entry.batch!.id, entry.recipient))
+                : () => _openChat(entry.recipient),
               onLongPress: () => Clipboard.setData(ClipboardData(text: entry.body)),
               child: Padding(padding: const EdgeInsets.all(13),
                 child: Column(
@@ -267,7 +277,7 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
                       Expanded(child: Text(name,
                         maxLines: 1, overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontWeight: FontWeight.w800))),
-                      Icon(entry.incoming ? Icons.call_received_rounded :
+                      Icon(failed ? Icons.error_outline : entry.incoming ? Icons.call_received_rounded :
                         entry.confirmed ? Icons.done_all_rounded : Icons.schedule_rounded,
                         size: 17, color: entry.confirmed ? scheme.primary : scheme.error),
                     ]),
@@ -276,11 +286,13 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
                         textDirection: TextDirection.ltr,
                         style: Theme.of(context).textTheme.labelSmall)),
                     const SizedBox(height: 8),
-                    InteractiveMessageText(text: entry.body,
+                    if (failed) Text(entry.body) else InteractiveMessageText(text: entry.body,
                       onPhoneMessage: _openChat),
                     const SizedBox(height: 8),
                     Row(children: [
                       Expanded(child: Text(
+                        failed ? (record!.type == 5 ? 'ارسال نشد' : 'تحویل ناموفق') :
+                        record?.type == 4 || record?.type == 6 ? 'در انتظار تأیید شبکه' :
                         entry.incoming ? 'پیام خصوصی دریافتی' :
                           entry.privateMessage ? 'پیام خصوصی ارسالی' :
                           entry.confirmed ? 'ثبت‌شده در پیامک‌های گوشی' :
