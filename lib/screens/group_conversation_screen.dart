@@ -258,7 +258,7 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
         : entry.privateMessage ? 'پیام خصوصی ارسالی'
         : record?.type == 4 || record?.type == 6 || inQueue ? 'در صف ارسال'
         : record?.delivery == 0 ? 'تحویل تأیید شد'
-        : entry.confirmed ? 'ارسال ثبت شد؛ تحویل قطعی نیست'
+        : entry.confirmed ? 'ثبت‌شده در پیامک‌های گوشی'
         : 'وضعیت ارسال نیاز به بررسی دارد';
     final color = failed ? scheme.errorContainer
         : entry.incoming ? scheme.surfaceContainerHigh : scheme.primaryContainer;
