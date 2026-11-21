@@ -198,6 +198,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
         recipients
           ..clear()
           ..addAll(selected.map(_normalize));
+        _refreshSuggestions();
       });
       await _saveDraft(immediate: true);
     } catch (_) {
