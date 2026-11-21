@@ -864,7 +864,9 @@ class AppStore extends ChangeNotifier {
         for (final pending in batch) {
           final state = states[pending.id];
           if (state == 'queued' || (state == 'pending' &&
-              now.difference(pending.deadline) < const Duration(minutes: 2))) continue;
+              now.difference(pending.deadline) < const Duration(minutes: 2))) {
+            continue;
+          }
           if (state == null || !pendingSends.remove(pending)) continue;
           changed = true;
           if (state.startsWith('send_failed')) {
