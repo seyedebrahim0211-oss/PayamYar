@@ -51,6 +51,167 @@ class MessageSearch {
   static String indexedBody(MessageRecord message) =>
       _indexedBodies[message] ??= normalize(message.body);
 
+  /// Country-code spellings of Iranian mobiles are searchable interchangeably.
+  /// Kept local: no phone number leaves the device.
+  static String phoneAliases(String raw) {
+    final digits = normalize(raw).replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.length == 11 && digits.startsWith('09')) {
+      final international = '98${digits.substring(1)}';
+      return '  static List<String> terms(String query) {
+    final needle = normalize(query);
+    return needle.isEmpty ? const <String>[] : needle.split(' ');
+  }
+
+  static bool containsTerms(String normalizedSource, List<String> terms) {
+    if (terms.isEmpty) return false;
+    // The common case is an exact normalized substring match: avoid building
+    // a temporary list and compacting a message body on every keystroke.
+    String? compact;
+    for (final term in terms) {
+      if (normalizedSource.contains(term)) continue;
+      // Also match grouped digits and Persian words joined without ZWNJ.
+      compact ??= normalizedSource.replaceAll(' ', '');
+      if (!compact.contains(term)) return false;
+    }
+    return true;
+  }
+
+  static bool matches(String source, String query) =>
+      containsTerms(normalize(source), terms(query));
+
+  /// Give input, scrolling and cancellation a turn during a large local scan.
+  static Future<List<MessageRecord>> scan(List<MessageRecord> rows, List<String> tokens,
+      Stopwatch budget, bool Function() cancelled) async {
+    final hits = <MessageRecord>[];
+    for (var i = 0; i < rows.length; i++) {
+      if (budget.elapsedMicroseconds >= 3500) {
+        await Future<void>.delayed(Duration.zero);
+        if (cancelled()) return const [];
+        budget.reset();
+      }
+      final message = rows[i];
+      if (containsTerms(indexedBody(message), tokens)) hits.add(message);
+    }
+    return hits;
+  }
+
+  /// Restrict navigation to messages that actually contain every searched term.
+  static List<MessageRecord> withinConversation(
+    List<MessageRecord> messages, String query,
+  ) {
+    final tokens = terms(query);
+    if (tokens.isEmpty) return const [];
+    return [for (final message in messages)
+      if (containsTerms(indexedBody(message), tokens)) message];
+  }
+}
+ + '{international} 00' + '  static List<String> terms(String query) {
+    final needle = normalize(query);
+    return needle.isEmpty ? const <String>[] : needle.split(' ');
+  }
+
+  static bool containsTerms(String normalizedSource, List<String> terms) {
+    if (terms.isEmpty) return false;
+    // The common case is an exact normalized substring match: avoid building
+    // a temporary list and compacting a message body on every keystroke.
+    String? compact;
+    for (final term in terms) {
+      if (normalizedSource.contains(term)) continue;
+      // Also match grouped digits and Persian words joined without ZWNJ.
+      compact ??= normalizedSource.replaceAll(' ', '');
+      if (!compact.contains(term)) return false;
+    }
+    return true;
+  }
+
+  static bool matches(String source, String query) =>
+      containsTerms(normalize(source), terms(query));
+
+  /// Give input, scrolling and cancellation a turn during a large local scan.
+  static Future<List<MessageRecord>> scan(List<MessageRecord> rows, List<String> tokens,
+      Stopwatch budget, bool Function() cancelled) async {
+    final hits = <MessageRecord>[];
+    for (var i = 0; i < rows.length; i++) {
+      if (budget.elapsedMicroseconds >= 3500) {
+        await Future<void>.delayed(Duration.zero);
+        if (cancelled()) return const [];
+        budget.reset();
+      }
+      final message = rows[i];
+      if (containsTerms(indexedBody(message), tokens)) hits.add(message);
+    }
+    return hits;
+  }
+
+  /// Restrict navigation to messages that actually contain every searched term.
+  static List<MessageRecord> withinConversation(
+    List<MessageRecord> messages, String query,
+  ) {
+    final tokens = terms(query);
+    if (tokens.isEmpty) return const [];
+    return [for (final message in messages)
+      if (containsTerms(indexedBody(message), tokens)) message];
+  }
+}
+ + '{international}';
+    }
+    if (digits.length == 12 && digits.startsWith('989')) {
+      return '0${digits.substring(2)} 00  static List<String> terms(String query) {
+    final needle = normalize(query);
+    return needle.isEmpty ? const <String>[] : needle.split(' ');
+  }
+
+  static bool containsTerms(String normalizedSource, List<String> terms) {
+    if (terms.isEmpty) return false;
+    // The common case is an exact normalized substring match: avoid building
+    // a temporary list and compacting a message body on every keystroke.
+    String? compact;
+    for (final term in terms) {
+      if (normalizedSource.contains(term)) continue;
+      // Also match grouped digits and Persian words joined without ZWNJ.
+      compact ??= normalizedSource.replaceAll(' ', '');
+      if (!compact.contains(term)) return false;
+    }
+    return true;
+  }
+
+  static bool matches(String source, String query) =>
+      containsTerms(normalize(source), terms(query));
+
+  /// Give input, scrolling and cancellation a turn during a large local scan.
+  static Future<List<MessageRecord>> scan(List<MessageRecord> rows, List<String> tokens,
+      Stopwatch budget, bool Function() cancelled) async {
+    final hits = <MessageRecord>[];
+    for (var i = 0; i < rows.length; i++) {
+      if (budget.elapsedMicroseconds >= 3500) {
+        await Future<void>.delayed(Duration.zero);
+        if (cancelled()) return const [];
+        budget.reset();
+      }
+      final message = rows[i];
+      if (containsTerms(indexedBody(message), tokens)) hits.add(message);
+    }
+    return hits;
+  }
+
+  /// Restrict navigation to messages that actually contain every searched term.
+  static List<MessageRecord> withinConversation(
+    List<MessageRecord> messages, String query,
+  ) {
+    final tokens = terms(query);
+    if (tokens.isEmpty) return const [];
+    return [for (final message in messages)
+      if (containsTerms(indexedBody(message), tokens)) message];
+  }
+}
+ + 'digits';
+    }
+    if (digits.length == 14 && digits.startsWith('00989')) {
+      return '0${digits.substring(4)} ${digits.substring(2)}';
+    }
+    return '';
+  }
+
   /// Every query word must occur; word order and punctuation are irrelevant.
   static List<String> terms(String query) {
     final needle = normalize(query);
