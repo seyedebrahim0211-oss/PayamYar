@@ -117,6 +117,7 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
     }
     final output = <_GroupRow>[];
     final shownIncoming = <String>{};
+    final matchedOutgoing = <int>{};
     for (final entry in history) {
       if (entry.text == null || entry.text!.isEmpty) continue;
       final body = entry.text!;
@@ -125,13 +126,16 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
         final records = indexed[_key(sent.key)] ?? const <MessageRecord>[];
         final candidates = records.where((m) => m.outgoing &&
           m.body.trim() == body.trim() &&
-          (entry.batch.exactTime ? m.date == at :
-            !m.date.isBefore(at.subtract(const Duration(seconds: 30))) &&
-            !m.date.isAfter(at.add(const Duration(minutes: 10))))).toList()
+          (m.id == null || !matchedOutgoing.contains(m.id)) &&
+          !m.date.isBefore(at.subtract(
+            Duration(seconds: entry.batch.exactTime ? 5 : 30))) &&
+          !m.date.isAfter(at.add(const Duration(minutes: 10)))).toList()
           ..sort((a, b) => a.date.difference(at).abs().compareTo(b.date.difference(at).abs()));
         if (candidates.isNotEmpty) {
           final actual = candidates.first;
-          output.add(_GroupRow(sent.key, actual.body, actual.date, record: actual, batch: entry.batch, confirmed: true));
+          if (actual.id != null) matchedOutgoing.add(actual.id!);
+          output.add(_GroupRow(sent.key, actual.body, actual.date,
+            record: actual, batch: entry.batch, confirmed: true));
         } else {
           // Accepted into the queue != delivered to recipient. Show a truthful
           // unconfirmed state instead of a fabricated sent message.
