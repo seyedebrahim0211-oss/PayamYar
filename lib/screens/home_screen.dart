@@ -3,6 +3,7 @@ import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import '../app_settings.dart';
 import '../app_store.dart';
+import '../bank_privacy.dart';
 import '../brand_mark.dart';
 import '../design/tokens.dart';
 import '../conversation_logic.dart';
@@ -775,7 +776,8 @@ class ConversationTile extends StatelessWidget {
     final bold = unread > 0;
     final bodyQuery = hit?.query ?? '';
     final previewMessage = hit?.first ?? m;
-    final preview = hidePreview ? 'متن پیام مخفی است' : '${previewMessage.outgoing ? 'شما: ' : ''}${previewMessage.body.replaceAll('\n', ' ')}';
+    final preview = hidePreview ? 'متن پیام مخفی است' : BankPrivacy.preview(category,
+      '${previewMessage.outgoing ? 'شما: ' : ''}${previewMessage.body.replaceAll('\n', ' ')}');
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Material(
