@@ -556,20 +556,39 @@ class _ConversationsPageState extends State<ConversationsPage> {
             onRefresh: store.android ? store.loadAll : () async {},
             child: CustomScrollView(slivers: [
               SliverToBoxAdapter(child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 2, 14, 6),
-                child: TextField(
-                  controller: search,
-                  onChanged: _queueSearch,
-                  textInputAction: TextInputAction.search,
-                  decoration: InputDecoration(
-                    hintText: 'جست‌وجو در همه پیام‌ها، نام‌ها و شماره‌ها',
-                    isDense: true,
-                    prefixIcon: const Icon(Icons.search_rounded),
-                    suffixIcon: query.isEmpty ? null : IconButton(
-                      tooltip: 'پاک کردن جستجو',
-                      icon: const Icon(Icons.close_rounded),
-                      onPressed: () { search.clear(); _queueSearch(''); }),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(28), borderSide: BorderSide.none)),
+                padding: const EdgeInsets.fromLTRB(14, 5, 14, 9),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(21),
+                    boxShadow: widget.settings.reduceEffects ? const [] : [
+                      BoxShadow(color: scheme.primary.withValues(alpha: .08),
+                        blurRadius: 14, offset: const Offset(0, 4)),
+                    ],
+                  ),
+                  child: TextField(
+                    controller: search,
+                    onChanged: _queueSearch,
+                    textAlign: TextAlign.right,
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      hintText: 'جست‌وجوی پیام‌ها و مخاطبین',
+                      hintStyle: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13.5),
+                      filled: true,
+                      fillColor: scheme.surface,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 13, horizontal: 14),
+                      prefixIcon: Icon(Icons.manage_search_rounded, color: scheme.primary, size: 25),
+                      suffixIcon: query.isEmpty ? null : IconButton(
+                        tooltip: 'پاک کردن جستجو',
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () { search.clear(); _queueSearch(''); }),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(21),
+                        borderSide: BorderSide(color: scheme.primary.withValues(alpha: .13))),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(21),
+                        borderSide: BorderSide(color: scheme.primary, width: 1.4)),
+                    ),
+                  ),
                 ))),
               if (store.android && !widget.archive && query.isEmpty)
                 const SliverToBoxAdapter(child: DialectCard()),
@@ -617,7 +636,21 @@ class _ConversationsPageState extends State<ConversationsPage> {
                 SliverToBoxAdapter(child: EmptyState(
                   icon: query.isNotEmpty ? Icons.search_off_rounded : Icons.forum_outlined,
                   title: query.isNotEmpty ? 'نتیجه‌ای پیدا نشد' : widget.archive ? 'بایگانی خالی است' : 'پیامی وجود ندارد',
-                  subtitle: widget.archive ? 'گفتگوها را با کشیدن به کنار بایگانی کنید.' : null)),
+                  subtitle: widget.archive
+                      ? 'برای بایگانی، روی گفتگو نگه دارید و «بایگانی» را انتخاب کنید.'
+                      : query.isNotEmpty
+                          ? 'عبارت کوتاه‌تری جست‌وجو کنید یا فیلترها را تغییر دهید.'
+                          : 'برای شروع، اولین پیام خود را بنویسید.',
+                  actionLabel: widget.archive ? null : query.isNotEmpty ? 'پاک کردن جست‌وجو' : 'پیام جدید',
+                  onAction: widget.archive ? null : () {
+                    if (query.isNotEmpty) {
+                      search.clear();
+                      _queueSearch('');
+                    } else {
+                      Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => ComposeScreen(store: store)));
+                    }
+                  })),
               SliverPadding(
                 padding: EdgeInsets.fromLTRB(8, 0, 8, 96 + MediaQuery.paddingOf(context).bottom),
                 sliver: SliverList.builder(
@@ -720,8 +753,10 @@ class UpdateBanner extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(error != null ? 'دریافت به‌روزرسانی کامل نشد' : 'پیام‌یار تازه‌تر آماده است',
-                      style: const TextStyle(color: ink, fontWeight: FontWeight.w800, fontSize: 15.5)),
-                    Text(meta, style: const TextStyle(color: Color(0xFFCFE9E4), fontSize: 12)),
+                      textAlign: TextAlign.center,
+                       style: const TextStyle(color: ink, fontWeight: FontWeight.w800, fontSize: 15.5)),
+                    Text(meta, textAlign: TextAlign.center,
+                       style: const TextStyle(color: Color(0xFFCFE9E4), fontSize: 12)),
                   ])),
                   if (!downloading)
                     IconButton(tooltip: 'بعداً', onPressed: store.dismissUpdate,
@@ -736,7 +771,8 @@ class UpdateBanner extends StatelessWidget {
                       child: Text(error, style: const TextStyle(color: Color(0xFFFFE2D6), fontSize: 12.5, height: 1.7))))
                 else if (info.notes.isNotEmpty && !downloading)
                   Padding(padding: const EdgeInsets.only(top: 10),
-                    child: Text(info.notes, maxLines: 4, overflow: TextOverflow.ellipsis,
+                    child: Text(info.notes, textAlign: TextAlign.center,
+                      maxLines: 4, overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: Color(0xFFE6F4F1), fontSize: 13, height: 1.75))),
                 const SizedBox(height: 12),
                 if (progress != null) ...[
@@ -793,9 +829,22 @@ class _ActionBanner extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
           child: Row(children: [
-            Icon(icon, color: scheme.onPrimaryContainer),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                gradient: LinearGradient(colors: [
+                  scheme.primary.withValues(alpha: .18),
+                  scheme.primary.withValues(alpha: .07),
+                ]),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(9),
+                child: Icon(icon, color: scheme.onPrimaryContainer, size: 21),
+              ),
+            ),
             const SizedBox(width: 10),
-            Expanded(child: Text(text, style: TextStyle(color: scheme.onPrimaryContainer))),
+            Expanded(child: Text(text, textAlign: TextAlign.center,
+              style: TextStyle(color: scheme.onPrimaryContainer, fontSize: 13))),
             const SizedBox(width: 8),
             FilledButton.tonal(
               style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
