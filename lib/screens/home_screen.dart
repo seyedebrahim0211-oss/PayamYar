@@ -133,8 +133,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           ? FloatingActionButton.extended(
               onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
                 builder: (_) => ComposeScreen(store: widget.store))),
-              icon: const Icon(Icons.edit_rounded),
-              label: const Text('پیام جدید'))
+              tooltip: 'نوشتن پیام جدید',
+              icon: const Icon(Icons.edit_note_rounded),
+              label: const Text('پیام جدید', textAlign: TextAlign.center))
           : null,
       bottomNavigationBar: SafeArea(
         top: false,
@@ -175,10 +176,11 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                 ),
                 child: NavigationBar(
                   elevation: 0,
-                  height: 70,
+                  height: 76,
+                  labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
                   backgroundColor: Colors.transparent,
                   surfaceTintColor: Colors.transparent,
-                  indicatorColor: Theme.of(context).colorScheme.primary.withValues(alpha: .16),
+                  indicatorColor: Colors.transparent,
                   selectedIndex: tab,
                   onDestinationSelected: _selectTab,
                   destinations: [
@@ -186,29 +188,29 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                       icon: Badge(
                         isLabelVisible: unread > 0,
                         label: Text(Jalali.digits(unread)),
-                        child: const Icon(Icons.chat_bubble_outline_rounded),
+                        child: _RaisedNavIcon(icon: Icons.chat_bubble_outline_rounded, reduceEffects: widget.settings.reduceEffects),
                       ),
-                      selectedIcon: const Icon(Icons.chat_bubble_rounded),
+                      selectedIcon: _RaisedNavIcon(icon: Icons.chat_bubble_rounded, selected: true, reduceEffects: widget.settings.reduceEffects),
                       label: 'گفتگوها',
                     ),
-                    const NavigationDestination(
-                      icon: Icon(Icons.contacts_outlined),
-                      selectedIcon: Icon(Icons.contacts_rounded),
+                    NavigationDestination(
+                      icon: _RaisedNavIcon(icon: Icons.contacts_outlined, reduceEffects: widget.settings.reduceEffects),
+                      selectedIcon: _RaisedNavIcon(icon: Icons.contacts_rounded, selected: true, reduceEffects: widget.settings.reduceEffects),
                       label: 'مخاطبین',
                     ),
-                    const NavigationDestination(
-                      icon: Icon(Icons.groups_outlined),
-                      selectedIcon: Icon(Icons.groups_rounded),
+                    NavigationDestination(
+                      icon: _RaisedNavIcon(icon: Icons.groups_outlined, reduceEffects: widget.settings.reduceEffects),
+                      selectedIcon: _RaisedNavIcon(icon: Icons.groups_rounded, selected: true, reduceEffects: widget.settings.reduceEffects),
                       label: 'گروه‌ها',
                     ),
-                    const NavigationDestination(
-                      icon: Icon(Icons.insights_outlined),
-                      selectedIcon: Icon(Icons.insights_rounded),
+                    NavigationDestination(
+                      icon: _RaisedNavIcon(icon: Icons.insights_outlined, reduceEffects: widget.settings.reduceEffects),
+                      selectedIcon: _RaisedNavIcon(icon: Icons.insights_rounded, selected: true, reduceEffects: widget.settings.reduceEffects),
                       label: 'گزارش‌ها',
                     ),
-                    const NavigationDestination(
-                      icon: Icon(Icons.settings_outlined),
-                      selectedIcon: Icon(Icons.settings_rounded),
+                    NavigationDestination(
+                      icon: _RaisedNavIcon(icon: Icons.settings_outlined, reduceEffects: widget.settings.reduceEffects),
+                      selectedIcon: _RaisedNavIcon(icon: Icons.settings_rounded, selected: true, reduceEffects: widget.settings.reduceEffects),
                       label: 'تنظیمات',
                     ),
                   ],
@@ -218,6 +220,38 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// A lightweight raised icon: only the selected tab gets depth and motion.
+class _RaisedNavIcon extends StatelessWidget {
+  final IconData icon;
+  final bool selected;
+  final bool reduceEffects;
+  const _RaisedNavIcon({required this.icon, required this.reduceEffects, this.selected = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+    return AnimatedContainer(
+      duration: reduceEffects ? Duration.zero : SMotion.fast,
+      width: 34,
+      height: 34,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        gradient: selected
+            ? LinearGradient(begin: Alignment.topRight, end: Alignment.bottomLeft,
+                colors: [primary.withValues(alpha: .23), primary.withValues(alpha: .07)])
+            : null,
+        border: selected ? Border.all(color: primary.withValues(alpha: .20)) : null,
+        boxShadow: selected && !reduceEffects
+            ? [BoxShadow(color: primary.withValues(alpha: .16),
+                blurRadius: 10, offset: const Offset(0, 3))]
+            : null,
+      ),
+      child: Icon(icon, size: 22, color: selected ? primary : null),
     );
   }
 }
@@ -455,20 +489,44 @@ class _ConversationsPageState extends State<ConversationsPage> {
         final unread = store.unreadConversations;
         return Scaffold(
           appBar: AppBar(
-            titleSpacing: 16,
-            toolbarHeight: 64,
+            centerTitle: true,
+            titleSpacing: 8,
+            toolbarHeight: 72,
             title: widget.archive
-                ? const Text('بایگانی')
-                : Row(mainAxisSize: MainAxisSize.min, children: [
-                    const BrandTile(size: 42),
-                    const SizedBox(width: 12),
-                    Flexible(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                      const Text('پیام‌یار', style: TextStyle(fontFamily: 'Vazirmatn', fontWeight: FontWeight.w900, fontSize: 21)),
-                      Text(unread > 0 ? '${Jalali.digits(unread)} گفتگوی خوانده‌نشده' : 'همه پیام‌ها خوانده شده',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w400,
-                          color: unread > 0 ? scheme.primary : scheme.onSurfaceVariant), maxLines: 1, overflow: TextOverflow.ellipsis),
-                    ])),
-                  ]),
+                ? const Text('بایگانی', textAlign: TextAlign.center)
+                : Semantics(
+                    header: true,
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: widget.settings.reduceEffects ? const [] : [
+                            BoxShadow(color: scheme.primary.withValues(alpha: .20),
+                              blurRadius: 12, offset: const Offset(0, 4)),
+                          ],
+                        ),
+                        child: const BrandTile(size: 38),
+                      ),
+                      const SizedBox(width: 10),
+                      Flexible(child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          const Text('پیام‌یار', textAlign: TextAlign.center,
+                            maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontFamily: 'Vazirmatn',
+                              fontWeight: FontWeight.w900, fontSize: 21)),
+                          Text(unread > 0
+                              ? '${Jalali.digits(unread)} گفتگوی خوانده‌نشده'
+                              : 'همه پیام‌ها خوانده شده',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600,
+                              color: unread > 0 ? scheme.primary : scheme.onSurfaceVariant),
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                        ],
+                      )),
+                    ]),
+                  ),
             actions: [
               if (!widget.archive)
                 PopupMenuButton<String>(
