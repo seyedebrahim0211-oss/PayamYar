@@ -131,18 +131,66 @@ class _DialectCardState extends State<DialectCard> with WidgetsBindingObserver {
     final word = _word;
     if (word == null) return const SizedBox.shrink();
     final theme = Theme.of(context);
-    return Card(
+    // A compact two-line widget: the inbox should remain the primary content.
+    const gold = Color(0xFFBA9562);
+    return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      color: theme.colorScheme.secondaryContainer,
-      child: ListTile(
-        dense: true,
-        title: Text('واژهٔ امروز بشرویه · هنر مردمی', style: theme.textTheme.labelMedium),
-        subtitle: Text('${word[0]}  ·  ${word[1]}', style: theme.textTheme.bodyMedium),
-        trailing: IconButton.filledTonal(
-          tooltip: _playing ? 'توقف تلفظ' : 'شنیدن تلفظ محلی',
-          icon: Icon(_playing ? Icons.stop_rounded : Icons.volume_up_rounded),
-          onPressed: _listen,
-        ),
+      constraints: const BoxConstraints(minHeight: 72),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: gold.withValues(alpha: .45)),
+        gradient: LinearGradient(colors: [
+          theme.colorScheme.surface,
+          theme.colorScheme.secondaryContainer.withValues(alpha: .74),
+        ]),
+        boxShadow: [BoxShadow(
+          color: theme.shadowColor.withValues(alpha: .06),
+          blurRadius: 10, offset: const Offset(0, 3),
+        )],
+      ),
+      child: Padding(
+        padding: const EdgeInsetsDirectional.fromSTEB(9, 7, 12, 7),
+        child: Row(children: [
+          Semantics(
+            label: 'نقش سنتی بشرویه',
+            excludeSemantics: true,
+            child: Container(
+              width: 34, height: 44,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: const Color(0xFF087A77).withValues(alpha: .10),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: gold.withValues(alpha: .35)),
+              ),
+              child: const Text('۞', style: TextStyle(
+                color: Color(0xFF087A77), fontSize: 25, height: 1)),
+            ),
+          ),
+          const SizedBox(width: 9),
+          Expanded(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('واژه امروز بشرویه · هنر مردمی',
+                maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.primary, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 2),
+              Text('${word[0]}  ·  ${word[1]}',
+                maxLines: 1, overflow: TextOverflow.ellipsis,
+                textDirection: TextDirection.rtl,
+                style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+            ],
+          )),
+          const SizedBox(width: 4),
+          IconButton.filledTonal(
+            tooltip: _playing ? 'توقف تلفظ' : 'شنیدن تلفظ محلی',
+            icon: Icon(_playing ? Icons.stop_rounded : Icons.volume_up_rounded, size: 19),
+            onPressed: _listen,
+            constraints: const BoxConstraints.tightFor(width: 38, height: 38),
+            padding: EdgeInsets.zero,
+          ),
+        ]),
       ),
     );
   }
