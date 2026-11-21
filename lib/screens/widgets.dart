@@ -20,7 +20,7 @@ class SenderAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final person = name != address || RegExp(r'^\+?[\d\s۰-۹]{7,}$').hasMatch(address);
     Widget child;
-    if (category == MessageCategory.personal && person && name != address) {
+    if (category == MessageCategory.personal && person && name.isNotEmpty && name != address) {
       child = Text(name.characters.first, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: radius * .8));
     } else {
       final icon = switch (category) {

@@ -20,10 +20,10 @@ class ChatLook {
     final dark = s.brightness == Brightness.dark;
     switch (style) {
       case ChatStyle.traditional:
-        const gold = SColor.goldDeep;
+        const gold = SColor.goldInk;
         return ChatLook(
           background: BoxDecoration(color: dark ? const Color(0xFF13211F) : const Color(0xFFF5EEDF)),
-          pattern: GirihPainter(color: (dark ? SColor.gold : SColor.goldDeep).withValues(alpha: dark ? .07 : .08)),
+          pattern: GirihPainter(color: (dark ? SColor.gold : SColor.goldInk).withValues(alpha: dark ? .07 : .08)),
           // شعاع از مقیاس طراحی می‌آید تا با کارت‌ها و فیلدها هم‌خانواده بماند.
           radius: SRadius.card,
           bubble: (out, failed) => BoxDecoration(
@@ -83,7 +83,7 @@ class ChatLook {
       case ChatStyle.classic:
         return ChatLook(
           background: BoxDecoration(gradient: LinearGradient(begin: Alignment.topRight, end: Alignment.bottomLeft,
-            colors: [s.primary.withValues(alpha: .055), s.surfaceContainerLowest, SColor.goldDeep.withValues(alpha: .055)])),
+            colors: [s.primary.withValues(alpha: .055), s.surfaceContainerLowest, SColor.goldInk.withValues(alpha: .055)])),
           radius: SRadius.card - 2,
           bubble: (out, failed) => BoxDecoration(
             color: failed ? s.errorContainer : out ? (dark ? const Color(0xFF174D4E) : const Color(0xFFD9EFEB))

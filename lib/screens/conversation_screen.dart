@@ -931,7 +931,7 @@ class _Bubble extends StatelessWidget {
             decoration: base.copyWith(
               border: selectedHit ? Border.all(color: const Color(0xFF009688), width: 2.5)
                 : searchHit ? Border.all(color: const Color(0xFF5BB5A9), width: 1.5)
-                : pinned ? Border.all(color: SColor.goldDeep, width: 1.6) : base.border,
+                : pinned ? Border.all(color: SColor.goldInk, width: 1.6) : base.border,
               borderRadius: BorderRadiusDirectional.only(
                 topStart: r, topEnd: r,
                 bottomStart: outgoing ? r : const Radius.circular(5),

@@ -18,8 +18,8 @@ import 'package:flutter/material.dart';
 ///   BidiText('09121234567')
 /// ─────────────────────────────────────────────────────────────────────────────
 abstract final class Bidi {
-  static const _fsi = '⁨'; // First Strong Isolate
-  static const _pdi = '⁩'; // Pop Directional Isolate
+  static const _fsi = '\u2068'; // First Strong Isolate
+  static const _pdi = '\u2069'; // Pop Directional Isolate
 
   /// رشته را داخل محاصرهٔ دوجهته می‌گذارد. اگر رشته خالی باشد، دست‌نخورده برمی‌گردد
   /// تا متن‌های خالی کاراکتر نامرئی اضافه نگیرند.
