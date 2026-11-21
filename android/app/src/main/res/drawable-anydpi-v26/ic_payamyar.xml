@@ -1,6 +1,6 @@
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@color/susolang_navy"/>
     <foreground>
-        <inset android:drawable="@drawable/susolang" android:inset="8dp"/>
+        <inset android:drawable="@drawable/payamyar_mark" android:inset="8dp"/>
     </foreground>
 </adaptive-icon>

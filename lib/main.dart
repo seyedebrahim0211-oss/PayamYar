@@ -106,7 +106,7 @@ class _PayamYarState extends State<PayamYar> with WidgetsBindingObserver {
     return ListenableBuilder(
       listenable: settings,
       builder: (context, _) => MaterialApp(
-        title: 'سوسلنگ',
+        title: 'پیام‌یار',
         debugShowCheckedModeBanner: false,
         locale: const Locale('fa', 'IR'),
         supportedLocales: const [Locale('fa', 'IR')],

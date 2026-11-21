@@ -119,9 +119,12 @@ class MessageLogic {
 
   /// One-time password / verification code in the message, for a one-tap copy button.
   static String? otp(String body) {
-    final s = _latinDigits(body);
-    final match = RegExp(
-      r'(?:کد|رمز|code|otp|password|pin)[^\d\n]{0,25}(\d{4,8})(?!\d)', caseSensitive: false).firstMatch(s);
-    return match?.group(1);
+    final digits = _otp.firstMatch(body)?.group(1);
+    return digits == null ? null : _latinDigits(digits);
   }
+
+  static final _otp = RegExp(
+    r'(?:کد|رمز|code|otp|password|pin)[^0-9۰-۹٠-٩\n]{0,25}([0-9۰-۹٠-٩]{4,8})(?![0-9۰-۹٠-٩])',
+    caseSensitive: false,
+  );
 }

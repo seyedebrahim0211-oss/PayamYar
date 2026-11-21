@@ -43,7 +43,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     setState(() => checking = false);
     if (!found) {
-      if (!store.updateCheckFailed) store.onNotice?.call('شما آخرین نسخه سوسلنگ را دارید.');
+      if (!store.updateCheckFailed) store.onNotice?.call('شما آخرین نسخه پیام‌یار را دارید.');
       return;
     }
     final info = store.update!;
@@ -206,13 +206,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: 'پشتیبانی و پیگیری پاسخ‌ها', subtitle: 'گفتگوی محرمانه با مدیر، بدون شماره تماس',
                 onTap: () => _open(const SupportInboxScreen())),
               SettingsTile(icon: Icons.group_add_rounded, color: const Color(0xFF087F81),
-                title: 'معرفی سوسلنگ به دوستان',
+                title: 'معرفی پیام‌یار به دوستان',
                 subtitle: 'دعوت با پیامک، اشتراک‌گذاری و لینک دانلود',
                 onTap: () => _open(InviteFriendsScreen(store: store))),
               SettingsTile(icon: Icons.chat_outlined, color: scheme.primary,
                 title: 'ارتباط با ما', onTap: () => _open(const ContactPage())),
               SettingsTile(icon: Icons.info_outline_rounded, color: scheme.primary,
-                title: 'درباره سوسلنگ', onTap: () => _open(AboutPage(packageInfo: packageInfo))),
+                title: 'درباره پیام‌یار', onTap: () => _open(AboutPage(packageInfo: packageInfo))),
             ]),
           ]),
         );
@@ -396,7 +396,7 @@ class SendingSettingsPage extends StatelessWidget {
             SettingsTile(icon: store.isDefault ? Icons.verified_rounded : Icons.sms_outlined,
               color: store.isDefault ? Colors.green : scheme.primary,
               title: 'پیام‌رسان پیش‌فرض',
-              subtitle: store.isDefault ? 'سوسلنگ پیام‌رسان پیش‌فرض گوشی است' : 'برای دریافت پیام‌های جدید فعال کنید',
+              subtitle: store.isDefault ? 'پیام‌یار پیام‌رسان پیش‌فرض گوشی است' : 'برای دریافت پیام‌های جدید فعال کنید',
               onTap: store.isDefault ? null : store.requestDefault),
             if (store.sims.length > 2)
               SettingsTile(icon: Icons.sim_card_outlined, color: scheme.primary, title: 'سیم‌کارت ارسال',
@@ -710,7 +710,7 @@ class NotificationSettingsPage extends StatelessWidget {
                title: const Text('راهنمای اعلان در گوشی هانر'),
                content: const SingleChildScrollView(child: Text(
                  'اگر در HONOR/MagicOS دریافت اعلان با تأخیر انجام می‌شود:\\n'
-                 '۱. اجازه اعلان‌های سوسلنگ را فعال کنید.\\n'
+                 '۱. اجازه اعلان‌های پیام‌یار را فعال کنید.\\n'
                  '۲. در Optimizer › App launch، در صورت نیاز مدیریت خودکار را خاموش کنید و Auto-launch، Secondary launch و Run in background را فعال کنید.\\n'
                  '۳. تنظیمات بهینه‌سازی باتری و پیام‌رسان پیش‌فرض را بررسی کنید.\\n'
                  'محدودیت سازنده گوشی را نمی‌توان بدون اجازه کاربر دور زد.',
@@ -803,7 +803,7 @@ class BackupPage extends StatelessWidget {
             subtitle: 'از طریق پیام‌رسان یا ایمیل برای خودتان',
             onTap: () async {
               final text = store.exportBackup(settings);
-              final shared = await SmsBridge.shareText(text, subject: 'پشتیبان سوسلنگ', title: 'ارسال پشتیبان');
+              final shared = await SmsBridge.shareText(text, subject: 'پشتیبان پیام‌یار', title: 'ارسال پشتیبان');
               if (!shared) {
                 await Clipboard.setData(ClipboardData(text: text));
                 store.onNotice?.call('پشتیبان در حافظه موقت کپی شد.');
@@ -814,7 +814,7 @@ class BackupPage extends StatelessWidget {
             onTap: () async {
               final data = await Clipboard.getData('text/plain');
               final ok = await store.importBackup(data?.text ?? '', settings);
-              store.onNotice?.call(ok ? 'تنظیمات بازیابی شد.' : 'متن کپی‌شده پشتیبان معتبر سوسلنگ نیست.');
+              store.onNotice?.call(ok ? 'تنظیمات بازیابی شد.' : 'متن کپی‌شده پشتیبان معتبر پیام‌یار نیست.');
             }),
         ]),
       ];

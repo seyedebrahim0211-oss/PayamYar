@@ -207,7 +207,7 @@ object AppUpdater {
         val incoming = pm.getPackageArchiveInfo(apk.absolutePath, signFlags)
             ?: error("فایل دانلودشده بسته نصب اندروید معتبری نیست.")
         check(incoming.packageName == activity.packageName) {
-            "شناسه برنامه با سوسلنگ نصب‌شده متفاوت است. نصب متوقف شد."
+            "شناسه برنامه با پیام‌یار نصب‌شده متفاوت است. نصب متوقف شد."
         }
         @Suppress("DEPRECATION")
         val currentCode = if (Build.VERSION.SDK_INT >= 28) current.longVersionCode else current.versionCode.toLong()
@@ -217,9 +217,9 @@ object AppUpdater {
         fun digest(cert: ByteArray) = hex(MessageDigest.getInstance("SHA-256").digest(cert))
         val incomingSigner = signers(incoming).lastOrNull()?.let(::digest)
         val currentSigner = signers(current).lastOrNull()?.let(::digest)
-        check(incomingSigner == OFFICIAL_SIGNER) { "فایل دریافت‌شده امضای رسمی سوسلنگ را ندارد. نصب متوقف شد." }
+        check(incomingSigner == OFFICIAL_SIGNER) { "فایل دریافت‌شده امضای رسمی پیام‌یار را ندارد. نصب متوقف شد." }
         check(currentSigner == OFFICIAL_SIGNER) {
-            "این سوسلنگ یک نسخه آزمایشی با امضای قدیمی است و نمی‌تواند بدون حذف به نسخه رسمی ارتقا یابد. " +
+            "این پیام‌یار یک نسخه آزمایشی با امضای قدیمی است و نمی‌تواند بدون حذف به نسخه رسمی ارتقا یابد. " +
                 "ابتدا از مخاطبان و پیش‌نویس‌ها پشتیبان بگیرید، سپس نسخه رسمی را از honarmardomi.ir/payamyar نصب کنید."
         }
     }

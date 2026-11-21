@@ -133,7 +133,7 @@ class _SupportThreadScreenState extends State<SupportThreadScreen> {
                         child: Padding(
                           padding: const EdgeInsets.all(14),
                           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(entry.role == 'admin' ? 'پشتیبانی سوسلنگ' : 'شما',
+                            Text(entry.role == 'admin' ? 'پشتیبانی پیام‌یار' : 'شما',
                               style: const TextStyle(fontWeight: FontWeight.w800)),
                             const SizedBox(height: 6),
                             SelectableText(entry.body),

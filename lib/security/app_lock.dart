@@ -161,7 +161,7 @@ class _LockGateState extends State<LockGate> with WidgetsBindingObserver {
                 behavior: HitTestBehavior.opaque,
                 onTap: () {},
                 child: PinScreen(
-                  title: 'سوسلنگ قفل است',
+                  title: 'پیام‌یار قفل است',
                   subtitle: 'رمز برنامه را وارد کنید',
                   onSubmit: (pin) async {
                     final r = await widget.lock.unlock(pin);
@@ -373,11 +373,11 @@ class AppLockSettingsPage extends StatelessWidget {
               SwitchListTile(
                 secondary: Icon(Icons.lock_rounded, color: scheme.primary),
                 title: const Text('قفل برنامه با رمز'),
-                subtitle: const Text('هنگام باز شدن سوسلنگ رمز پرسیده می‌شود'),
+                subtitle: const Text('هنگام باز شدن پیام‌یار رمز پرسیده می‌شود'),
                 value: lock.enabled,
                 onChanged: (v) async {
                   if (v) {
-                    final pin = await askNewPin(context, title: 'رمز قفل سوسلنگ');
+                    final pin = await askNewPin(context, title: 'رمز قفل پیام‌یار');
                     if (pin != null) {
                       await lock.enable(pin);
                       onNotice?.call('قفل برنامه فعال شد.');
