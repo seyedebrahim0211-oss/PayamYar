@@ -321,9 +321,9 @@ class _ConversationsPageState extends State<ConversationsPage> {
         });
       }
     }
-    if (!cancelled()) setState(() {
-      _results = results; _hits = hits; _searching = false;
-    });
+    if (!cancelled()) {
+      setState(() { _results = results; _hits = hits; _searching = false; });
+    }
   }
 
   AppStore get store => widget.store;
