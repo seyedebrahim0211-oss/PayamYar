@@ -17,7 +17,7 @@ class InviteFriendsScreen extends StatefulWidget {
 class _InviteFriendsScreenState extends State<InviteFriendsScreen> {
   static const link = 'https://honarmardomi.ir/payamyar/';
   static const invitation =
-      'سلام! من از سوسلنگ برای مدیریت پیامک‌ها استفاده می‌کنم. '
+      'سلام! من از پیام‌یار برای مدیریت پیامک‌ها استفاده می‌کنم. '
       'اگر دوست داشتی، از اینجا با امکاناتش آشنا شو و دانلودش کن:\n$link';
   bool picking = false;
 
@@ -69,7 +69,7 @@ class _InviteFriendsScreenState extends State<InviteFriendsScreen> {
   Future<void> _share() async {
     try {
       if (await SmsBridge.shareText(invitation,
-          subject: 'دعوت به سوسلنگ', title: 'معرفی سوسلنگ به دوستان')) {
+          subject: 'دعوت به پیام‌یار', title: 'معرفی پیام‌یار به دوستان')) {
         return;
       }
     } catch (_) {}
@@ -97,7 +97,7 @@ class _InviteFriendsScreenState extends State<InviteFriendsScreen> {
               backgroundColor: Color(0x22FFFFFF),
               child: Icon(Icons.favorite_rounded, size: 36, color: Colors.white)),
             const SizedBox(height: 16),
-            const Text('سوسلنگ را به دوستانت معرفی کن',
+            const Text('پیام‌یار را به دوستانت معرفی کن',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w800)),
             const SizedBox(height: 10),

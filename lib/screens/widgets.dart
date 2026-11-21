@@ -25,14 +25,20 @@ class SenderAvatar extends StatelessWidget {
     } else {
       final icon = switch (category) {
         MessageCategory.banking => Icons.account_balance_rounded,
-        MessageCategory.service => Icons.verified_user_rounded,
+        MessageCategory.service => Icons.support_agent_rounded,
         MessageCategory.advertising => Icons.campaign_rounded,
         MessageCategory.personal => person ? Icons.person_rounded : Icons.business_rounded,
       };
       child = Icon(icon, color: Colors.white, size: radius * .95);
     }
     final fallback = BankBadge(sender: address, size: radius * 2,
-        fallback: SoftAvatar(seed: address, size: radius * 2, child: child));
+        square: true, fallback: SoftAvatar(seed: address, size: radius * 2,
+          color: switch (category) {
+            MessageCategory.banking => const Color(0xFF22694F),
+            MessageCategory.service => const Color(0xFF315F92),
+            MessageCategory.advertising => const Color(0xFF99522E),
+            MessageCategory.personal => null,
+          }, child: child));
     final phone = SmsBridge.normalizeNumber(address).replaceAll(RegExp(r'[^0-9]'), '');
     if (!SmsBridge.supported || category != MessageCategory.personal || phone.length < 7) {
       return fallback;

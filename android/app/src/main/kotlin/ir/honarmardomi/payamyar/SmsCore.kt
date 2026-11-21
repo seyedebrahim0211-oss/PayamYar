@@ -19,7 +19,7 @@ object SmsCore {
     private fun prefs(c: Context) = c.getSharedPreferences("sms_engine_v1", Context.MODE_PRIVATE)
     fun isDefault(c: Context) = Telephony.Sms.getDefaultSmsPackage(c) == c.packageName
     private fun requireDefault(c: Context) {
-        check(isDefault(c)) { "برای دسترسی به پیامک، سوسلنگ را پیامک‌رسان پیش‌فرض انتخاب کنید." }
+        check(isDefault(c)) { "برای دسترسی به پیامک، پیام‌یار را پیامک‌رسان پیش‌فرض انتخاب کنید." }
     }
     fun status(c: Context, id: String): String = prefs(c).getString("status:$id", "unknown") ?: "unknown"
     private val COLUMNS = arrayOf("_id", "address", "body", "date", "type", "read", "status", "sub_id")
@@ -112,7 +112,7 @@ object SmsCore {
         if (defaultId >= 0 && defaultId != Int.MAX_VALUE &&
             (active.isEmpty() || active.contains(defaultId))) return defaultId
         if (active.size == 1) return active.first()
-        error(if (active.size > 1) "برای ارسال، سیم‌کارت ۱ یا ۲ را در سوسلنگ انتخاب کنید."
+        error(if (active.size > 1) "برای ارسال، سیم‌کارت ۱ یا ۲ را در پیام‌یار انتخاب کنید."
             else "سیم‌کارت فعال شناسایی نشد. وضعیت سیم‌کارت و دسترسی تلفن را بررسی کنید.")
     }
 
@@ -252,7 +252,7 @@ object SmsCore {
             val reason = (e.message ?: e.javaClass.simpleName).take(180)
             prefs(c).edit().putString("status:$id", "send_failed:$reason").commit()
             if (row != null && isDefault(c)) c.contentResolver.update(row, ContentValues().apply { put("type", 5); put("status", 64) }, null, null)
-            notify(c, id.hashCode(), "ارسال پیامک انجام نشد", "سوسلنگ را باز کنید و وضعیت سیم‌کارت و مجوزها را بررسی کنید.")
+            notify(c, id.hashCode(), "ارسال پیامک انجام نشد", "پیام‌یار را باز کنید و وضعیت سیم‌کارت و مجوزها را بررسی کنید.")
         }
     }
     @Synchronized fun receipt(c: Context, intent: Intent, code: Int) {
@@ -365,7 +365,7 @@ object SmsCore {
         if (hasPendingIncoming(c)) scheduleDrain(c, 60_000)
     }
     fun mutate(c: Context, ids: List<Number>, delete: Boolean): Int {
-        check(isDefault(c)) { "ابتدا سوسلنگ را پیامک‌رسان پیش‌فرض کنید." }
+        check(isDefault(c)) { "ابتدا پیام‌یار را پیامک‌رسان پیش‌فرض کنید." }
         require(ids.size <= 500)
         var affected = 0
         ids.forEach { id ->
@@ -413,7 +413,7 @@ object SmsCore {
     }
     fun notify(c: Context, id: Int, title: String, text: String) {
         val manager = c.getSystemService(NotificationManager::class.java)
-        if (Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(NotificationChannel("alerts", "هشدارهای سوسلنگ", NotificationManager.IMPORTANCE_DEFAULT))
+        if (Build.VERSION.SDK_INT >= 26) manager.createNotificationChannel(NotificationChannel("alerts", "هشدارهای پیام‌یار", NotificationManager.IMPORTANCE_DEFAULT))
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(c, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val open = PendingIntent.getActivity(c, 0, Intent(c, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val n = NotificationCompat.Builder(c, "alerts").setSmallIcon(R.drawable.ic_stat_payamyar).setColor(0xFF087F81.toInt())
@@ -465,7 +465,7 @@ class IncomingSmsReceiver : BroadcastReceiver() {
             try {
                 SmsCore.receive(context, intent)
             } catch (_: Exception) {
-                SmsCore.notify(context, 3, "خطا در ذخیره پیامک", "فضای ذخیره‌سازی و مجوزهای سوسلنگ را بررسی کنید.")
+                SmsCore.notify(context, 3, "خطا در ذخیره پیامک", "فضای ذخیره‌سازی و مجوزهای پیام‌یار را بررسی کنید.")
             } finally { pending.finish() }
         }.start()
     }

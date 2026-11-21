@@ -19,6 +19,7 @@ import 'reports_screen.dart';
 import 'groups_screen.dart';
 import 'settings_screen.dart';
 import 'widgets.dart';
+import 'dialect_card.dart';
 
 class HomeShell extends StatefulWidget {
   final AppStore store;
@@ -437,7 +438,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
                     const BrandTile(size: 42),
                     const SizedBox(width: 12),
                     Flexible(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                      const Text('سوسلنگ', style: TextStyle(fontFamily: 'Vazirmatn', fontWeight: FontWeight.w900, fontSize: 21)),
+                      const Text('پیام‌یار', style: TextStyle(fontFamily: 'Vazirmatn', fontWeight: FontWeight.w900, fontSize: 21)),
                       Text(unread > 0 ? '${Jalali.digits(unread)} گفتگوی خوانده‌نشده' : 'همه پیام‌ها خوانده شده',
                         style: TextStyle(fontSize: 12, fontWeight: FontWeight.w400,
                           color: unread > 0 ? scheme.primary : scheme.onSurfaceVariant), maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -487,12 +488,14 @@ class _ConversationsPageState extends State<ConversationsPage> {
                       onPressed: () { search.clear(); _queueSearch(''); }),
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(28), borderSide: BorderSide.none)),
                 ))),
+              if (store.android && !widget.archive && query.isEmpty)
+                const SliverToBoxAdapter(child: DialectCard()),
               if (store.update != null && !store.updateDismissed && !widget.archive)
                 SliverToBoxAdapter(child: UpdateBanner(store: store)),
               if (store.android && !store.isDefault && !widget.archive)
                 SliverToBoxAdapter(child: _ActionBanner(
                   icon: Icons.star_rounded,
-                  text: 'سوسلنگ را پیام‌رسان پیش‌فرض کنید تا پیام‌های جدید را دریافت و مدیریت کند.',
+                  text: 'پیام‌یار را پیام‌رسان پیش‌فرض کنید تا پیام‌های جدید را دریافت و مدیریت کند.',
                   action: 'فعال‌سازی',
                   onTap: store.requestDefault))
               else if (store.android && !store.access.complete && !widget.archive)
@@ -589,7 +592,7 @@ class UpdateBanner extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
       child: Semantics(
         container: true,
-        label: 'به‌روزرسانی سوسلنگ',
+        label: 'به‌روزرسانی پیام‌یار',
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(24),
@@ -612,7 +615,7 @@ class UpdateBanner extends StatelessWidget {
                   ),
                   const SizedBox(width: 12),
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(error != null ? 'دریافت به‌روزرسانی کامل نشد' : 'سوسلنگ تازه‌تر آماده است',
+                    Text(error != null ? 'دریافت به‌روزرسانی کامل نشد' : 'پیام‌یار تازه‌تر آماده است',
                       style: const TextStyle(color: ink, fontWeight: FontWeight.w800, fontSize: 15.5)),
                     Text(meta, style: const TextStyle(color: Color(0xFFCFE9E4), fontSize: 12)),
                   ])),
@@ -717,6 +720,13 @@ class ConversationTile extends StatelessWidget {
     final info = store.infoFor(conversation.address);
     final unread = info?.unread ?? 0;
     final name = store.displayName(conversation.address);
+    final category = info?.category ?? MessageCategory.personal;
+    final tint = switch (category) {
+      MessageCategory.banking => const Color(0xFF308668),
+      MessageCategory.service => const Color(0xFF477AB2),
+      MessageCategory.personal => scheme.primary,
+      MessageCategory.advertising => scheme.tertiary,
+    };
     final pinned = store.isPinned(conversation.address);
     final bold = unread > 0;
     final bodyQuery = hit?.query ?? '';
@@ -725,7 +735,7 @@ class ConversationTile extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Material(
-        color: pinned ? scheme.primaryContainer.withValues(alpha: .38) : Colors.transparent,
+        color: Color.alphaBlend(tint.withValues(alpha: pinned ? .18 : .075), scheme.surface),
         borderRadius: BorderRadius.circular(20),
         child: InkWell(
           borderRadius: BorderRadius.circular(20),
@@ -744,6 +754,7 @@ class ConversationTile extends StatelessWidget {
                     textDirection: name == conversation.address && RegExp(r'^[\d+]').hasMatch(name) ? TextDirection.ltr : null,
                     textAlign: TextAlign.right,
                     style: TextStyle(fontSize: 16, fontWeight: bold ? FontWeight.w800 : FontWeight.w600))),
+                  Text(categoryName(category), style: Theme.of(context).textTheme.labelSmall),
                   if (pinned)
                     const Padding(padding: EdgeInsetsDirectional.only(start: 4),
                       child: Icon(Icons.push_pin_rounded, size: 16, color: SColor.goldInk)),

@@ -38,7 +38,7 @@ class IncomingBanner {
 
   static IncomingBanner preview({String? sender, int? sourceColor}) => IncomingBanner(
         address: 'preview',
-        name: sender ?? 'سوسلنگ',
+        name: sender ?? 'پیام‌یار',
         sourceColor: sourceColor,
         body: 'سلام! کد تأیید آزمایشی شما ۱۲۳۴۵ است.',
         time: DateTime.now(),

@@ -475,7 +475,7 @@ class _GlassBannerCardState extends State<GlassBannerCard> with SingleTickerProv
                             ),
                           ),
                           Text(
-                            'سوسلنگ · $clock',
+                            'پیام‌یار · $clock',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(color: Color(0xF2FFFFFF), fontSize: 12, height: 1.4),

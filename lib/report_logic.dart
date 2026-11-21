@@ -266,10 +266,11 @@ ReportResult buildReportAt(List<MessageRecord> messages, DateTime now) {
     final isFailedSend = m.outgoing && m.type == 5;
     final isAwaitingSend = m.outgoing && (m.type == 3 || m.type == 4 || m.type == 6);
     final isSentToNetwork = m.outgoing && !isFailedSend && !isAwaitingSend;
-    final key = ConversationLogic.normalize(m.sender);
+    final key = category == MessageCategory.personal && m.date.isAfter(oneYear)
+        ? ConversationLogic.normalize(m.sender) : m.sender;
     final weekday = (m.date.weekday + 1) % 7; // Saturday = 0
-    final isOtp = !m.outgoing && MessageLogic.otp(m.body) != null;
-    final isScam = !m.outgoing && MessageLogic.suspicious(m.body);
+    final isOtp = m.date.isAfter(oneYear) && !m.outgoing && MessageLogic.otp(m.body) != null;
+    final isScam = m.date.isAfter(oneYear) && !m.outgoing && MessageLogic.suspicious(m.body);
     String? bankName;
     List<String>? tokens;
     for (final p in ReportPeriod.values) {
@@ -502,7 +503,7 @@ String reportAsText(ReportResult r, PeriodInsight p, ReportPeriod period, {requi
   String fa(Object v) => Jalali.digits(v);
   final now = r.builtAt ?? DateTime.now();
   final j = Jalali.fromGregorian(now.year, now.month, now.day);
-  b.writeln('📊 گزارش سوسلنگ — ${reportPeriodNames[period]} اخیر (${fa('${j[0]}/${j[1]}/${j[2]}')})');
+  b.writeln('📊 گزارش پیام‌یار — ${reportPeriodNames[period]} اخیر (${fa('${j[0]}/${j[1]}/${j[2]}')})');
   b.writeln('');
   b.writeln('✉️ دریافتی: ${fa(p.received)} • ارسالی: ${fa(p.sent)} • میانگین روزانه: ${fa(p.perDay.toStringAsFixed(1))}');
   for (final c in MessageCategory.values) {
@@ -536,7 +537,7 @@ String reportAsText(ReportResult r, PeriodInsight p, ReportPeriod period, {requi
     }
   }
   b.writeln('');
-  b.writeln('— محاسبه‌شده روی گوشی با سوسلنگ');
+  b.writeln('— محاسبه‌شده روی گوشی با پیام‌یار');
   return b.toString();
 }
 

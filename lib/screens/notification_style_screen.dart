@@ -342,7 +342,7 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                 SettingsGroup(title: 'اعلان شیشه‌ای یکپارچه', children: [
                   SwitchListTile(
                     secondary: Icon(Icons.web_asset_rounded, color: scheme.primary),
-                    title: const Text('نمایش بنر هنگام باز بودن سوسلنگ'),
+                    title: const Text('نمایش بنر هنگام باز بودن پیام‌یار'),
                     subtitle: const Text('با لمس کارت، گفتگو باز می‌شود. فلش کنار نام فرستنده، متن کامل و گزینه‌ها را نشان می‌دهد.'),
                     value: s.notifyInApp,
                     onChanged: (v) => s.updateNotify(notifyInApp: v),
@@ -359,7 +359,7 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                     trailing: DropdownButton<String>(
                       value: sender?.key ?? '',
                       items: [
-                        const DropdownMenuItem(value: '', child: Text('سوسلنگ')),
+                        const DropdownMenuItem(value: '', child: Text('پیام‌یار')),
                         for (final item in _sources) DropdownMenuItem(value: item.key, child: Text(item.title)),
                       ],
                       onChanged: (key) => setState(() => _sourceKey = key),

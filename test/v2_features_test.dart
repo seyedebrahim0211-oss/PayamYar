@@ -109,7 +109,7 @@ void main() {
     final insights = buildInsights(month, ReportPeriod.month);
     expect(insights.any((i) => i.text.contains('بیشتر')), isTrue);
     final text = reportAsText(r, month, ReportPeriod.month, nameOf: (k) => k, money: (v) => '$v');
-    expect(text, contains('گزارش سوسلنگ'));
+    expect(text, contains('گزارش پیام‌یار'));
     expect(transactionsAsRows(month.transactions).length, 2);
   });
 

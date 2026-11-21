@@ -8,8 +8,8 @@ class BrandMark extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ClipRRect(
     borderRadius: BorderRadius.circular(size * .22),
-    child: Container(width: size, height: size, color: const Color(0xFF011437),
-      padding: EdgeInsets.all(size * .085), child: Image.asset('assets/susolang.png')),
+    child: Container(width: size, height: size, color: const Color(0xFF01383F),
+      padding: EdgeInsets.zero, child: Image.asset('assets/payamyar-mark.webp')),
   );
 }
 
@@ -34,7 +34,7 @@ class BrandTile extends StatelessWidget {
   Widget build(BuildContext context) => BrandMark(size: size);
 }
 
-/// PayamYar logotype: emblem tile + heavy Vazirmatn wordmark «سوسلنگ» whose final
+/// PayamYar logotype: emblem tile + heavy Vazirmatn wordmark «پیام‌یار» whose final
 /// stroke carries the gold sparkle, with an optional tagline.
 class PayamYarLogotype extends StatelessWidget {
   final double height;
@@ -45,7 +45,7 @@ class PayamYarLogotype extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ink = color ?? Theme.of(context).colorScheme.onSurface;
-    final word = Text('سوسلنگ', textDirection: TextDirection.rtl,
+    final word = Text('پیام‌یار', textDirection: TextDirection.rtl,
       style: TextStyle(fontFamily: 'Vazirmatn', fontSize: height * .62, fontWeight: FontWeight.w900,
         height: 1.1, letterSpacing: 0, color: ink));
     return Row(mainAxisSize: MainAxisSize.min, textDirection: TextDirection.rtl, children: [
