@@ -176,7 +176,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                 ),
                 child: NavigationBar(
                   elevation: 0,
-                  height: 76,
+                  height: 70,
                   labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
                   backgroundColor: Colors.transparent,
                   surfaceTintColor: Colors.transparent,
@@ -496,7 +496,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
           appBar: AppBar(
             centerTitle: true,
             titleSpacing: 8,
-            toolbarHeight: 72,
+            toolbarHeight: 64,
             title: widget.archive
                 ? const Text('بایگانی', textAlign: TextAlign.center)
                 : Semantics(
@@ -561,7 +561,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
             onRefresh: store.android ? store.loadAll : () async {},
             child: CustomScrollView(slivers: [
               SliverToBoxAdapter(child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 5, 14, 9),
+                padding: const EdgeInsets.fromLTRB(14, 2, 14, 6),
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(21),
@@ -580,7 +580,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
                       hintStyle: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13.5),
                       filled: true,
                       fillColor: scheme.surface,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 13, horizontal: 14),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 9, horizontal: 14),
                       prefixIcon: Icon(Icons.manage_search_rounded, color: scheme.primary, size: 25),
                       suffixIcon: query.isEmpty ? null : IconButton(
                         tooltip: 'پاک کردن جستجو',
