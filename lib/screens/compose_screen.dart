@@ -644,8 +644,8 @@ class _ComposeScreenState extends State<ComposeScreen> {
             controller: body,
             onChanged: (_) { _saveDraft(); setState(() {}); },
             maxLength: 2000,
-            minLines: 5,
-            maxLines: 9,
+            minLines: 4,
+            maxLines: 7,
             textAlignVertical: TextAlignVertical.top,
             decoration: const InputDecoration(
               hintText: 'پیام خود را اینجا بنویسید…',
@@ -692,28 +692,38 @@ class _ComposeScreenState extends State<ComposeScreen> {
                 _saveDraft();
               }),
           ]),
-          const SizedBox(height: 16),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.emoji_emotions_outlined),
-            label: const Text('استیکرهای متنی و نمادهای ایرانی'),
-            onPressed: _showLocalStickers,
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.compress_rounded),
-            label: const Text('کاهش تعداد بخش‌های پیامک • با پیش‌نمایش'),
-            onPressed: body.text.trim().isEmpty ? null : _shortenSms,
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.auto_fix_high_rounded),
-            label: const Text('ویرایش املا و لحن پیام'),
-            onPressed: body.text.trim().isEmpty ? null : () async {
-              final edited = await showPolishSheet(context, body.text);
-              if (edited == null || !mounted) return;
-              setState(() => body.text = edited);
-              _saveDraft();
-            },
+          const SizedBox(height: 12),
+          Card(
+            margin: EdgeInsets.zero,
+            child: ExpansionTile(
+              initiallyExpanded: false,
+              dense: true,
+              leading: const Icon(Icons.tune_rounded),
+              title: const Text('ابزارهای بیشتر'),
+              subtitle: const Text('استیکر، اصلاح متن و کاهش بخش‌های پیامک'),
+              childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              children: [
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.emoji_emotions_outlined),
+                  label: const Text('استیکرهای متنی و نمادهای ایرانی'),
+                  onPressed: _showLocalStickers),
+                const SizedBox(height: 5),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.compress_rounded),
+                  label: const Text('کاهش تعداد بخش‌های پیامک • با پیش‌نمایش'),
+                  onPressed: body.text.trim().isEmpty ? null : _shortenSms),
+                const SizedBox(height: 5),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.auto_fix_high_rounded),
+                  label: const Text('ویرایش املا و لحن پیام'),
+                  onPressed: body.text.trim().isEmpty ? null : () async {
+                    final edited = await showPolishSheet(context, body.text);
+                    if (edited == null || !mounted) return;
+                    setState(() => body.text = edited);
+                    _saveDraft();
+                  }),
+              ],
+            ),
           ),
           if (store.sims.length > 2) ...[
             const SizedBox(height: 16),
