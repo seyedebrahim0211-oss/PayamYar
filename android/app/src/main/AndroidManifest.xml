@@ -36,6 +36,13 @@
                 <data android:scheme="sms"/><data android:scheme="smsto"/>
                 <data android:scheme="mms"/><data android:scheme="mmsto"/>
             </intent-filter>
+            <!-- Receive text shared from browsers and other apps. No SMS is sent
+                 until the user chooses a recipient and confirms the composer. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="text/plain"/>
+            </intent-filter>
         </activity>
         <activity android:name=".BubbleActivity" android:exported="false"
             android:resizeableActivity="true" android:allowEmbedded="true"
