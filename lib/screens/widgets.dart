@@ -1,4 +1,6 @@
 import 'dart:typed_data';
+import 'dart:io';
+import '../chat_personalization.dart';
 import 'package:flutter/material.dart';
 import '../design/tokens.dart';
 import '../message_logic.dart';
@@ -17,7 +19,12 @@ class SenderAvatar extends StatelessWidget {
   static final Map<String, Future<Uint8List?>> _photoCache = {};
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: ChatPersonalizations.instance,
+    builder: (context, _) => _avatar(context),
+  );
+
+  Widget _avatar(BuildContext context) {
     final person = name != address || RegExp(r'^\+?[\d\s۰-۹]{7,}$').hasMatch(address);
     Widget child;
     if (category == MessageCategory.personal && person && name.isNotEmpty && name != address) {
@@ -39,6 +46,19 @@ class SenderAvatar extends StatelessWidget {
             MessageCategory.advertising => const Color(0xFF99522E),
             MessageCategory.personal => null,
           }, child: child));
+    // An explicit per-chat avatar has priority over the phone-book picture,
+    // bank logo and letter fallback, and is read only from private app storage.
+    final chosen = ChatPersonalizations.instance.forAddress(address).avatarPath;
+    if (chosen != null) {
+      final pixels = (radius * 2 * MediaQuery.devicePixelRatioOf(context)).round();
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(radius * .68),
+        child: Image.file(File(chosen),
+          width: radius * 2, height: radius * 2, fit: BoxFit.cover,
+          cacheWidth: pixels.clamp(48, 512), gaplessPlayback: true,
+          errorBuilder: (_, __, ___) => fallback),
+      );
+    }
     final phone = SmsBridge.normalizeNumber(address).replaceAll(RegExp(r'[^0-9]'), '');
     if (!SmsBridge.supported || category != MessageCategory.personal || phone.length < 7) {
       return fallback;

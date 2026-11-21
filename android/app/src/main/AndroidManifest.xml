@@ -38,8 +38,15 @@
             </intent-filter>
             <!-- Receive text shared from browsers and other apps. No SMS is sent
                  until the user chooses a recipient and confirms the composer. -->
-            <intent-filter>
+            <!-- Appear in the Android Sharesheet for plaintext, rich shared
+                 text and links. The SMS composer still requires user approval. -->
+            <intent-filter android:label="پیام‌یار">
                 <action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="text/*"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <data android:mimeType="text/plain"/>
             </intent-filter>

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'chat_personalization.dart';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -128,6 +129,7 @@ class AppStore extends ChangeNotifier {
   }
 
   Future<void> init() async {
+    unawaited(ChatPersonalizations.instance.load());
     final p = await SharedPreferences.getInstance();
     await Future.wait([smsGroups.load(), folders.load()]);
     onboarded = p.getBool('onboarded') ?? false;

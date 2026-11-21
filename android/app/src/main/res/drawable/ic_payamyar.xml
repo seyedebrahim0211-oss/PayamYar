@@ -1,6 +1,5 @@
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@color/susolang_navy"/>
-    <item android:left="4dp" android:right="4dp" android:top="4dp" android:bottom="4dp">
-        <bitmap android:src="@drawable/payamyar_mark" android:gravity="fill"/>
-    </item>
+    <item android:drawable="@drawable/payamyar_symbol"
+          android:left="8dp" android:right="8dp" android:top="8dp" android:bottom="8dp"/>
 </layer-list>

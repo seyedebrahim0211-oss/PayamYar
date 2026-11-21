@@ -1,16 +1,59 @@
 import 'package:flutter/material.dart';
 import 'design/tokens.dart';
 
-/// Approved wagtail mark with breathing room around the silhouette.
+/// Compact speech emblem shared with Android's vector launcher icon.
+/// No tiny Persian text or detached decorative dot at small icon sizes.
 class BrandMark extends StatelessWidget {
   final double size;
   const BrandMark({super.key, this.size = 24});
   @override
   Widget build(BuildContext context) => ClipRRect(
-    borderRadius: BorderRadius.circular(size * .22),
-    child: Container(width: size, height: size, color: const Color(0xFF01383F),
-      padding: EdgeInsets.zero, child: Image.asset('assets/payamyar-mark.webp')),
+    borderRadius: BorderRadius.circular(size * .23),
+    child: Container(
+      width: size, height: size,
+      color: const Color(0xFF01383F),
+      padding: EdgeInsets.all(size * .09),
+      child: CustomPaint(painter: const _PayamSymbolPainter()),
+    ),
   );
+}
+
+class _PayamSymbolPainter extends CustomPainter {
+  const _PayamSymbolPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.scale(size.width / 108, size.height / 108);
+    final speech = Path()
+      ..moveTo(31, 26)
+      ..cubicTo(25, 26, 21, 30, 21, 36)
+      ..lineTo(21, 63)
+      ..cubicTo(21, 69, 25, 73, 31, 73)
+      ..lineTo(35, 73)
+      ..lineTo(35, 85)
+      ..lineTo(49, 73)
+      ..lineTo(77, 73)
+      ..cubicTo(83, 73, 87, 69, 87, 63)
+      ..lineTo(87, 36)
+      ..cubicTo(87, 30, 83, 26, 77, 26)
+      ..close();
+    canvas.drawPath(speech, Paint()..color = const Color(0xFFFFF9EC));
+    canvas.drawRRect(RRect.fromRectAndRadius(
+      const Rect.fromLTWH(36, 40, 36, 6), const Radius.circular(2)),
+      Paint()..color = const Color(0xFF087773));
+    canvas.drawRRect(RRect.fromRectAndRadius(
+      const Rect.fromLTWH(36, 53, 25, 6), const Radius.circular(2)),
+      Paint()..color = const Color(0xFF087773));
+    final accent = Path()
+      ..moveTo(72, 52)..lineTo(78, 58)..lineTo(72, 64)
+      ..lineTo(66, 58)..close();
+    canvas.drawPath(accent, Paint()..color = const Color(0xFFC9A56A));
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _PayamSymbolPainter oldDelegate) => false;
 }
 
 /// Brand colours shared by the logotype, icons and website.

@@ -1,0 +1,13 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- The emblem deliberately contains no oversized text or detached dot. -->
+    <path android:fillColor="#FFF9EC"
+        android:pathData="M31,26 C25,26 21,30 21,36 L21,63 C21,69 25,73 31,73 L35,73 L35,85 L49,73 L77,73 C83,73 87,69 87,63 L87,36 C87,30 83,26 77,26 Z"/>
+    <path android:fillColor="#087773"
+        android:pathData="M36,40 L72,40 L72,46 L36,46 Z"/>
+    <path android:fillColor="#087773"
+        android:pathData="M36,53 L61,53 L61,59 L36,59 Z"/>
+    <path android:fillColor="#C9A56A"
+        android:pathData="M72,52 L78,58 L72,64 L66,58 Z"/>
+</vector>

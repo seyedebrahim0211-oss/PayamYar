@@ -1,3 +1,4 @@
+import 'dart:async' show Timer, unawaited;
 import 'package:flutter/material.dart';
 import '../jalali.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -46,6 +47,8 @@ class _ComposeScreenState extends State<ComposeScreen> {
   final Map<String, String> contactNames = {};
   List<Map<String, String>> _contacts = const [];
   Map<String, int> _frequency = const {};
+  List<Map<String, String>> _suggestions = const [];
+  Timer? _draftTimer;
   final List<PendingSend> undoGroup = [];
   String lastSentBody = '';
   bool sending = false;
@@ -88,6 +91,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
         _contacts = valid;
         _frequency = RecipientSuggestions.frequency(store.messages);
         contactNames.addAll({for (final c in valid) c['number']!: c['name']!});
+        _refreshSuggestions();
       });
     } catch (_) { /* Manual number entry remains available. */ }
   }
@@ -98,19 +102,44 @@ class _ComposeScreenState extends State<ComposeScreen> {
     setState(() {
       recipients.add(number);
       to.clear();
+      _refreshSuggestions();
     });
     _saveDraft();
   }
 
-  Future<void> _saveDraft() async {
+  /// Delay writes during typing. Sending and recipient changes can still
+  /// flush immediately; no SMS content leaves the device.
+  void _refreshSuggestions() {
+    _suggestions = _contacts.isEmpty ? const [] : RecipientSuggestions.rank(
+      _contacts, _frequency, to.text,
+      excluded: recipients.map(RecipientSuggestions.key).toSet(),
+      limit: to.text.trim().isEmpty ? 4 : 5);
+  }
+
+  Future<void> _saveDraft({bool immediate = false}) async {
+    _draftTimer?.cancel();
+    if (immediate) {
+      await _flushDraft();
+    } else {
+      _draftTimer = Timer(const Duration(milliseconds: 350), () =>
+        unawaited(_flushDraft()));
+    }
+  }
+
+  Future<void> _flushDraft() async {
+    final number = to.text;
+    final message = body.text;
+    final selected = recipients.toList(growable: false);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('draft_to', to.text);
-    await prefs.setString('draft_body', body.text);
-    await prefs.setStringList('draft_recipients', recipients.toList());
+    await prefs.setString('draft_to', number);
+    await prefs.setString('draft_body', message);
+    await prefs.setStringList('draft_recipients', selected);
   }
 
   @override
   void dispose() {
+    _draftTimer?.cancel();
+    unawaited(_flushDraft());
     to.dispose();
     body.dispose();
     groupName.dispose();
@@ -137,6 +166,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
     setState(() {
       recipients.addAll(incoming);
       to.clear();
+      _refreshSuggestions();
     });
     _saveDraft();
   }
@@ -168,8 +198,9 @@ class _ComposeScreenState extends State<ComposeScreen> {
         recipients
           ..clear()
           ..addAll(selected.map(_normalize));
+        _refreshSuggestions();
       });
-      await _saveDraft();
+      await _saveDraft(immediate: true);
     } catch (_) {
       store.onNotice?.call('خواندن مخاطبان ممکن نشد. مجوز دفترچه تلفن را بررسی کنید.');
     } finally {
@@ -313,7 +344,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
           ..addAll(targets);
         body.text = text;
       });
-      await _saveDraft();
+      await _saveDraft(immediate: true);
       return;
     }
     setState(() { sending = false; });
@@ -322,7 +353,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
       to.clear();
       body.clear();
       recipients.clear();
-      await _saveDraft();
+      await _saveDraft(immediate: true);
       if (!mounted) return;
       Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
         builder: (_) => ConversationScreen(store: store, address: address)));
@@ -335,7 +366,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
       to.clear();
       if (failed.isEmpty) body.clear();
     });
-    await _saveDraft();
+    await _saveDraft(immediate: true);
     if (!mounted) return;
     if (failed.isNotEmpty) {
       store.onNotice?.call('${failed.length} شماره در صف قرار نگرفت؛ متن برای ارسال مجدد محفوظ است.');
@@ -404,7 +435,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
     ));
     if (apply != true || !mounted) return;
     setState(() => body.text = compact);
-    await _saveDraft();
+    await _saveDraft(immediate: true);
   }
 
   Future<void> _pickOccasion() async {
@@ -494,7 +525,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
                   keyboardType: TextInputType.phone,
                   textInputAction: TextInputAction.done,
                   onSubmitted: (_) => _addTyped(),
-                  onChanged: (_) { _saveDraft(); setState(() {}); },
+                  onChanged: (_) { _refreshSuggestions(); _saveDraft(); setState(() {}); },
                   decoration: const InputDecoration(
                     hintText: 'نام یا شماره گیرنده',
                     prefixIcon: Icon(Icons.person_outline_rounded),
@@ -512,17 +543,31 @@ class _ComposeScreenState extends State<ComposeScreen> {
                 const SizedBox(height: 6),
                 Text(to.text.trim().isEmpty ? 'مخاطبین پرکاربرد' : 'پیشنهاد بر اساس نام و شماره',
                   style: Theme.of(context).textTheme.labelMedium?.copyWith(color: scheme.primary)),
-                for (final item in RecipientSuggestions.rank(_contacts, _frequency, to.text,
-                    excluded: recipients.map(RecipientSuggestions.key).toSet(), limit: 5))
-                  ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.person_add_alt_1_outlined),
-                    title: Text(item['name']?.isNotEmpty == true ? item['name']! : item['number']!),
-                    subtitle: Text(item['number'] ?? '', textDirection: TextDirection.ltr),
-                    trailing: const Icon(Icons.add_circle_outline),
-                    onTap: () => _chooseSuggestion(item),
-                  ),
+                if (to.text.trim().isNotEmpty)
+                  for (final item in _suggestions)
+                    ListTile(
+                      dense: true, visualDensity: VisualDensity.compact,
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.person_add_alt_1_outlined),
+                      title: Text(item['name']?.isNotEmpty == true ? item['name']! : item['number']!),
+                      subtitle: Text(item['number'] ?? '', textDirection: TextDirection.ltr),
+                      trailing: const Icon(Icons.add_circle_outline),
+                      onTap: () => _chooseSuggestion(item)),
+                if (to.text.trim().isEmpty && _suggestions.isNotEmpty)
+                  SizedBox(height: 40, child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: [
+                      for (final item in _suggestions)
+                        Padding(
+                          padding: const EdgeInsetsDirectional.only(end: 6),
+                          child: ActionChip(
+                            visualDensity: VisualDensity.compact,
+                            avatar: const Icon(Icons.person_add_alt_rounded, size: 16),
+                            label: Text(item['name']?.isNotEmpty == true ? item['name']! : item['number']!),
+                            onPressed: () => _chooseSuggestion(item)),
+                        ),
+                    ],
+                  )),
               ],
               if (recipients.isNotEmpty) ...[
                 const SizedBox(height: 4),
@@ -600,8 +645,8 @@ class _ComposeScreenState extends State<ComposeScreen> {
             controller: body,
             onChanged: (_) { _saveDraft(); setState(() {}); },
             maxLength: 2000,
-            minLines: 5,
-            maxLines: 9,
+            minLines: 4,
+            maxLines: 7,
             textAlignVertical: TextAlignVertical.top,
             decoration: const InputDecoration(
               hintText: 'پیام خود را اینجا بنویسید…',
@@ -648,28 +693,38 @@ class _ComposeScreenState extends State<ComposeScreen> {
                 _saveDraft();
               }),
           ]),
-          const SizedBox(height: 16),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.emoji_emotions_outlined),
-            label: const Text('استیکرهای متنی و نمادهای ایرانی'),
-            onPressed: _showLocalStickers,
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.compress_rounded),
-            label: const Text('کاهش تعداد بخش‌های پیامک • با پیش‌نمایش'),
-            onPressed: body.text.trim().isEmpty ? null : _shortenSms,
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.auto_fix_high_rounded),
-            label: const Text('ویرایش املا و لحن پیام'),
-            onPressed: body.text.trim().isEmpty ? null : () async {
-              final edited = await showPolishSheet(context, body.text);
-              if (edited == null || !mounted) return;
-              setState(() => body.text = edited);
-              _saveDraft();
-            },
+          const SizedBox(height: 12),
+          Card(
+            margin: EdgeInsets.zero,
+            child: ExpansionTile(
+              initiallyExpanded: false,
+              dense: true,
+              leading: const Icon(Icons.tune_rounded),
+              title: const Text('ابزارهای بیشتر'),
+              subtitle: const Text('استیکر، اصلاح متن و کاهش بخش‌های پیامک'),
+              childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              children: [
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.emoji_emotions_outlined),
+                  label: const Text('استیکرهای متنی و نمادهای ایرانی'),
+                  onPressed: _showLocalStickers),
+                const SizedBox(height: 5),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.compress_rounded),
+                  label: const Text('کاهش تعداد بخش‌های پیامک • با پیش‌نمایش'),
+                  onPressed: body.text.trim().isEmpty ? null : _shortenSms),
+                const SizedBox(height: 5),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.auto_fix_high_rounded),
+                  label: const Text('ویرایش املا و لحن پیام'),
+                  onPressed: body.text.trim().isEmpty ? null : () async {
+                    final edited = await showPolishSheet(context, body.text);
+                    if (edited == null || !mounted) return;
+                    setState(() => body.text = edited);
+                    _saveDraft();
+                  }),
+              ],
+            ),
           ),
           if (store.sims.length > 2) ...[
             const SizedBox(height: 16),
