@@ -12,6 +12,14 @@ class GroupsScreen extends StatelessWidget {
   final AppStore store;
   const GroupsScreen({super.key, required this.store});
 
+  String _groupSubtitle(SmsGroup group) {
+    final batches = store.smsGroups.batchesFor(group.id);
+    final info = batches.isEmpty
+        ? 'هنوز ارسال نشده'
+        : 'آخرین ارسال: ${Jalali.short(batches.first.createdAt)}';
+    return '${Jalali.digits(group.recipients.length)} عضو · $info';
+  }
+
   Future<void> _delete(BuildContext context, SmsGroup group) async {
     final confirmed = await showDialog<bool>(context: context, builder: (ctx) =>
       AlertDialog(
@@ -166,12 +174,7 @@ class GroupsScreen extends StatelessWidget {
                     child: Icon(Icons.groups_rounded, color: scheme.primary),
                   ),
                   title: Text(group.name, style: const TextStyle(fontWeight: FontWeight.w800)),
-                  subtitle: Text(() {
-                    final batches = store.smsGroups.batchesFor(group.id);
-                    return '${Jalali.digits(group.recipients.length)} عضو · '
-                        '${batches.isEmpty ? "هنوز ارسال نشده" :
-                        "آخرین ارسال: ${Jalali.short(batches.first.createdAt)}"}';
-                  }()),
+                  subtitle: Text(_groupSubtitle(group)),
                   trailing: PopupMenuButton<String>(
                     tooltip: 'مدیریت گروه',
                     onSelected: (choice) {
