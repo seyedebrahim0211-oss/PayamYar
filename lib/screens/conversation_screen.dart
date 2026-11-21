@@ -688,10 +688,11 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
     final personalize = ChatPersonalizations.instance;
     await personalize.load();
     if (!mounted) return;
+    final visualChanges = Listenable.merge([personalize, settings]);
     await showModalBottomSheet<void>(
       context: context, showDragHandle: true, isScrollControlled: true,
       builder: (sheet) => ListenableBuilder(
-        listenable: personalize,
+        listenable: visualChanges,
         builder: (context, _) {
           final custom = personalize.forAddress(widget.address);
           return SafeArea(child: SingleChildScrollView(
