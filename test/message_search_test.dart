@@ -25,6 +25,13 @@ void main() {
     expect(MessageSearch.matches('پرداخت انجام شد', 'پرداخت لغو'), isFalse);
   });
 
+  test('Iranian mobile aliases cover local, country-code and 00 formats', () {
+    expect(MessageSearch.phoneAliases('0912 345 6789'), contains('989123456789'));
+    expect(MessageSearch.phoneAliases('+98 912 345 6789'), contains('09123456789'));
+    expect(MessageSearch.phoneAliases('0098 9123456789'), contains('09123456789'));
+    expect(MessageSearch.phoneAliases('MCI Club'), isEmpty);
+  });
+
   test('Persian and Arabic text is normalized', () {
     expect(MessageSearch.matches('نامه‌ای درباره کتاب', 'كتاب'), isTrue);
     expect(MessageSearch.matches('آزمون شماره ۱۲۳', '123'), isTrue);

@@ -51,6 +51,22 @@ class MessageSearch {
   static String indexedBody(MessageRecord message) =>
       _indexedBodies[message] ??= normalize(message.body);
 
+  /// Iranian mobile numbers match across 09, +98 and 0098 spellings.
+  /// Index only in memory; never upload phone numbers for search.
+  static String phoneAliases(String raw) {
+    final digits = normalize(raw).replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.length == 11 && digits.startsWith('09')) {
+      final international = '98${digits.substring(1)}';
+      return '$international 00$international';
+    }
+    if (digits.length == 12 && digits.startsWith('989')) {
+      return '0${digits.substring(2)} 00$digits';
+    }
+    if (digits.length == 14 && digits.startsWith('00989')) {
+      return '0${digits.substring(4)} ${digits.substring(2)}';
+    }
+    return '';
+  }
   /// Every query word must occur; word order and punctuation are irrelevant.
   static List<String> terms(String query) {
     final needle = normalize(query);
@@ -59,12 +75,14 @@ class MessageSearch {
 
   static bool containsTerms(String normalizedSource, List<String> terms) {
     if (terms.isEmpty) return false;
-    final missing = terms.where((term) => !normalizedSource.contains(term)).toList();
-    if (missing.isEmpty) return true;
-    // Tolerate grouped numbers (۱۲٬۳۴۵ vs 12345) and joined Persian words
-    // (پیام‌ها vs پیامها) without introducing cloud/fuzzy network lookup.
-    final compact = normalizedSource.replaceAll(' ', '');
-    return missing.every(compact.contains);
+    // Avoid allocating a missing-token list and compacting every message.
+    String? compact;
+    for (final term in terms) {
+      if (normalizedSource.contains(term)) continue;
+      compact ??= normalizedSource.replaceAll(' ', '');
+      if (!compact.contains(term)) return false;
+    }
+    return true;
   }
 
   static bool matches(String source, String query) =>

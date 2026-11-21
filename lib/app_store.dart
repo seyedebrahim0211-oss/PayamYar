@@ -607,6 +607,9 @@ class AppStore extends ChangeNotifier {
       // A failed report must never break the inbox; the next change retries.
     } finally {
       _reportRunning = false;
+      // A newer SMS page may arrive while the isolate is computing. Never
+      // leave reports stuck with a stale snapshot until the user opens them.
+      if (_reportRevision != rev) _scheduleReport();
     }
     notifyListeners();
   }
