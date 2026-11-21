@@ -287,7 +287,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
       _searching = tokens.isNotEmpty;
     });
     if (_searching) {
-      _searchDebounce = Timer(const Duration(milliseconds: 130), () => _runSearch(tokens, generation));
+      _searchDebounce = Timer(const Duration(milliseconds: 105), () => _runSearch(tokens, generation));
     }
   }
 
@@ -312,8 +312,18 @@ class _ConversationsPageState extends State<ConversationsPage> {
         hits[c.address] = (query: remaining.join(' '), first: matches.first, count: matches.length);
       }
       results.add(c);
+      // Surface early hits during very large offline searches without blocking
+      // scrolling or waiting for the entire SMS history to finish scanning.
+      if (results.length % 24 == 0 && !cancelled()) {
+        setState(() {
+          _results = List<Conversation>.of(results, growable: false);
+          _hits = Map.of(hits);
+        });
+      }
     }
-    if (!cancelled()) setState(() { _results = results; _hits = hits; _searching = false; });
+    if (!cancelled()) setState(() {
+      _results = results; _hits = hits; _searching = false;
+    });
   }
 
   AppStore get store => widget.store;
