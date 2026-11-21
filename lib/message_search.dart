@@ -59,12 +59,16 @@ class MessageSearch {
 
   static bool containsTerms(String normalizedSource, List<String> terms) {
     if (terms.isEmpty) return false;
-    final missing = terms.where((term) => !normalizedSource.contains(term)).toList();
-    if (missing.isEmpty) return true;
-    // Tolerate grouped numbers (۱۲٬۳۴۵ vs 12345) and joined Persian words
-    // (پیام‌ها vs پیامها) without introducing cloud/fuzzy network lookup.
-    final compact = normalizedSource.replaceAll(' ', '');
-    return missing.every(compact.contains);
+    // The common case is an exact normalized substring match: avoid building
+    // a temporary list and compacting a message body on every keystroke.
+    String? compact;
+    for (final term in terms) {
+      if (normalizedSource.contains(term)) continue;
+      // Also match grouped digits and Persian words joined without ZWNJ.
+      compact ??= normalizedSource.replaceAll(' ', '');
+      if (!compact.contains(term)) return false;
+    }
+    return true;
   }
 
   static bool matches(String source, String query) =>
