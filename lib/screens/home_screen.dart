@@ -254,7 +254,8 @@ class _ConversationsPageState extends State<ConversationsPage> {
       _senderDirectoryRevision = store.directoryRevision;
     }
     return _senderIndex.putIfAbsent(c.address, () => MessageSearch.normalize(
-      '${store.displayName(c.address)} ${c.address} ${store.key(c.address)}'));
+      '${store.displayName(c.address)} ${c.address} ${store.key(c.address)} '
+      '${MessageSearch.phoneAliases(c.address)}'));
   }
 
   /// Merged listenable for the rebuild: built once, not on every build.
