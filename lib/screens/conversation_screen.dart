@@ -532,7 +532,10 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
             decoration: personal.wallpaperPath == null ? look.background : BoxDecoration(
               color: scheme.surface,
               image: DecorationImage(
-                image: FileImage(File(personal.wallpaperPath!)),
+                // Decode to screen-scale dimensions to avoid memory spikes
+                // from very large camera photos used as chat wallpapers.
+                image: ResizeImage(FileImage(File(personal.wallpaperPath!)),
+                  width: 1080, height: 1920),
                 fit: BoxFit.cover,
                 colorFilter: ColorFilter.mode(
                   scheme.surface.withValues(alpha: scheme.brightness == Brightness.dark ? .52 : .40),
