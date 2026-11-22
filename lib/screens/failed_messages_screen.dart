@@ -135,7 +135,7 @@ class _FailedMessagesScreenState extends State<FailedMessagesScreen> {
         }
       }
     } finally {
-      widget.store.notifyListeners();
+      widget.store.notifyBulkQueueChanged();
       if (mounted) setState(() => _busy = false);
     }
     widget.store.onNotice?.call(
