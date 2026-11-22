@@ -155,6 +155,60 @@ object SmsCore {
     private val groupWorker = java.util.concurrent.Executors.newSingleThreadScheduledExecutor()
     private var groupTimer: java.util.concurrent.ScheduledFuture<*>? = null
     private var groupDue = Long.MAX_VALUE
+    // Network acceptance of all multipart segments (not recipient delivery) releases
+    // the next attempt. There is no universal carrier-safe messages/second value.
+    private const val BULK_GAP_MS = 4000L
+    private const val BULK_ACK_TIMEOUT_MS = 45000L
+    private const val BULK_WINDOW_MS = 60000L
+    private const val BULK_WINDOW_LIMIT = 12
+
+    private fun pauseBulk(c: Context, reason: String) {
+        prefs(c).edit().putBoolean("bulk.paused", true)
+            .putString("bulk.reason", reason).remove("bulk.active")
+            .remove("bulk.activeAt").commit()
+    }
+
+    @Synchronized fun bulkState(c: Context): Map<String, Any> {
+        val p = prefs(c)
+        return mapOf(
+            "paused" to p.getBoolean("bulk.paused", false),
+            "reason" to (p.getString("bulk.reason", "") ?: ""),
+            "queued" to p.all.keys.count { it.startsWith("group:") },
+            "waiting" to (p.getString("bulk.active", "") ?: "").isNotEmpty()
+        )
+    }
+
+    /** Never auto-retry an unacknowledged SMS. A deliberate resume only starts
+     * still-queued messages; an attempted message has already left the queue. */
+    @Synchronized fun resumeBulk(c: Context): Boolean {
+        requireDefault(c)
+        check(ContextCompat.checkSelfPermission(c, Manifest.permission.SEND_SMS) ==
+            PackageManager.PERMISSION_GRANTED) { "مجوز ارسال پیامک لازم است." }
+        val earliest = prefs(c).all.entries.filter {
+            it.key.startsWith("group:") && it.value is Long
+        }.map { it.value as Long }.minOrNull() ?: return false
+        prefs(c).edit().putBoolean("bulk.paused", false)
+            .remove("bulk.reason").remove("bulk.active").remove("bulk.activeAt")
+            .putLong("bulk.nextAt", System.currentTimeMillis() + BULK_GAP_MS).commit()
+        scheduleGroup(c.applicationContext, maxOf(earliest, System.currentTimeMillis() + BULK_GAP_MS))
+        return true
+    }
+
+    private fun bulkReceipt(c: Context, id: String, state: String) {
+        val p = prefs(c)
+        if (p.getString("bulk.active", null) != id) return
+        if (state == "accepted_by_radio" || state == "delivered") {
+            p.edit().remove("bulk.active").remove("bulk.activeAt")
+                .putLong("bulk.nextAt", System.currentTimeMillis() + BULK_GAP_MS).commit()
+            val next = p.all.entries.filter { it.key.startsWith("group:") && it.value is Long }
+                .map { it.value as Long }.minOrNull()
+            if (next != null) scheduleGroup(c.applicationContext,
+                maxOf(next, System.currentTimeMillis() + BULK_GAP_MS))
+        } else if (state.startsWith("send_failed") || state == "send_unconfirmed" ||
+                state == "queue_unreadable") {
+            pauseBulk(c, "تأیید ارسال از شبکه دریافت نشد یا ارسال رد شد؛ صف برای جلوگیری از ارسال ناخواسته متوقف شد.")
+        }
+    }
 
     // One durable alarm backs the whole group. An in-process timer avoids waiting
     // for an inexact alarm while the application is running.
@@ -171,16 +225,40 @@ object SmsCore {
         groupTimer?.cancel(false)
         groupTimer = null
         groupDue = Long.MAX_VALUE
-        val rows = prefs(c).all.entries.filter { it.key.startsWith("group:") && it.value is Long }
+        val p = prefs(c)
+        if (p.getBoolean("bulk.paused", false)) return
+        val now = System.currentTimeMillis()
+        val active = p.getString("bulk.active", null)
+        if (active != null) {
+            val started = p.getLong("bulk.activeAt", now)
+            if (now - started >= BULK_ACK_TIMEOUT_MS) {
+                pauseBulk(c, "شبکه در مهلت مقرر دریافت پیامک را تأیید نکرد؛ ادامه نیاز به بررسی و تأیید شما دارد.")
+            } else {
+                scheduleGroup(c, started + BULK_ACK_TIMEOUT_MS)
+            }
+            return
+        }
+        val rows = p.all.entries.filter { it.key.startsWith("group:") && it.value is Long }
             .sortedBy { it.value as Long }
         val first = rows.firstOrNull() ?: return
-        val due = first.value as Long
-        val now = System.currentTimeMillis()
+        val window = p.getLong("bulk.windowStart", 0L)
+        val withinWindow = now - window in 0 until BULK_WINDOW_MS
+        val count = if (withinWindow) p.getInt("bulk.windowCount", 0) else 0
+        val windowLimit = if (count >= BULK_WINDOW_LIMIT) window + BULK_WINDOW_MS else now
+        val due = maxOf(first.value as Long, p.getLong("bulk.nextAt", 0L), windowLimit)
         if (due > now) { scheduleGroup(c, due); return }
-        // Arm the next wake before claiming this message, including recovery
-        // if the process exits before dispatch writes its durable claim.
-        scheduleGroup(c, now + 650)
-        dispatch(c, first.key.removePrefix("group:"))
+        val id = first.key.removePrefix("group:")
+        // Persist the in-flight gate before touching the radio. On process death
+        // an ambiguous attempt remains un-retried; later items must not overtake it.
+        check(p.edit().putString("bulk.active", id).putLong("bulk.activeAt", now)
+            .putLong("bulk.windowStart", if (withinWindow) window else now)
+            .putInt("bulk.windowCount", count + 1).commit())
+        scheduleGroup(c, now + BULK_ACK_TIMEOUT_MS)
+        dispatch(c, id)
+        val state = status(c, id)
+        if (state.startsWith("send_failed") || state == "queue_unreadable") {
+            bulkReceipt(c, id, state)
+        }
     }
 
     fun receiveAlarm(c: Context, id: String) {
@@ -221,7 +299,8 @@ object SmsCore {
     @Synchronized fun cancel(c: Context, id: String): Boolean {
         if (status(c, id) != "queued") return false
         val item = runCatching { JSONObject(SecureVault.decryptQueue(prefs(c).getString("queue:$id", "{}")!!)) }.getOrNull() ?: return false
-        if (System.currentTimeMillis() >= item.optLong("due")) return false
+        if (System.currentTimeMillis() >= item.optLong("due") &&
+            !prefs(c).contains("group:$id")) return false
         prefs(c).edit().remove("queue:$id").remove("group:$id").putString("status:$id", "cancelled").commit()
         c.getSystemService(AlarmManager::class.java).cancel(alarmIntent(c, id))
         return true
@@ -251,17 +330,26 @@ object SmsCore {
         }
         edit.apply()
     }
-    /** Restore future scheduled sends after restart; never unexpectedly replay expired SMS. */
+    /** Restore future scheduled sends. Never duplicate an ambiguous in-flight SMS.
+     * The paced bulk queue persists separately and survives an app/process restart. */
     @Synchronized fun recover(c: Context) {
         val now = System.currentTimeMillis()
-        prefs(c).all.keys.filter { it.startsWith("queue:") }.forEach { key ->
+        val p = prefs(c)
+        p.all.keys.filter { it.startsWith("queue:") }.forEach { key ->
             val id = key.removePrefix("queue:")
-            val entry = runCatching { JSONObject(SecureVault.decryptQueue(prefs(c).getString(key, "{}")!!)) }.getOrNull()
-            if (entry != null && entry.optBoolean("scheduled") && entry.optLong("due") > now + 5000) {
-                arm(c, id, entry.getLong("due"))
-            } else {
-                prefs(c).edit().remove(key).remove("group:$id").putString("status:$id", "cancelled_after_restart").commit()
+            val entry = runCatching { JSONObject(SecureVault.decryptQueue(p.getString(key, "{}")!!)) }.getOrNull()
+            when {
+                p.contains("group:$id") && entry != null -> Unit
+                entry != null && entry.optBoolean("scheduled") && entry.optLong("due") > now + 5000 ->
+                    arm(c, id, entry.getLong("due"))
+                else -> p.edit().remove(key).remove("group:$id")
+                    .putString("status:$id", "cancelled_after_restart").commit()
             }
+        }
+        val earliest = p.all.entries.filter { it.key.startsWith("group:") && it.value is Long }
+            .map { it.value as Long }.minOrNull()
+        if (earliest != null && !p.getBoolean("bulk.paused", false)) {
+            scheduleGroup(c.applicationContext, maxOf(earliest, now))
         }
     }
     /** Read native queued messages so their scheduled state remains visible after app restart. */
@@ -367,6 +455,12 @@ object SmsCore {
         }
         preferences.edit().putStringSet(ackKey, acks).putStringSet(okKey, accepted)
             .putString("status:$id", next).commit()
+        // Sent callbacks release the next queued recipient; delivery reports
+        // may arrive hours later and cannot safely be used as a throughput gate.
+        if (!delivered && (next == "accepted_by_radio" || next.startsWith("send_failed") ||
+                (next == "send_unconfirmed" && acks.size == count))) {
+            bulkReceipt(c, id, next)
+        }
         val row = prefs(c).getString("row:$id", null)
         if (row != null && isDefault(c)) {
             val values = ContentValues()
