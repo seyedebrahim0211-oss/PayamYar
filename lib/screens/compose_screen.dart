@@ -381,13 +381,16 @@ class _ComposeScreenState extends State<ComposeScreen> {
       if (!mounted || groupSim == null) return;
     }
     if (targets.length > 1) {
+      final undoNote = store.settings?.sendDelayEnabled == false
+          ? 'ارسال فوری است و امکان لغو بعد از ثبت محدود است.'
+          : 'مهلت لغو هر پیام ${Jalali.digits(store.settings?.sendDelaySeconds ?? 5)} ثانیه است.';
       final confirmed = await showDialog<bool>(context: context, builder: (ctx) =>
         AlertDialog(
           title: Text(groupMode ? 'تأیید ارسال به گروه' : 'تأیید ارسال جداگانه'),
           content: Text('متن پیام به ${targets.length} شماره، به‌صورت پیامک جداگانه ارسال می‌شود. '
             'اپراتور ممکن است برای هر پیامک هزینه دریافت کند. '
             'سیم‌کارت انتخابی: ${store.sims.where((sim) => sim['id'] == groupSim).map((sim) => sim['label']).firstOrNull ?? 'انتخاب‌شده'}. '
-            'پس از تأیید، هر پیام جداگانه به صف ارسال می‌رود. به محدودیت‌های اپراتور و هزینه احتمالی توجه کنید؛ تا ۵ ثانیه پس از ثبت هر پیام امکان لغو آن وجود دارد.'),
+            'پس از تأیید، هر پیام جداگانه به صف ارسال می‌رود. به محدودیت‌های اپراتور و هزینه احتمالی توجه کنید؛ $undoNote'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('بازگشت')),
             FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('تأیید و ارسال')),
