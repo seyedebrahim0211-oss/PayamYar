@@ -55,4 +55,31 @@ void main() {
       });
     }
   });
+  testWidgets('notification scroll stays painted and keeps the preview isolated', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(400, 900);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    await tester.pumpWidget(MaterialApp(
+      theme: ThemeData(colorSchemeSeed: const Color(0xFF087F81)),
+      home: Directionality(
+        textDirection: TextDirection.rtl,
+        child: NotificationStyleScreen(settings: AppSettings()),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final list = find.byKey(const PageStorageKey('notification_settings_scroll'));
+    expect(list, findsOneWidget);
+    final preview = find.byKey(const ValueKey('notification-style-preview'));
+    expect(preview, findsOneWidget);
+    await tester.drag(list, const Offset(0, -550));
+    await tester.pumpAndSettle();
+    expect(preview, findsOneWidget);
+    final scroll = tester.state<ScrollableState>(
+      find.descendant(of: list, matching: find.byType(Scrollable)).first,
+    );
+    expect(scroll.position.pixels, greaterThan(0));
+    expect(tester.takeException(), isNull);
+  });
+
 }
