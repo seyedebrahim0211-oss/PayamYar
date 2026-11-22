@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../jalali.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app_store.dart';
+import '../group_sim_choice.dart';
 import '../security/vault.dart';
 import '../text_polish.dart';
 import '../sms_bridge.dart';
@@ -46,6 +47,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
   final body = TextEditingController();
   final groupName = TextEditingController();
   bool groupMode = false;
+  int? _explicitGroupSim;
   final Set<String> recipients = {};
   final Map<String, String> contactNames = {};
   List<Map<String, String>> _contacts = const [];
@@ -67,6 +69,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
     groupName.text = widget.initialGroupName ?? '';
     _restore();
     _loadSuggestions();
+    if (store.android) _reloadSims();
   }
 
   Future<void> _restore() async {
@@ -314,20 +317,41 @@ class _ComposeScreenState extends State<ComposeScreen> {
     }
   }
 
-  Future<int?> _groupSim() async {
+  Future<void> _reloadSims() async {
     try {
-      return await SmsBridge.resolveSendSim(store.selectedSim);
-    } on PlatformException catch (e) {
-      final sims = (await SmsBridge.subscriptions()).where((sim) => (sim['id'] as int) >= 0);
-      if (!mounted) return null;
-      if (sims.isEmpty) {
-        store.onNotice?.call(e.message ?? 'سیم‌کارت فعال پیدا نشد.');
+      final discovered = await SmsBridge.subscriptions();
+      if (!mounted) return;
+      setState(() {
+        store.sims = discovered;
+        if (!discovered.any((sim) => sim['id'] == _explicitGroupSim)) {
+          _explicitGroupSim = null;
+        }
+      });
+    } catch (_) {
+      // The user can try again. Never silently fall back to the default SIM.
+    }
+  }
+
+  Future<int?> _groupSim() async {
+    if (_explicitGroupSim == null) {
+      store.onNotice?.call('برای ارسال گروهی، سیم‌کارت را در بخش «سیم‌کارت ارسال گروهی» انتخاب کنید.');
+      return null;
+    }
+    try {
+      final active = await SmsBridge.subscriptions();
+      final selected = GroupSimChoice.active(_explicitGroupSim, active);
+      if (selected == null) {
+        store.onNotice?.call('سیم‌کارت انتخاب‌شده دیگر فعال نیست؛ دوباره انتخاب کنید.');
+        if (mounted) setState(() => _explicitGroupSim = null);
         return null;
       }
-      return showDialog<int>(context: context, builder: (ctx) => SimpleDialog(
-        title: const Text('ارسال گروه با کدام سیم‌کارت؟'),
-        children: [for (final sim in sims) SimpleDialogOption(
-          onPressed: () => Navigator.pop(ctx, sim['id'] as int), child: Text(sim['label'].toString()))]));
+      return await SmsBridge.resolveSendSim(selected);
+    } on PlatformException catch (e) {
+      store.onNotice?.call(e.message ?? 'بررسی سیم‌کارت انتخاب‌شده انجام نشد.');
+      return null;
+    } catch (_) {
+      store.onNotice?.call('سیم‌کارت انتخاب‌شده قابل استفاده نیست.');
+      return null;
     }
   }
 
@@ -345,28 +369,34 @@ class _ComposeScreenState extends State<ComposeScreen> {
       return;
     }
     if (!mounted) return;
-    if (targets.length > 1) {
-      final confirmed = await showDialog<bool>(context: context, builder: (ctx) =>
-        AlertDialog(
-          title: Text(groupMode ? 'تأیید ارسال به گروه' : 'تأیید ارسال جداگانه'),
-          content: Text('متن پیام به ${targets.length} شماره، به‌صورت پیامک جداگانه ارسال می‌شود. '
-            'اپراتور ممکن است برای هر پیامک هزینه دریافت کند. '
-            'پس از تأیید، هر پیام جداگانه به صف ارسال می‌رود. به محدودیت‌های اپراتور و هزینه احتمالی توجه کنید؛ تا ۵ ثانیه پس از ثبت هر پیام امکان لغو آن وجود دارد.'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('بازگشت')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('تأیید و ارسال')),
-          ],
-        ));
-      if (confirmed != true || !mounted) return;
-    }
+    // A broadcast always needs an explicit choice; Android's default-SIM
+    // fallback is unsuitable for multi-recipient messages.
     int? groupSim;
-    if (targets.length > 1 && store.android) {
+    if ((targets.length > 1 || groupMode) && store.android) {
       if (!store.permissions.isDefault || !store.permissions.canSend) {
         store.onNotice?.call('برای ارسال گروهی، پیام‌یار را پیام‌رسان پیش‌فرض کنید و مجوز ارسال را بدهید.');
         return;
       }
       groupSim = await _groupSim();
       if (!mounted || groupSim == null) return;
+    }
+    if (targets.length > 1) {
+      final undoNote = store.settings?.sendDelayEnabled == false
+          ? 'ارسال فوری است و امکان لغو بعد از ثبت محدود است.'
+          : 'مهلت لغو هر پیام ${Jalali.digits(store.settings?.sendDelaySeconds ?? 5)} ثانیه است.';
+      final confirmed = await showDialog<bool>(context: context, builder: (ctx) =>
+        AlertDialog(
+          title: Text(groupMode ? 'تأیید ارسال به گروه' : 'تأیید ارسال جداگانه'),
+          content: Text('متن پیام به ${targets.length} شماره، به‌صورت پیامک جداگانه ارسال می‌شود. '
+            'اپراتور ممکن است برای هر پیامک هزینه دریافت کند. '
+            'سیم‌کارت انتخابی: ${store.sims.where((sim) => sim['id'] == groupSim).map((sim) => sim['label']).firstOrNull ?? 'انتخاب‌شده'}. '
+            'پس از تأیید، هر پیام جداگانه به صف ارسال می‌رود. به محدودیت‌های اپراتور و هزینه احتمالی توجه کنید؛ $undoNote'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('بازگشت')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('تأیید و ارسال')),
+          ],
+        ));
+      if (confirmed != true || !mounted) return;
     }
     // Never create a new group merely because the confirmation dialog opened.
     final savedGroup = groupMode ? await _saveGroup(targets) : null;
@@ -726,6 +756,58 @@ class _ComposeScreenState extends State<ComposeScreen> {
               ),
             ),
           ],
+          if (store.android && (count > 1 || groupMode)) ...[
+            const SizedBox(height: 12),
+            Card(
+              color: scheme.primaryContainer.withValues(alpha: .45),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Row(children: [
+                    Icon(Icons.sim_card_rounded, color: scheme.primary),
+                    const SizedBox(width: 9),
+                    Expanded(child: Text('سیم‌کارت ارسال گروهی • ضروری',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w800))),
+                    IconButton(
+                      tooltip: 'بازخوانی سیم‌کارت‌ها',
+                      icon: const Icon(Icons.refresh_rounded),
+                      onPressed: sending ? null : _reloadSims),
+                  ]),
+                  const SizedBox(height: 6),
+                  Text('قبل از تأیید ارسال، سیم‌کارتی را انتخاب کنید که هزینه پیامک‌ها از آن محاسبه شود.',
+                    style: Theme.of(context).textTheme.bodySmall),
+                  const SizedBox(height: 10),
+                  if (!store.sims.any((sim) => sim['id'] is int && (sim['id'] as int) >= 0)) ...[
+                    const Text('سیم‌کارتی قابل انتخاب نیست. اگر سیم‌کارت فعال دارید، دسترسی «تلفن» را در تنظیمات اندروید برای پیام‌یار فعال کنید.'),
+                    const SizedBox(height: 5),
+                    Align(alignment: AlignmentDirectional.centerStart,
+                      child: TextButton.icon(
+                        onPressed: sending ? null : SmsBridge.openAppSettings,
+                        icon: const Icon(Icons.settings_outlined),
+                        label: const Text('تنظیمات دسترسی گوشی'))),
+                  ] else Wrap(spacing: 8, runSpacing: 7, children: [
+                    for (final sim in store.sims)
+                      if (sim['id'] is int && (sim['id'] as int) >= 0)
+                        ChoiceChip(
+                          avatar: Icon(_explicitGroupSim == sim['id']
+                              ? Icons.check_circle_rounded : Icons.sim_card_outlined,
+                            size: 18),
+                          label: Text(sim['label']?.toString() ?? 'سیم‌کارت'),
+                          selected: _explicitGroupSim == sim['id'],
+                          onSelected: sending ? null : (_) =>
+                            setState(() => _explicitGroupSim = sim['id'] as int)),
+                  ]),
+                  if (_explicitGroupSim == null) ...[
+                    const SizedBox(height: 5),
+                    Text('انتخاب سیم‌کارت برای ارسال به چند گیرنده اجباری است.',
+                      style: TextStyle(color: scheme.error, fontSize: 12)),
+                  ],
+                ]),
+              ),
+            ),
+          ],
           const SizedBox(height: 20),
           Text('متن پیام', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
           const SizedBox(height: 10),
@@ -816,7 +898,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
               ],
             ),
           ),
-          if (store.sims.length > 2) ...[
+          if (store.sims.length > 2 && count <= 1 && !groupMode) ...[
             const SizedBox(height: 16),
             DropdownButtonFormField<int>(
               initialValue: store.selectedSim,

@@ -19,7 +19,6 @@ import 'compose_screen.dart';
 import 'conversation_screen.dart';
 import 'reports_screen.dart';
 import 'groups_screen.dart';
-import 'group_inbox_section.dart';
 import 'failed_messages_screen.dart';
 import 'settings_screen.dart';
 import 'widgets.dart';
@@ -42,6 +41,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   final _inboxKey = GlobalKey<_ConversationsPageState>();
 
   void _selectTab(int next) {
+    // Offstage inbox stays mounted: its focused search field used to keep the
+    // keyboard open over Settings and other tabs.
+    FocusManager.instance.primaryFocus?.unfocus();
     // Re-tapping the selected "گفتگوها" tab is the familiar "back to top" gesture.
     if (next == tab) {
       if (next == 0) _inboxKey.currentState?.scrollToTop();
@@ -678,6 +680,11 @@ class _ConversationsPageState extends State<ConversationsPage> {
                       () => Navigator.of(context).push(MaterialPageRoute<void>(
                         builder: (_) => FailedMessagesScreen(store: store))),
                       tint: scheme.error, icon: Icons.outbox_rounded),
+                    _chip('پیام‌های گروهی', false, () {
+                      FocusManager.instance.primaryFocus?.unfocus();
+                      Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => GroupsScreen(store: store)));
+                    }, icon: Icons.groups_2_outlined),
                     _chip('کدهای تأیید', false, () => Navigator.push(context, MaterialPageRoute<void>(
                       builder: (_) => MessageCollection(store: store, kind: CollectionKind.codes))), icon: Icons.password),
                     for (final c in MessageCategory.values)
@@ -687,8 +694,6 @@ class _ConversationsPageState extends State<ConversationsPage> {
                       _chip('📁 $title', folder == title, () => setState(() => folder = folder == title ? null : title)),
                     _chip('＋ پوشه', false, _createFolder),
                   ]))),
-              if (!widget.archive && query.isEmpty && store.smsGroups.groups.isNotEmpty)
-                SliverToBoxAdapter(child: GroupInboxSection(store: store)),
               if (store.error != null)
                 SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.all(16),
                   child: Text(store.error!, style: TextStyle(color: scheme.error)))),

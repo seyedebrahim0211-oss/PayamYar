@@ -234,9 +234,10 @@ class AboutPage extends StatelessWidget {
           snap.hasData ? 'نسخه ${Jalali.digits(snap.data!.version)} (ساخت ${Jalali.digits(snap.data!.buildNumber)})' : '',
           style: TextStyle(color: scheme.onSurfaceVariant)))),
         const SizedBox(height: 18),
-        const Text('پیام‌یار پیام‌رسان پیامکی فارسی از خانواده هنر مردمی است: گفتگوهای مرتب، جداسازی پیام‌های بانکی و تبلیغاتی، '
-          'گزارش مالی، گروه‌های پیامکی، ارسال زمان‌دار، فرصت لغو و قالب‌های زیبای گفتگو. '
-          'همه پیام‌ها فقط روی گوشی شما نگه‌داری می‌شود.', style: TextStyle(height: 1.95)),
+        const Text('پیام‌یار، پیام‌رسان پیامکی فارسی از مجموعهٔ هنر مردمی است که با طراحی الهام‌گرفته از هنر ایرانی، '
+          'گفتگوهای منظم، جست‌وجوی پیشرفته، ارسال گروهی و ابزارهای کاربردی را در محیطی ساده فراهم می‌کند. '
+          'متن پیامک‌ها و مخاطبان شما برای مدیریت اپ به سرور ارسال نمی‌شوند.',
+          style: TextStyle(height: 1.95), textAlign: TextAlign.center),
         const SizedBox(height: 18),
         Text('قلم: وزیرمتن (SIL Open Font License)', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
       ]),
