@@ -23,7 +23,7 @@ class _WhatsNewCardState extends State<WhatsNewCard> {
   Widget build(BuildContext context) => marker == null ? const SizedBox.shrink() :
     Card(margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 5), child: ListTile(
       leading: const Icon(Icons.new_releases_outlined), title: const Text('تازه‌های پیام‌یار'),
-      subtitle: const Text('برای ستاره‌زدن یا نقل‌قول، انگشتتان را روی پیام نگه دارید. جست‌وجوی پیشرفته و پاک‌سازی پیشنهادی در منوی گفتگوهاست.'),
+      subtitle: const Text('جست‌وجوی پیشرفته، کدهای تأیید، پیام‌های ستاره‌دار و پاک‌سازی با تأیید شما در صندوق پیام‌ها قرار دارند. در گفتگوها می‌توانید پیام را نقل‌قول کنید، سکوت را تنظیم کنید و پیش‌نویس خود را نگه دارید. ویجت و میانبر پیام جدید نیز به اندروید اضافه شده‌اند.', maxLines: 5),
       trailing: IconButton(tooltip: 'بستن تازه‌ها', icon: const Icon(Icons.close), onPressed: () async {
         final version = marker!;
         setState(() => marker = null);
