@@ -779,9 +779,15 @@ class _ComposeScreenState extends State<ComposeScreen> {
                   Text('قبل از تأیید ارسال، سیم‌کارتی را انتخاب کنید که هزینه پیامک‌ها از آن محاسبه شود.',
                     style: Theme.of(context).textTheme.bodySmall),
                   const SizedBox(height: 10),
-                  if (!store.sims.any((sim) => sim['id'] is int && (sim['id'] as int) >= 0))
-                    const Text('سیم‌کارت فعالی پیدا نشد؛ دکمه بازخوانی را بزنید.')
-                  else Wrap(spacing: 8, runSpacing: 7, children: [
+                  if (!store.sims.any((sim) => sim['id'] is int && (sim['id'] as int) >= 0)) ...[
+                    const Text('سیم‌کارتی قابل انتخاب نیست. اگر سیم‌کارت فعال دارید، دسترسی «تلفن» را در تنظیمات اندروید برای پیام‌یار فعال کنید.'),
+                    const SizedBox(height: 5),
+                    Align(alignment: AlignmentDirectional.centerStart,
+                      child: TextButton.icon(
+                        onPressed: sending ? null : SmsBridge.openAppSettings,
+                        icon: const Icon(Icons.settings_outlined),
+                        label: const Text('تنظیمات دسترسی گوشی'))),
+                  ] else Wrap(spacing: 8, runSpacing: 7, children: [
                     for (final sim in store.sims)
                       if (sim['id'] is int && (sim['id'] as int) >= 0)
                         ChoiceChip(
