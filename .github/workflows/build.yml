@@ -112,6 +112,10 @@ jobs:
           tail -n 3 "$f"
       - run: flutter pub get
 
+      - name: Test native SMS callback and queue policies
+        shell: bash
+        run: cd android && ./gradlew :app:testDebugUnitTest --no-daemon
+
       - name: Verify release build with disposable test-only signing key (never publish)
         if: github.event_name == 'pull_request'
         shell: bash

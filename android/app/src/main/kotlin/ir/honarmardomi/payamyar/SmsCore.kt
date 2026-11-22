@@ -131,6 +131,11 @@ object SmsCore {
             .put("due", System.currentTimeMillis() + delayMs).put("scheduled", delayMs > 10000)
         if (groupTime != null) item.put("groupTime", groupTime)
         val grouped = group && delayMs <= 10000
+        if (grouped && prefs(c).all.keys.none { it.startsWith("group:") } &&
+            prefs(c).getString("bulk.active", null) == null) {
+            prefs(c).edit().putInt("bulk.issuesTotal", 0).putInt("bulk.issueStreak", 0)
+                .remove("bulk.lastOutcome").remove("bulk.reason").commit()
+        }
         val due = item.getLong("due")
         // "t:$id" lets prune() drop the oldest finished sends first.
         val edit = prefs(c).edit().putString("queue:$id", SecureVault.encryptQueue(item.toString()))
@@ -159,59 +164,74 @@ object SmsCore {
     private val groupWorker = java.util.concurrent.Executors.newSingleThreadScheduledExecutor()
     private var groupTimer: java.util.concurrent.ScheduledFuture<*>? = null
     private var groupDue = Long.MAX_VALUE
-    // Network acceptance of all multipart segments (not recipient delivery) releases
-    // the next attempt. There is no universal carrier-safe messages/second value.
-    private const val BULK_GAP_MS = 4000L
-    private const val BULK_ACK_TIMEOUT_MS = 45000L
-    private const val BULK_WINDOW_MS = 60000L
-    private const val BULK_WINDOW_LIMIT = 12
+    // Android's SENT callback confirms radio acceptance, not delivery.
+    private const val BULK_GAP_MS = BulkQueuePolicy.GAP_MS
+    private const val BULK_ACK_TIMEOUT_MS = BulkQueuePolicy.ACK_TIMEOUT_MS
+    private const val BULK_WINDOW_MS = BulkQueuePolicy.WINDOW_MS
+    private const val BULK_WINDOW_LIMIT = BulkQueuePolicy.WINDOW_LIMIT
 
-    private fun pauseBulk(c: Context, reason: String) {
-        prefs(c).edit().putBoolean("bulk.paused", true)
-            .putString("bulk.reason", reason).remove("bulk.active")
-            .remove("bulk.activeAt").commit()
+    /** Migration of the previous stop-on-one-error policy. Only untouched
+     * recipients resume; already attempted IDs are no longer in the queue. */
+    private fun migrateLegacyPause(c: Context) {
+        val p = prefs(c)
+        if (!p.getBoolean("bulk.paused", false)) return
+        val now = System.currentTimeMillis()
+        check(p.edit().putBoolean("bulk.paused", false).remove("bulk.reason")
+            .putLong("bulk.nextAt", now + BulkQueuePolicy.PREFLIGHT_RECHECK_MS).commit())
+        val earliest = p.all.entries.filter { it.key.startsWith("group:") && it.value is Long }
+            .map { it.value as Long }.minOrNull()
+        if (earliest != null) scheduleGroup(c.applicationContext,
+            maxOf(earliest, now + BulkQueuePolicy.PREFLIGHT_RECHECK_MS))
     }
 
     @Synchronized fun bulkState(c: Context): Map<String, Any> {
+        migrateLegacyPause(c)
         val p = prefs(c)
         return mapOf(
             "paused" to p.getBoolean("bulk.paused", false),
             "reason" to (p.getString("bulk.reason", "") ?: ""),
             "queued" to p.all.keys.count { it.startsWith("group:") },
-            "waiting" to (p.getString("bulk.active", "") ?: "").isNotEmpty()
+            "waiting" to (p.getString("bulk.active", "") ?: "").isNotEmpty(),
+            "nextAt" to p.getLong("bulk.nextAt", 0L),
+            "lastOutcome" to (p.getString("bulk.lastOutcome", "") ?: ""),
+            "issues" to p.getInt("bulk.issuesTotal", 0)
         )
     }
 
-    /** Never auto-retry an unacknowledged SMS. A deliberate resume only starts
-     * still-queued messages; an attempted message has already left the queue. */
+    /** User can accelerate untouched queue items but cannot clear an in-flight
+     * gate; repeated taps must not create duplicate sends. */
     @Synchronized fun resumeBulk(c: Context): Boolean {
         requireDefault(c)
         check(ContextCompat.checkSelfPermission(c, Manifest.permission.SEND_SMS) ==
             PackageManager.PERMISSION_GRANTED) { "مجوز ارسال پیامک لازم است." }
-        val earliest = prefs(c).all.entries.filter {
-            it.key.startsWith("group:") && it.value is Long
-        }.map { it.value as Long }.minOrNull() ?: return false
-        prefs(c).edit().putBoolean("bulk.paused", false)
-            .remove("bulk.reason").remove("bulk.active").remove("bulk.activeAt")
-            .putLong("bulk.nextAt", System.currentTimeMillis() + BULK_GAP_MS).commit()
-        scheduleGroup(c.applicationContext, maxOf(earliest, System.currentTimeMillis() + BULK_GAP_MS))
+        val p = prefs(c)
+        if (p.getString("bulk.active", null) != null) return false
+        val earliest = p.all.entries.filter { it.key.startsWith("group:") && it.value is Long }
+            .map { it.value as Long }.minOrNull() ?: return false
+        check(p.edit().putBoolean("bulk.paused", false).remove("bulk.reason")
+            .putLong("bulk.nextAt", System.currentTimeMillis() + BULK_GAP_MS).commit())
+        scheduleGroup(c.applicationContext,
+            maxOf(earliest, System.currentTimeMillis() + BULK_GAP_MS))
         return true
     }
 
+    /** Advance to the next DIFFERENT recipient after a settled radio outcome.
+     * No failed or ambiguous message is ever automatically sent a second time. */
     private fun bulkReceipt(c: Context, id: String, state: String) {
         val p = prefs(c)
         if (p.getString("bulk.active", null) != id) return
-        if (state == "accepted_by_radio" || state == "delivered") {
-            p.edit().remove("bulk.active").remove("bulk.activeAt")
-                .putLong("bulk.nextAt", System.currentTimeMillis() + BULK_GAP_MS).commit()
-            val next = p.all.entries.filter { it.key.startsWith("group:") && it.value is Long }
-                .map { it.value as Long }.minOrNull()
-            if (next != null) scheduleGroup(c.applicationContext,
-                maxOf(next, System.currentTimeMillis() + BULK_GAP_MS))
-        } else if (state.startsWith("send_failed") || state == "send_unconfirmed" ||
-                state == "queue_unreadable") {
-            pauseBulk(c, "تأیید ارسال از شبکه دریافت نشد یا ارسال رد شد؛ صف برای جلوگیری از ارسال ناخواسته متوقف شد.")
-        }
+        if (!BulkQueuePolicy.isSettled(state)) return
+        val accepted = BulkQueuePolicy.isAccepted(state)
+        val streak = if (accepted) 0 else p.getInt("bulk.issueStreak", 0) + 1
+        val nextAt = System.currentTimeMillis() + BulkQueuePolicy.nextDelayMs(state, streak)
+        val edit = p.edit().remove("bulk.active").remove("bulk.activeAt")
+            .remove("bulk.reason").putLong("bulk.nextAt", nextAt)
+            .putInt("bulk.issueStreak", streak).putString("bulk.lastOutcome", state)
+        if (!accepted) edit.putInt("bulk.issuesTotal", p.getInt("bulk.issuesTotal", 0) + 1)
+        check(edit.commit())
+        val next = p.all.entries.filter { it.key.startsWith("group:") && it.value is Long }
+            .map { it.value as Long }.minOrNull()
+        if (next != null) scheduleGroup(c.applicationContext, maxOf(next, nextAt))
     }
 
     // One durable alarm backs the whole group. An in-process timer avoids waiting
@@ -229,19 +249,35 @@ object SmsCore {
         groupTimer?.cancel(false)
         groupTimer = null
         groupDue = Long.MAX_VALUE
+        migrateLegacyPause(c)
         val p = prefs(c)
-        if (p.getBoolean("bulk.paused", false)) return
         val now = System.currentTimeMillis()
         val active = p.getString("bulk.active", null)
         if (active != null) {
             val started = p.getLong("bulk.activeAt", now)
             if (now - started >= BULK_ACK_TIMEOUT_MS) {
-                pauseBulk(c, "شبکه در مهلت مقرر دریافت پیامک را تأیید نکرد؛ ادامه نیاز به بررسی و تأیید شما دارد.")
+                val old = status(c, active)
+                if (old == "queued") {
+                    // Crashed before dispatch removed the queued item: no attempt.
+                    check(p.edit().remove("bulk.active").remove("bulk.activeAt")
+                        .putLong("bulk.nextAt", now + BULK_GAP_MS).commit())
+                    val earliest = p.all.entries.filter {
+                        it.key.startsWith("group:") && it.value is Long
+                    }.map { it.value as Long }.minOrNull()
+                    if (earliest != null) scheduleGroup(c, maxOf(earliest, now + BULK_GAP_MS))
+                } else {
+                    val outcome = BulkQueuePolicy.afterTimeout(old)
+                    if (outcome != old) check(p.edit().putString("status:$active", outcome).commit())
+                    // A missing acknowledgement is NOT proof of failure; do
+                    // not retry this attempted message or call it delivered.
+                    bulkReceipt(c, active, outcome)
+                }
             } else {
                 scheduleGroup(c, started + BULK_ACK_TIMEOUT_MS)
             }
             return
         }
+
         val rows = p.all.entries.filter { it.key.startsWith("group:") && it.value is Long }
             .sortedBy { it.value as Long }
         val first = rows.firstOrNull() ?: return
@@ -252,17 +288,51 @@ object SmsCore {
         val due = maxOf(first.value as Long, p.getLong("bulk.nextAt", 0L), windowLimit)
         if (due > now) { scheduleGroup(c, due); return }
         val id = first.key.removePrefix("group:")
-        // Persist the in-flight gate before touching the radio. On process death
-        // an ambiguous attempt remains un-retried; later items must not overtake it.
+        val raw = p.getString("queue:$id", null)
+        if (raw == null) {
+            // A stale queue index must not stall the next recipient.
+            check(p.edit().remove("group:$id")
+                .putString("status:$id", "queue_unreadable").commit())
+            val after = rows.drop(1).firstOrNull()?.value as? Long
+            if (after != null) scheduleGroup(c, maxOf(after, now + BULK_GAP_MS))
+            return
+        }
+        val accessProblem = when {
+            !isDefault(c) -> "پیام‌یار باید پیامک‌رسان پیش‌فرض باشد."
+            ContextCompat.checkSelfPermission(c, Manifest.permission.SEND_SMS) !=
+                PackageManager.PERMISSION_GRANTED -> "مجوز ارسال پیامک غیرفعال شده است."
+            else -> {
+                val savedSim = runCatching {
+                    JSONObject(SecureVault.decryptQueue(raw)).getInt("sim")
+                }.getOrNull()
+                // Let dispatch explicitly mark an unreadable encrypted payload.
+                if (savedSim == null) null else {
+                    val failure = runCatching { resolveSubscription(c, savedSim) }.exceptionOrNull()
+                    if (failure == null) null
+                    else failure.message ?: "سیم‌کارت انتخاب‌شده در دسترس نیست."
+                }
+            }
+        }
+        if (accessProblem != null) {
+            // Do not consume hundreds of messages while the phone is offline
+            // from the default-SMS role or has lost its selected SIM/permission.
+            // Recheck periodically, without attempting a single SMS.
+            val recheck = now + BulkQueuePolicy.PREFLIGHT_RECHECK_MS
+            check(p.edit().putString("bulk.reason", accessProblem)
+                .putLong("bulk.nextAt", recheck).commit())
+            scheduleGroup(c.applicationContext, recheck)
+            return
+        }
+        // Commit the in-flight gate before calling Android's SMS API. An app
+        // crash cannot cause this same message to be sent automatically twice.
         check(p.edit().putString("bulk.active", id).putLong("bulk.activeAt", now)
+            .remove("bulk.reason")
             .putLong("bulk.windowStart", if (withinWindow) window else now)
             .putInt("bulk.windowCount", count + 1).commit())
         scheduleGroup(c, now + BULK_ACK_TIMEOUT_MS)
         dispatch(c, id)
         val state = status(c, id)
-        if (state.startsWith("send_failed") || state == "queue_unreadable") {
-            bulkReceipt(c, id, state)
-        }
+        if (BulkQueuePolicy.isSettled(state)) bulkReceipt(c, id, state)
     }
 
     fun receiveAlarm(c: Context, id: String) {
@@ -334,6 +404,24 @@ object SmsCore {
         }
         edit.apply()
     }
+    /** Re-arm persisted bulk sends when the app starts, without replaying any
+     * ambiguous radio attempt or altering unrelated scheduled SMS. */
+    @Synchronized fun recoverBulk(c: Context) {
+        migrateLegacyPause(c)
+        val p = prefs(c)
+        val now = System.currentTimeMillis()
+        val active = p.getString("bulk.active", null)
+        if (active != null) {
+            scheduleGroup(c.applicationContext,
+                maxOf(now, p.getLong("bulk.activeAt", now) + BULK_ACK_TIMEOUT_MS))
+            return
+        }
+        val first = p.all.entries.filter { it.key.startsWith("group:") && it.value is Long }
+            .map { it.value as Long }.minOrNull()
+        if (first != null) scheduleGroup(c.applicationContext,
+            maxOf(now, first, p.getLong("bulk.nextAt", 0L)))
+    }
+
     /** Restore future scheduled sends. Never duplicate an ambiguous in-flight SMS.
      * The paced bulk queue persists separately and survives an app/process restart. */
     @Synchronized fun recover(c: Context) {
@@ -350,11 +438,7 @@ object SmsCore {
                     .putString("status:$id", "cancelled_after_restart").commit()
             }
         }
-        val earliest = p.all.entries.filter { it.key.startsWith("group:") && it.value is Long }
-            .map { it.value as Long }.minOrNull()
-        if (earliest != null && !p.getBoolean("bulk.paused", false)) {
-            scheduleGroup(c.applicationContext, maxOf(earliest, now))
-        }
+        recoverBulk(c)
     }
     /** Read native queued messages so their scheduled state remains visible after app restart. */
     @Synchronized fun pending(c: Context): List<Map<String, Any>> =
@@ -448,14 +532,8 @@ object SmsCore {
             delivered && deliveryFailure -> "delivery_failed"
             delivered && accepted.size == count -> "delivered"
             delivered -> previous
-            code != Activity.RESULT_OK && code != Activity.RESULT_CANCELED ->
-                "send_failed:${SmsSendDiagnostic.describe(code)}"
-            previous.startsWith("send_failed") || previous == "delivery_failed" -> previous
-            acks.size < count -> if (code == Activity.RESULT_CANCELED && previous == "pending") {
-                "send_unconfirmed"
-            } else previous
-            accepted.size == count -> "accepted_by_radio"
-            else -> "send_unconfirmed"
+            else -> BulkQueuePolicy.sentStatus(previous, code, acks.size,
+                accepted.size, count, SmsSendDiagnostic.describe(code))
         }
         preferences.edit().putStringSet(ackKey, acks).putStringSet(okKey, accepted)
             .putString("status:$id", next).commit()

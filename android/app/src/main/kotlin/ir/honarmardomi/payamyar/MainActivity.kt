@@ -159,6 +159,9 @@ open class MainActivity : FlutterFragmentActivity() {
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "ir.honarmardomi.payamyar/sms")
         contacts = ContactsChannel(this, flutterEngine.dartExecutor.binaryMessenger)
         VaultChannel(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
+        // Resume only untouched persisted recipients after process restart.
+        // Run off the UI thread: hundreds of encrypted queue rows can exist.
+        worker.execute { runCatching { SmsCore.recoverBulk(applicationContext) } }
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
                 "biometricAvailable" -> result.success(BiometricManager.from(this)
