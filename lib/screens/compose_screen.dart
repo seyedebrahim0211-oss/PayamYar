@@ -322,11 +322,15 @@ class _ComposeScreenState extends State<ComposeScreen> {
       final discovered = await SmsBridge.subscriptions();
       if (!mounted) return;
       setState(() {
-        store.sims = discovered;
-        if (!discovered.any((sim) => sim['id'] == _explicitGroupSim)) {
+        store.sims = discovered.where((sim) =>
+            sim['id'] is int && (sim['id'] as int) >= 0).toList();
+        if (!store.sims.any((sim) => sim['id'] == _explicitGroupSim)) {
           _explicitGroupSim = null;
         }
       });
+      if (store.sims.length == 1 && store.selectedSim != store.sims.first['id']) {
+        store.selectSim(store.sims.first['id'] as int);
+      }
     } catch (_) {
       // The user can try again. Never silently fall back to the default SIM.
     }
@@ -612,14 +616,11 @@ class _ComposeScreenState extends State<ComposeScreen> {
           Row(children: [
             Icon(Icons.people_alt_outlined, color: scheme.primary),
             const SizedBox(width: 8),
-            Text('گیرندگان', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+            Text('۱. گیرندگان', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
             const Spacer(),
             Text('$count از $maxRecipients', style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
           ]),
           const SizedBox(height: 10),
-          Align(alignment: AlignmentDirectional.centerStart,
-            child: TextButton.icon(onPressed: _pickOccasion, icon: const Icon(Icons.event_outlined),
-              label: const Text('پیام‌های مناسبتی'))),
           if (widget.lockGroupRecipients)
             Card(
               child: ListTile(
@@ -717,7 +718,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(13),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  Text('نوع ارسال', style: Theme.of(context).textTheme.titleSmall),
+                  Text('روش ارسال به چند نفر', style: Theme.of(context).textTheme.titleSmall),
                   const SizedBox(height: 10),
                   SegmentedButton<bool>(
                     segments: const [
@@ -767,7 +768,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
                   Row(children: [
                     Icon(Icons.sim_card_rounded, color: scheme.primary),
                     const SizedBox(width: 9),
-                    Expanded(child: Text('سیم‌کارت ارسال گروهی • ضروری',
+                    Expanded(child: Text('۲. سیم‌کارت ارسال گروهی • ضروری',
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w800))),
                     IconButton(
@@ -808,8 +809,49 @@ class _ComposeScreenState extends State<ComposeScreen> {
               ),
             ),
           ],
-          const SizedBox(height: 20),
-          Text('متن پیام', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+          if (store.android && count <= 1 && !groupMode) ...[
+            const SizedBox(height: 12),
+            Card(
+              key: const ValueKey('compose-sim-choice'),
+              color: scheme.primaryContainer.withValues(alpha: .35),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Row(children: [
+                    Icon(Icons.sim_card_outlined, color: scheme.primary),
+                    const SizedBox(width: 9),
+                    Expanded(child: Text('۲. سیم‌کارت ارسال',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800))),
+                    IconButton(
+                      tooltip: 'بازخوانی سیم‌کارت‌ها',
+                      onPressed: sending ? null : _reloadSims,
+                      icon: const Icon(Icons.refresh_rounded)),
+                  ]),
+                  if (store.sims.isEmpty)
+                    const Text('سیم‌کارت شناسایی نشد؛ دسترسی تلفن را فعال کنید و بازخوانی بزنید.')
+                  else
+                    Wrap(spacing: 8, runSpacing: 6, children: [
+                      for (final sim in store.sims)
+                        ChoiceChip(
+                          label: Text(sim['label']?.toString() ?? 'سیم‌کارت'),
+                          avatar: Icon(store.selectedSim == sim['id']
+                            ? Icons.check_circle_rounded : Icons.sim_card_rounded, size: 18),
+                          selected: store.selectedSim == sim['id'],
+                          onSelected: sending ? null : (_) =>
+                            setState(() => store.selectSim(sim['id'] as int)),
+                        ),
+                    ]),
+                  if (store.sims.isNotEmpty &&
+                      !store.sims.any((sim) => sim['id'] == store.selectedSim))
+                    Text('برای ارسال، سیم‌کارت ۱ یا ۲ را انتخاب کنید.',
+                      style: TextStyle(color: scheme.error, fontSize: 12)),
+                ]),
+              ),
+            ),
+          ],
+          const SizedBox(height: 18),
+          Text('۳. متن پیام', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
           const SizedBox(height: 10),
           TextField(
             controller: body,
@@ -843,28 +885,43 @@ class _ComposeScreenState extends State<ComposeScreen> {
             Expanded(child: SmsCounter(text: body.text)),
             Text('${Jalali.digits(body.text.length)}/۲۰۰۰', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
           ]),
-          const SizedBox(height: 18),
-          Row(children: [
-            Text('پیام‌های آماده', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-            const Spacer(),
-            TextButton.icon(
-              onPressed: () async {
-                final result = await showTemplatesSheet(context, store, currentText: body.text);
-                if (result == null || !mounted) return;
-                setState(() => body.text = result);
-                _saveDraft();
-              },
-              icon: const Icon(Icons.library_books_outlined, size: 18),
-              label: const Text('مشاهده همه'),
+          const SizedBox(height: 12),
+          Card(
+            margin: EdgeInsets.zero,
+            child: ExpansionTile(
+              key: const ValueKey('compose-templates'),
+              initiallyExpanded: false,
+              leading: const Icon(Icons.library_books_outlined),
+              title: const Text('پیام‌های آماده و مناسبتی'),
+              subtitle: const Text('اختیاری؛ برای دیدن پیشنهادها باز کنید'),
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.event_outlined),
+                  title: const Text('پیشنهاد پیام مناسبتی'),
+                  onTap: _pickOccasion),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  child: Wrap(spacing: 8, runSpacing: 8, children: [
+                    for (final suggestion in quickTexts)
+                      ActionChip(label: Text(suggestion), onPressed: () {
+                        setState(() => body.text = suggestion);
+                        _saveDraft();
+                      }),
+                  ]),
+                ),
+                TextButton.icon(
+                  onPressed: () async {
+                    final result = await showTemplatesSheet(context, store, currentText: body.text);
+                    if (result == null || !mounted) return;
+                    setState(() => body.text = result);
+                    _saveDraft();
+                  },
+                  icon: const Icon(Icons.library_books_outlined, size: 18),
+                  label: const Text('مشاهده همه متن‌های آماده'),
+                ),
+              ],
             ),
-          ]),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            for (final suggestion in quickTexts)
-              ActionChip(label: Text(suggestion), onPressed: () {
-                setState(() => body.text = suggestion);
-                _saveDraft();
-              }),
-          ]),
+          ),
           const SizedBox(height: 12),
           Card(
             margin: EdgeInsets.zero,
@@ -898,16 +955,6 @@ class _ComposeScreenState extends State<ComposeScreen> {
               ],
             ),
           ),
-          if (store.sims.length > 2 && count <= 1 && !groupMode) ...[
-            const SizedBox(height: 16),
-            DropdownButtonFormField<int>(
-              initialValue: store.selectedSim,
-              decoration: const InputDecoration(labelText: 'سیم‌کارت ارسال', prefixIcon: Icon(Icons.sim_card_outlined)),
-              items: [for (final sim in store.sims)
-                DropdownMenuItem<int>(value: sim['id'] as int, child: Text(sim['label'].toString()))],
-              onChanged: sending ? null : (value) => setState(() => store.selectedSim = value ?? -1),
-            ),
-          ],
         ])),
         SafeArea(top: false, child: Container(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
