@@ -19,6 +19,8 @@ class _BulkQueueNoticeState extends State<BulkQueueNotice> {
   bool _waiting = false;
   bool _paused = false;
   String _reason = '';
+  int _issues = 0;
+  String _lastOutcome = '';
 
   @override
   void initState() {
@@ -38,6 +40,8 @@ class _BulkQueueNoticeState extends State<BulkQueueNotice> {
         _waiting = state['waiting'] == true;
         _paused = state['paused'] == true;
         _reason = state['reason']?.toString() ?? '';
+        _issues = (state['issues'] as num?)?.toInt() ?? 0;
+        _lastOutcome = state['lastOutcome']?.toString() ?? '';
       });
     } catch (_) {
       // Failure to read diagnostics cannot block sending or navigation.
@@ -90,6 +94,19 @@ class _BulkQueueNoticeState extends State<BulkQueueNotice> {
   Widget build(BuildContext context) {
     if (_queued == 0 && !_paused && !_waiting) return const SizedBox.shrink();
     final colors = Theme.of(context).colorScheme;
+    final hadProblem = _lastOutcome == 'send_unconfirmed' ||
+        _lastOutcome == 'queue_unreadable' ||
+        _lastOutcome.startsWith('send_failed');
+    final status = _paused
+        ? 'صف متوقف شده است. ${_reason.isEmpty ? 'وضعیت شبکه را بررسی کنید.' : _reason}'
+        : _reason.isNotEmpty
+            ? 'صف محفوظ است؛ بررسی خودکار ادامه دارد. $_reason'
+            : _waiting
+                ? 'در انتظار نتیجه ارسال از گوشی؛ ${Jalali.digits(_queued)} پیام دیگر در صف است.'
+                : '${Jalali.digits(_queued)} پیام در صف؛ ارسال خودکار با فاصله کنترل‌شده انجام می‌شود.';
+    final warning = hadProblem && _issues > 0
+        ? '${Jalali.digits(_issues)} تلاش ناموفق یا نامشخص؛ پیامِ امتحان‌شده خودکار تکرار نمی‌شود.'
+        : null;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
@@ -104,12 +121,18 @@ class _BulkQueueNoticeState extends State<BulkQueueNotice> {
         Icon(_paused ? Icons.pause_circle_outline_rounded : Icons.schedule_send_rounded,
           color: _paused ? colors.error : colors.primary),
         const SizedBox(width: 9),
-        Expanded(child: Text(_paused
-          ? 'صف ارسال متوقف است. ${_reason.isEmpty ? 'وضعیت شبکه را بررسی کنید.' : _reason}'
-          : '${Jalali.digits(_queued)} پیام در صف کنترل‌شده؛ '
-            'ارسال به ترتیب و با تأیید شبکه انجام می‌شود.',
-          style: Theme.of(context).textTheme.bodySmall,
-          maxLines: 3, overflow: TextOverflow.ellipsis)),
+        Expanded(child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(status, style: Theme.of(context).textTheme.bodySmall,
+              maxLines: 3, overflow: TextOverflow.ellipsis),
+            if (warning != null) Text(warning,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: colors.error),
+              maxLines: 2, overflow: TextOverflow.ellipsis),
+          ],
+        )),
         if (_paused && _queued > 0)
           TextButton(onPressed: _resume, child: const Text('ادامه صف')),
       ]),
