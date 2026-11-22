@@ -532,45 +532,59 @@ class _ConversationsPageState extends State<ConversationsPage> {
                 ? const Text('بایگانی', textAlign: TextAlign.center)
                 : Semantics(
                     header: true,
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
-                      DecoratedBox(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: widget.settings.reduceEffects ? const [] : [
-                            BoxShadow(color: scheme.primary.withValues(alpha: .20),
-                              blurRadius: 12, offset: const Offset(0, 4)),
-                          ],
-                        ),
-                        child: Material(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(12),
-                          child: InkWell(borderRadius: BorderRadius.circular(12),
-                            onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const DialectCard())),
-                            child: const Tooltip(message: 'باز کردن واژه‌نامه بشرویه',
-                              child: Padding(padding: EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                child: Column(mainAxisSize: MainAxisSize.min, children: [
-                                  BrandTile(size: 24), Text('واژه‌نامه بشرویه', style: TextStyle(fontSize: 10)),
-                                ]))))),
-                      ),
-                      const SizedBox(width: 10),
-                      Flexible(child: Column(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Column(
                         mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('پیام‌یار', textAlign: TextAlign.center,
+                          const Text('پیام‌یار',
                             maxLines: 1, overflow: TextOverflow.ellipsis,
                             style: TextStyle(fontFamily: 'Vazirmatn',
-                              fontWeight: FontWeight.w900, fontSize: 21)),
+                              fontWeight: FontWeight.w900, fontSize: 20)),
                           Text(unread > 0
                               ? '${Jalali.digits(unread)} گفتگوی خوانده‌نشده'
-                              : 'همه پیام‌ها خوانده شده',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600,
-                              color: unread > 0 ? scheme.primary : scheme.onSurfaceVariant),
-                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                              : 'پیام‌رسان هوشمند ایرانی',
+                            maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600,
+                              color: unread > 0 ? scheme.primary : scheme.onSurfaceVariant)),
                         ],
-                      )),
-                    ]),
+                      ),
+                    ),
                   ),
             actions: [
+              if (!widget.archive)
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(end: 4),
+                  child: Tooltip(
+                    message: 'واژه‌نامه و گویش بشرویه',
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(15),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(builder: (_) => const DialectCard())),
+                        child: Ink(
+                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(colors: [
+                              scheme.primaryContainer,
+                              scheme.tertiaryContainer.withValues(alpha: .7),
+                            ]),
+                            borderRadius: BorderRadius.circular(15),
+                            border: Border.all(color: scheme.primary.withValues(alpha: .18)),
+                          ),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            Icon(Icons.auto_stories_rounded, size: 19, color: scheme.primary),
+                            const SizedBox(width: 4),
+                            Text('گویش', style: TextStyle(fontSize: 11,
+                              fontWeight: FontWeight.w800, color: scheme.onPrimaryContainer)),
+                          ]),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               if (!widget.archive)
                 PopupMenuButton<String>(
                   onSelected: (v) {
