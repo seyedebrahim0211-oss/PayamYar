@@ -451,6 +451,8 @@ open class MainActivity : FlutterFragmentActivity() {
                                 true
                             }
                             "pendingSms" -> SmsCore.pending(this)
+                            "bulkSmsState" -> SmsCore.bulkState(this)
+                            "resumeBulkSms" -> SmsCore.resumeBulk(this)
                             "contactNames" -> {
                                 if (call.argument<Boolean>("force") == true) nameIndexAt = -1
                                 contactNames(call.argument<List<String>>("addresses").orEmpty())
