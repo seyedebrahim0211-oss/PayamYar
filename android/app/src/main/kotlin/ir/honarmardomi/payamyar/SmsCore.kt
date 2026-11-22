@@ -384,29 +384,33 @@ object SmsCore {
         else if (next == "delivered" && previous.startsWith("send_failed"))
             c.getSystemService(NotificationManager::class.java).cancel(id.hashCode())
     }
+    private fun storeIncoming(c: Context, item: JSONObject) {
+        val address = item.getString("address")
+        val body = item.getString("body")
+        val sent = item.getLong("sent")
+        val sim = item.getInt("sim")
+        // Retry a saved journal after provider errors without duplicating a completed insert.
+        var exists = false
+        c.contentResolver.query(Telephony.Sms.Inbox.CONTENT_URI, arrayOf("_id"),
+            "address = ? AND body = ? AND date_sent = ? AND sub_id = ?",
+            arrayOf(address, body, sent.toString(), sim.toString()), null)?.use { exists = it.moveToFirst() }
+        if (!exists) {
+            val uri = c.contentResolver.insert(Telephony.Sms.Inbox.CONTENT_URI, ContentValues().apply {
+                put("address", address); put("body", body); put("date", item.getLong("received"))
+                put("date_sent", sent); put("read", 0); put("seen", 0); put("sub_id", sim)
+                put("thread_id", Telephony.Threads.getOrCreateThreadId(c, address))
+            })
+            check(uri != null)
+            runCatching { InboxWidget.refresh(c) }
+            Notifier.incoming(c, address, contactName(c, address), body, item.getLong("received"))
+        }
+    }
     @Synchronized fun drainIncoming(c: Context) {
         val dir = incomingDir(c)
         dir.listFiles()?.filter { it.extension == "json" }?.forEach { file ->
             try {
-                val item = JSONObject(file.readText())
-                val address = item.getString("address")
-                val body = item.getString("body")
-                val sent = item.getLong("sent")
-                val sim = item.getInt("sim")
-                // Retry a saved journal after provider errors without duplicating a completed insert.
-                var exists = false
-                c.contentResolver.query(Telephony.Sms.Inbox.CONTENT_URI, arrayOf("_id"),
-                    "address = ? AND body = ? AND date_sent = ? AND sub_id = ?",
-                    arrayOf(address, body, sent.toString(), sim.toString()), null)?.use { exists = it.moveToFirst() }
-                if (!exists) {
-                    val uri = c.contentResolver.insert(Telephony.Sms.Inbox.CONTENT_URI, ContentValues().apply {
-                        put("address", address); put("body", body); put("date", item.getLong("received"))
-                        put("date_sent", sent); put("read", 0); put("seen", 0); put("sub_id", sim)
-                        put("thread_id", Telephony.Threads.getOrCreateThreadId(c, address))
-                    })
-                    check(uri != null)
-                    Notifier.incoming(c, address, contactName(c, address), body, item.getLong("received"))
-                }
+                val item = JSONObject(SecureVault.decryptQueue(file.readText()))
+                storeIncoming(c, item)
                 file.delete()
             } catch (_: Exception) {
                 // Keep the private journal for retry on the next inbox refresh.
@@ -422,8 +426,13 @@ object SmsCore {
             .put("sim", intent.getIntExtra("android.telephony.extra.SUBSCRIPTION_INDEX", intent.getIntExtra("subscription", -1)))
         val dir = incomingDir(c).apply { mkdirs() }
         val file = android.util.AtomicFile(java.io.File(dir, "${UUID.randomUUID()}.json"))
+        val ciphertext = try { SecureVault.encryptIncoming(item.toString()) } catch (_: Exception) {
+            // A temporarily unavailable Keystore must not prevent normal inbox delivery.
+            storeIncoming(c, item)
+            return
+        }
         val output = file.startWrite()
-        try { output.write(item.toString().toByteArray(Charsets.UTF_8)); file.finishWrite(output) }
+        try { output.write(ciphertext.toByteArray(Charsets.UTF_8)); file.finishWrite(output) }
         catch (e: Exception) { file.failWrite(output); throw e }
         drainIncoming(c)
         if (hasPendingIncoming(c)) scheduleDrain(c, 60_000)
@@ -438,6 +447,7 @@ object SmsCore {
             affected += if (delete) c.contentResolver.delete(uri, null, null) else c.contentResolver.update(uri,
                 ContentValues().apply { put("read", 1); put("seen", 1) }, null, null)
         }
+        runCatching { InboxWidget.refresh(c) }
         return affected
     }
     /** Resolve address book labels for incoming SMS in local and international form. */

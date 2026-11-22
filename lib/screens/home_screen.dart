@@ -24,6 +24,8 @@ import 'failed_messages_screen.dart';
 import 'settings_screen.dart';
 import 'widgets.dart';
 import 'dialect_card.dart';
+import 'message_collection.dart';
+import 'whats_new_card.dart';
 
 class HomeShell extends StatefulWidget {
   final AppStore store;
@@ -563,6 +565,13 @@ class _ConversationsPageState extends State<ConversationsPage> {
               if (!widget.archive)
                 PopupMenuButton<String>(
                   onSelected: (v) {
+                    for (final kind in CollectionKind.values) {
+                      if (v == kind.name) {
+                        Navigator.of(context).push(MaterialPageRoute<void>(
+                          builder: (_) => MessageCollection(store: store, kind: kind)));
+                        return;
+                      }
+                    }
                     if (v == 'archive') {
                       Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) =>
                         ConversationsPage(store: store, settings: widget.settings, archive: true)));
@@ -576,6 +585,8 @@ class _ConversationsPageState extends State<ConversationsPage> {
                     }
                   },
                   itemBuilder: (_) => [
+                    for (final kind in CollectionKind.values.where((kind) => kind != CollectionKind.codes))
+                      PopupMenuItem(value: kind.name, child: Text(kind.title)),
                     const PopupMenuItem(value: 'archive', child: Text('بایگانی')),
                     const PopupMenuItem(value: 'failed', child: Text('پیام‌های ارسال‌نشده')),
                     const PopupMenuItem(value: 'read', child: Text('خواندن همه')),
@@ -628,6 +639,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
                     ),
                   ),
                 ))),
+              if (!widget.archive && query.isEmpty) const SliverToBoxAdapter(child: WhatsNewCard()),
               if (store.android && !widget.archive && query.isEmpty)
                 const SliverToBoxAdapter(child: DialectCard()),
               if (store.update != null && !store.updateDismissed && !widget.archive)
@@ -666,6 +678,8 @@ class _ConversationsPageState extends State<ConversationsPage> {
                       () => Navigator.of(context).push(MaterialPageRoute<void>(
                         builder: (_) => FailedMessagesScreen(store: store))),
                       tint: scheme.error, icon: Icons.outbox_rounded),
+                    _chip('کدهای تأیید', false, () => Navigator.push(context, MaterialPageRoute<void>(
+                      builder: (_) => MessageCollection(store: store, kind: CollectionKind.codes))), icon: Icons.password),
                     for (final c in MessageCategory.values)
                       _chip(categoryName(c), category == c, () => setState(() => category = category == c ? null : c),
                         tint: _readableTint(_categoryTint(c), scheme.brightness), icon: _categoryIcon(c)),
@@ -704,7 +718,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
                   itemCount: list.length,
                   itemBuilder: (context, i) {
                     final c = list[i];
-                    return ConversationTile(
+                    final tile = ConversationTile(
                       key: ValueKey('conv-${store.key(c.address)}'),
                       store: store,
                       conversation: c,
@@ -713,6 +727,19 @@ class _ConversationsPageState extends State<ConversationsPage> {
                       hit: _hits[c.address],
                       onLongPress: () => _actions(c),
                     );
+                    if (!widget.settings.swipeRows) return tile;
+                    final right = Directionality.of(context) == TextDirection.rtl
+                        ? DismissDirection.endToStart : DismissDirection.startToEnd;
+                    return Dismissible(key: ValueKey('swipe-${store.key(c.address)}'),
+                      background: const ColoredBox(color: Color(0xff135956), child: Align(
+                        alignment: AlignmentDirectional.centerStart, child: Padding(padding: EdgeInsets.all(16), child: Icon(Icons.mark_email_read, color: Colors.white)))),
+                      secondaryBackground: const ColoredBox(color: Color(0xff135956), child: Align(
+                        alignment: AlignmentDirectional.centerEnd, child: Padding(padding: EdgeInsets.all(16), child: Icon(Icons.archive, color: Colors.white)))),
+                      confirmDismiss: (direction) async {
+                        if (direction == right) { store.toggleArchive(c.address); }
+                        else { await store.markRead(c); }
+                        return false;
+                      }, child: tile);
                   },
                 ),
               ),

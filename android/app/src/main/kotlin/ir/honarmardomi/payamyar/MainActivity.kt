@@ -327,10 +327,25 @@ open class MainActivity : FlutterFragmentActivity() {
                     }
                 }
                 "previewSentSound" -> { SentSound.play(this); result.success(null) }
+                "calendarDraft" -> {
+                    val action = Intent(Intent.ACTION_INSERT, android.provider.CalendarContract.Events.CONTENT_URI)
+                        .putExtra(android.provider.CalendarContract.Events.TITLE, call.argument<String>("title"))
+                    (call.argument<Number>("start"))?.toLong()?.let {
+                        action.putExtra(android.provider.CalendarContract.EXTRA_EVENT_BEGIN_TIME, it)
+                        action.putExtra(android.provider.CalendarContract.EXTRA_EVENT_END_TIME, it + 3_600_000L)
+                    }
+                    try { startActivity(action); result.success(null) }
+                    catch (_: Exception) { result.error("calendar", "تقویم در دسترس نیست", null) }
+                }
+                "wallpaperAccent" -> {
+                    if (Build.VERSION.SDK_INT >= 31) result.success(getColor(android.R.color.system_accent1_500).toLong() and 0xffffffffL)
+                    else result.success(null)
+                }
                 "setSecureScreen" -> {
                     // Blocks screenshots, screen recording and the recent-apps preview of private chats.
                     if (call.argument<Boolean>("on") == true) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
                     else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+                    worker.execute { runCatching { InboxWidget.refresh(this) } }
                     Notifier.redactForLock(this)
                     FloatingNotifications.refresh()
                     result.success(null)
@@ -404,6 +419,18 @@ open class MainActivity : FlutterFragmentActivity() {
                             data.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
                         else -> null
                     }?.trim()?.take(2000)?.takeIf { it.isNotEmpty() }
+                    if (data.action == InboxWidget.OPEN_RECENT) {
+                        intent = Intent(this, MainActivity::class.java)
+                        worker.execute {
+                            val last = if (!SmsCore.isDefault(this)) null else runCatching {
+                                contentResolver.query(Telephony.Sms.CONTENT_URI, arrayOf("address"), null, null, "date DESC")?.use {
+                                    if (it.moveToFirst()) it.getString(0) else null
+                                }
+                            }.getOrNull()
+                            runOnUiThread { result.success(last?.let { mapOf("open" to it) }) }
+                        }
+                        return@setMethodCallHandler
+                    }
                     result.success(if (open != null) mapOf("open" to open)
                         else if (data.action == Intent.ACTION_SENDTO) mapOf("to" to address,
                             "body" to (data.getStringExtra("sms_body") ?: "").take(2000))
@@ -419,6 +446,10 @@ open class MainActivity : FlutterFragmentActivity() {
                             "readMessages" -> SmsCore.read(this, call.argument<Int>("limit") ?: 300)
                             "resolveSendSim" -> SmsCore.resolveSubscription(this, call.argument<Int>("sim") ?: -1)
                             "subscriptions" -> SmsCore.subscriptions(this)
+                            "muteConversation" -> {
+                                Notifier.mute(this, call.argument<String>("address").orEmpty(), call.argument<Int>("hours") ?: 0)
+                                true
+                            }
                             "pendingSms" -> SmsCore.pending(this)
                             "contactNames" -> {
                                 if (call.argument<Boolean>("force") == true) nameIndexAt = -1

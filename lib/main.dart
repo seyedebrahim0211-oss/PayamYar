@@ -95,7 +95,7 @@ class _PayamYarState extends State<PayamYar> with WidgetsBindingObserver {
             : null;
     return STheme.build(
       brightness: b,
-      seed: palettes[settings.palette],
+      seed: (settings.useWallpaper ? settings.wallpaperAccent : null) ?? palettes[settings.palette],
       fontFamily: selectedFont,
       reduceEffects: settings.reduceEffects,
     );

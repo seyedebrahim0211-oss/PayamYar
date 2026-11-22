@@ -316,15 +316,34 @@ object Notifier {
      * Shows a new message. When PayamYar is in front and the in-app banner is on, the glass banner
      * inside the app replaces the system notification (pass [forceSystem] for the settings preview).
      */
+    private val deceptiveHost = Regex("""https?://[^/\s]+@|(?:https?://|\.)xn--""", RegexOption.IGNORE_CASE)
+    private val cardRequest = Regex("رمز دوم|cvv2|تاریخ انقضا", RegexOption.IGNORE_CASE)
+    private fun riskyPreview(body: String): Boolean = deceptiveHost.containsMatchIn(body) ||
+        (cardRequest.containsMatchIn(body) && Regex("بفرست|ارسال کن|وارد کن").containsMatchIn(body) &&
+            !Regex("هرگز|نکنید|نفرستید|ندهید|خودداری").containsMatchIn(body))
+
+    fun mute(c: Context, address: String, hours: Int) {
+        require(hours in setOf(0, 1, 8, -1))
+        val editor = c.getSharedPreferences("muted_sms", Context.MODE_PRIVATE).edit()
+        val key = addressKey(address)
+        if (hours == 0) editor.remove(key) else editor.putLong(key,
+            if (hours < 0) Long.MAX_VALUE else System.currentTimeMillis() + hours * 3_600_000L)
+        check(editor.commit())
+        if (hours != 0) cancel(c, address)
+    }
+
     fun incoming(c: Context, address: String, contact: String?, body: String, time: Long, forceSystem: Boolean = false) {
         if (!enabled(c, "notifyIncoming")) return
+        if (!forceSystem && c.getSharedPreferences("muted_sms", Context.MODE_PRIVATE)
+                .getLong(addressKey(address), 0L) > System.currentTimeMillis()) return
         val appLocked = enabled(c, "appLock", false)
         val preview = enabled(c, "notifyPreview", false) && !appLocked
         val source = if (preview) MessengerSender.fromAddress(address) else null
         val name = if (appLocked) "پیام‌یار" else contact?.takeIf { it.isNotBlank() } ?: source?.title ?: address
-        val text = if (preview) body else "پیامک جدید"
-        val code = if (preview && enabled(c, "notifyOtpCopy")) otp(body) else null
-        val reply = canReply(address) && enabled(c, "notifyQuickReply") && !appLocked
+        val risky = preview && riskyPreview(body)
+        val text = when { risky -> "⚠ احتمال کلاهبرداری\n$body"; preview -> body; else -> "پیامک جدید" }
+        val code = if (preview && !risky && enabled(c, "notifyOtpCopy")) otp(body) else null
+        val reply = !risky && canReply(address) && enabled(c, "notifyQuickReply") && !appLocked
 
         val front = MainActivity.foregroundChannel
         if (!forceSystem && front != null && enabled(c, "notifyInApp")) {
@@ -374,7 +393,8 @@ object Notifier {
         val manager = c.getSystemService(NotificationManager::class.java)
         val deliveryChannel = if (floating) OVERLAY_CHANNEL else CHANNEL
         val id = idFor(address)
-        val color = if (enabled(c, "bannerSourceColors") && enabled(c, "notifyPreview", false) && !enabled(c, "appLock", false))
+        val color = if (text.startsWith("⚠ احتمال کلاهبرداری")) 0xffac3527.toInt()
+            else if (enabled(c, "bannerSourceColors") && enabled(c, "notifyPreview", false) && !enabled(c, "appLock", false))
             (sampleSource ?: MessengerSender.fromAddress(address))?.selectedColor(prefs(c)) ?: accent(c) else accent(c)
         val source = if (enabled(c, "appLock", false)) letterAvatar("س", "private")
             else (if (enabled(c, "notifyPreview", false)) BankLogos.picture(c, address) else null)

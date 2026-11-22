@@ -84,6 +84,17 @@ class AppStore extends ChangeNotifier {
   final Map<String, String> names = {};
   final Set<String> archived = {};
   final Set<String> pinned = {};
+  final Set<int> starredIds = {};
+  Future<void> toggleStar(int id) async {
+    if (!starredIds.remove(id)) starredIds.add(id);
+    notifyListeners();
+    await _saveStars();
+  }
+
+  Future<void> _saveStars() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('starred_sms_ids', starredIds.map((id) => id.toString()).toList());
+  }
   /// Conversation key -> id of the message pinned at the top of that conversation.
   final Map<String, int> pinnedMessages = {};
   List<String> templates = [];
@@ -136,6 +147,7 @@ class AppStore extends ChangeNotifier {
     final localLists = Future.wait([smsGroups.load(), folders.load()]);
     onboarded = p.getBool('onboarded') ?? false;
     archived.addAll(p.getStringList('archived') ?? []);
+    starredIds.addAll((p.getStringList('starred_sms_ids') ?? []).map(int.tryParse).whereType<int>());
     pinned.addAll(p.getStringList('pinned') ?? []);
     for (final row in p.getStringList('pinned_messages') ?? const <String>[]) {
       final i = row.lastIndexOf('|');
@@ -771,6 +783,10 @@ class AppStore extends ChangeNotifier {
     }
     final set = ids.toSet();
     messages = messages.where((m) => !set.contains(m.id)).toList();
+    if (starredIds.intersection(set).isNotEmpty) {
+      starredIds.removeAll(set);
+      await _saveStars();
+    }
     pinnedMessages.removeWhere((_, id) => set.contains(id));
     _rebuild();
     notifyListeners();

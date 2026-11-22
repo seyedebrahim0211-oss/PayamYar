@@ -575,6 +575,12 @@ class AppearanceSettingsPage extends StatelessWidget {
       ]),
       SettingsGroup(title: 'پیمایش و عملکرد', children: [
         SwitchListTile(
+          secondary: const Icon(Icons.swipe),
+          title: const Text('کشیدن روی گفتگو'),
+          subtitle: const Text('به راست برای بایگانی، به چپ برای خوانده‌شدن. این انتخاب جای کشیدن بین صفحه‌ها را می‌گیرد.'),
+          value: settings.swipeRows,
+          onChanged: (value) => settings.update(swipeRows: value)),
+        SwitchListTile(
           secondary: const Icon(Icons.swipe_outlined),
           title: const Text('کشیدن بین صفحه‌ها'),
           subtitle: const Text('با کشیدن سریع افقی بین گفتگوها، مخاطبین، گروه‌ها، گزارش‌ها و تنظیمات بروید.'),
@@ -589,6 +595,12 @@ class AppearanceSettingsPage extends StatelessWidget {
       ]),
       SettingsGroup(title: 'شخصی‌سازی ظاهر و فونت', children: [
         Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SwitchListTile(title: const Text('رنگ پس‌زمینهٔ گوشی'), subtitle: const Text('رنگ هماهنگ با تصویر زمینه در اندروید ۱۲ و بالاتر'),
+            value: settings.useWallpaper, onChanged: (value) async {
+              if (!await settings.selectWallpaper(value) && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('رنگ سیستمی روی این گوشی در دسترس نیست.')));
+              }
+            }),
           const Text('رنگ برنامه'),
           const SizedBox(height: 10),
           Wrap(spacing: 12, runSpacing: 10, children: [

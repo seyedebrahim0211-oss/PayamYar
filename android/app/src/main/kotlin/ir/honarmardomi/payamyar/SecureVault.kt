@@ -77,6 +77,10 @@ object SecureVault {
     /** Encrypt queued SMS data without changing any existing PIN or vault records. */
     @Synchronized fun encryptQueue(plainText: String): String {
         require(plainText.length <= 4096)
+        return encryptIncoming(plainText)
+    }
+
+    @Synchronized fun encryptIncoming(plainText: String): String {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key())
         return "v2:" + Base64.encodeToString(

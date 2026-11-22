@@ -1,0 +1,10 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical" android:background="#08444A" android:padding="12dp"
+    android:gravity="center" android:layout_width="match_parent" android:layout_height="match_parent">
+    <TextView android:id="@+id/inbox" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="@string/widget_title" android:gravity="center" android:textColor="#FFFFFF" android:textSize="16sp"/>
+    <LinearLayout android:orientation="horizontal" android:gravity="center" android:layout_width="match_parent" android:layout_height="wrap_content">
+        <Button android:id="@+id/new_sms" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="@string/widget_compose"/>
+        <Button android:id="@+id/recent_sms" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="@string/widget_recent"/>
+    </LinearLayout>
+</LinearLayout>
