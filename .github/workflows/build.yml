@@ -127,7 +127,15 @@ jobs:
             -keystore "$PAYAMYAR_KEYSTORE_PATH" \
             -storepass "$PAYAMYAR_KEYSTORE_PASSWORD" -keypass "$PAYAMYAR_KEY_PASSWORD" \
             -dname "CN=CI Build Test Only, O=PayamYar"
-          flutter build apk --release
+          for attempt in 1 2 3 4; do
+            if flutter build apk --release; then break; fi
+            if [ "$attempt" -eq 4 ]; then
+              echo "::error::Validation Gradle build failed after four attempts."
+              exit 1
+            fi
+            echo "::warning::Validation Gradle build failed; retry $attempt/3 after backoff."
+            sleep $((15 * attempt))
+          done
           # Same identity checks as the official build, so they are proven before a release relies on them.
           aapt="$(find "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/opt/android-sdk}}/build-tools" -maxdepth 2 -type f -name aapt2 | sort -V | tail -n 1)"
           badging="$("$aapt" dump badging build/app/outputs/flutter-apk/app-release.apk | head -n 1)"
@@ -182,7 +190,17 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          flutter build apk --release
+          # External Maven/Gradle mirrors sometimes return HTTP 429. Retry only
+          # the build step; never bypass signing, identity or APK checks.
+          for attempt in 1 2 3 4; do
+            if flutter build apk --release; then break; fi
+            if [ "$attempt" -eq 4 ]; then
+              echo "::error::Release Gradle build failed after four attempts."
+              exit 1
+            fi
+            echo "::warning::Gradle build failed (possible Maven 429); retry $attempt/3 with backoff."
+            sleep $((15 * attempt))
+          done
           cp build/app/outputs/flutter-apk/app-release.apk dist/PayamYar-release.apk
           signer="$(find "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/opt/android-sdk}}/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)"
           if [ -z "$signer" ] || [ ! -x "$signer" ]; then
@@ -240,7 +258,15 @@ jobs:
           signer="$(find "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/opt/android-sdk}}/build-tools" -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)"
           expected="$(tr -d '\r\n' < .github/payamyar-release-cert.sha256)"
           for store in bazaar myket; do
-            flutter build apk --release --dart-define=PAYAMYAR_STORE=$store
+            for attempt in 1 2 3 4; do
+              if flutter build apk --release --dart-define=PAYAMYAR_STORE=$store; then break; fi
+              if [ "$attempt" -eq 4 ]; then
+                echo "::error::Store edition $store Gradle build failed after four attempts."
+                exit 1
+              fi
+              echo "::warning::Gradle build for $store failed (possible Maven 429); retry $attempt/3."
+              sleep $((15 * attempt))
+            done
             label="$( [ "$store" = bazaar ] && echo Bazaar || echo Myket )"
             out="dist/PayamYar-$label-$want_name.apk"
             cp build/app/outputs/flutter-apk/app-release.apk "$out"
