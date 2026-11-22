@@ -159,6 +159,20 @@ class _InviteFriendsScreenState extends State<InviteFriendsScreen> {
               style: TextStyle(color: Color(0xFFE5F3EE), height: 1.8)),
           ]),
         ),
+        const SizedBox(height: 16),
+        FilledButton.icon(
+          onPressed: picking ? null : _inviteBySms,
+          icon: picking ? const SizedBox(width: 18, height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2))
+            : const Icon(Icons.sms_rounded),
+          label: const Text('دعوت با پیامک'),
+        ),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: _share,
+          icon: const Icon(Icons.ios_share_rounded),
+          label: const Text('اشتراک‌گذاری در برنامه‌های دیگر'),
+        ),
         const SizedBox(height: 20),
         Row(children: [
           Expanded(child: Text('متن معرفی برنامه',
@@ -177,20 +191,6 @@ class _InviteFriendsScreenState extends State<InviteFriendsScreen> {
             padding: const EdgeInsets.all(18),
             child: SelectableText(_intro, style: const TextStyle(height: 1.85)),
           ),
-        ),
-        const SizedBox(height: 22),
-        FilledButton.icon(
-          onPressed: picking ? null : _inviteBySms,
-          icon: picking ? const SizedBox(width: 18, height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2))
-            : const Icon(Icons.sms_rounded),
-          label: const Text('دعوت با پیامک'),
-        ),
-        const SizedBox(height: 10),
-        OutlinedButton.icon(
-          onPressed: _share,
-          icon: const Icon(Icons.ios_share_rounded),
-          label: const Text('اشتراک‌گذاری در برنامه‌های دیگر'),
         ),
         const SizedBox(height: 10),
         TextButton.icon(
