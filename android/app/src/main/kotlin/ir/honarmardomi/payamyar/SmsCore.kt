@@ -141,8 +141,12 @@ object SmsCore {
             if (grouped) {
                 // The group shares ONE PendingIntent. After process death groupDue is forgotten,
                 // so arming with only this item's due could postpone an earlier stored item.
-                val earliest = prefs(c).all.entries.filter { it.key.startsWith("group:") }
-                    .mapNotNull { it.value as? Long }.minOrNull() ?: due
+                // A new recipient should not rescan hundreds of encrypted queue
+                // records: use the already armed wake, only scan after process loss.
+                val earliest = if (groupDue != Long.MAX_VALUE &&
+                    groupTimer?.isDone == false) groupDue else
+                    prefs(c).all.entries.filter { it.key.startsWith("group:") && it.value is Long }
+                        .map { it.value as Long }.minOrNull() ?: due
                 scheduleGroup(c.applicationContext, minOf(due, earliest))
             } else arm(c, id, due)
         } catch (e: RuntimeException) {
