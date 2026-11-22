@@ -247,6 +247,7 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                     onChanged: !SmsBridge.supported || _floatingBusy ? null : _toggleFloating,
                   ),
                   ExpansionTile(
+                    key: const PageStorageKey<String>('notification-floating-options'),
                     title: const Text('تنظیمات حباب و اندازهٔ متن'),
                     children: [
                     ListTile(
@@ -390,6 +391,7 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                     onChanged: (v) => sender == null ? s.updateNotify(bannerHue: v)
                         : _setSenderColor(sender, HSVColor.fromAHSV(1, v, .75, .57).toColor())),
                   ExpansionTile(
+                    key: const PageStorageKey<String>('notification-glass-details'),
                     title: const Text('جزئیات شیشه و قاب'),
                     children: [
                     ListTile(
@@ -599,7 +601,9 @@ class _ActionSettings extends StatelessWidget {
           value: s.swipeRightRead, onChanged: (v) => s.updateNotify(swipeRightRead: v)),
       SwitchListTile(title: const Text('خواندن پیام با کشیدن کارت به چپ'),
           value: s.swipeLeftRead, onChanged: (v) => s.updateNotify(swipeLeftRead: v)),
-      ExpansionTile(title: const Text('دکمه‌های دیگر'), children: [
+      ExpansionTile(
+        key: const PageStorageKey<String>('notification-more-actions'),
+        title: const Text('دکمه‌های دیگر'), children: [
         SwitchListTile(title: const Text('گفتگو'), value: s.notifyOpen,
             onChanged: (v) => s.updateNotify(notifyOpen: v)),
         SwitchListTile(title: const Text('بستن کارت'), value: s.notifyDismiss,
