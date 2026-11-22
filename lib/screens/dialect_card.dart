@@ -1,6 +1,7 @@
 import 'dart:async';
 import '../sms_bridge.dart';
 import '../message_search.dart';
+import '../jalali.dart';
 import 'dart:convert';
 
 import 'package:audioplayers/audioplayers.dart';
@@ -48,6 +49,7 @@ class _DialectCardState extends State<DialectCard> with WidgetsBindingObserver {
   AudioPlayer? _player;
   StreamSubscription<void>? _completion;
   Timer? _midnight;
+  Timer? _searchDebounce;
   List<List<String>> _entries = const [];
   bool _playing = false;
   int? _playingIndex;
@@ -147,6 +149,7 @@ class _DialectCardState extends State<DialectCard> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _midnight?.cancel();
+    _searchDebounce?.cancel();
 
     _client.close();
     _completion?.cancel();
@@ -154,31 +157,170 @@ class _DialectCardState extends State<DialectCard> with WidgetsBindingObserver {
     super.dispose();
   }
 
+  void _search(String value) {
+    _searchDebounce?.cancel();
+    final normalized = MessageSearch.normalize(value.trim());
+    _searchDebounce = Timer(const Duration(milliseconds: 140), () {
+      if (mounted) setState(() => _query = normalized);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final results = [for (var i = 0; i < _entries.length; i++)
-      if (_query.isEmpty || MessageSearch.normalize('${_entries[i][0]} ${_entries[i][1]}').contains(_query)) i];
+    final scheme = Theme.of(context).colorScheme;
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    final results = <int>[
+      for (var i = 0; i < _entries.length; i++)
+        if (_query.isEmpty ||
+            MessageSearch.normalize('${_entries[i][0]} ${_entries[i][1]}').contains(_query)) i,
+    ];
     return Scaffold(
-      appBar: AppBar(title: const Text('واژه‌نامه بشرویه')),
+      appBar: AppBar(
+        centerTitle: true,
+        title: const Text('واژه‌نامه بشرویه',
+          style: TextStyle(fontWeight: FontWeight.w900)),
+      ),
       body: SafeArea(child: Column(children: [
-        Padding(padding: const EdgeInsets.all(12), child: TextField(
-          onChanged: (v) => setState(() => _query = MessageSearch.normalize(v.trim())),
-          decoration: const InputDecoration(labelText: 'جست‌وجوی واژه یا معنی', prefixIcon: Icon(Icons.search)))),
-        if (results.isEmpty) Padding(padding: const EdgeInsets.all(18),
-          child: Text(_entries.isEmpty ? 'در حال دریافت واژه‌ها…' : 'واژه‌ای پیدا نشد.')),
-        Expanded(child: ListView.builder(keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          itemCount: results.length, itemBuilder: (context, row) {
-            final index = results[row];
-            final entry = _entries[index];
-            return ListTile(title: Text(entry[0]), subtitle: Text(entry[1]),
-              leading: !_officialAudio(entry[2]) ? null : IconButton(
-                tooltip: 'پخش یا توقف تلفظ', onPressed: () => _listen(index),
-                icon: Icon(_playing && _playingIndex == index ? Icons.stop : Icons.volume_up_outlined)),
-              trailing: IconButton(tooltip: 'اشتراک‌گذاری واژه', icon: const Icon(Icons.share_outlined),
-                onPressed: () => SmsBridge.shareText([entry[0], entry[1], if (_officialAudio(entry[2])) entry[2], _source].join('\n'),
-                  subject: 'واژه‌نامه بشرویه')));
-          })),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              gradient: LinearGradient(colors: [
+                scheme.primaryContainer.withValues(alpha: .85),
+                scheme.tertiaryContainer.withValues(alpha: .55),
+              ]),
+              border: Border.all(color: scheme.primary.withValues(alpha: .2)),
+            ),
+            child: Row(children: [
+              Container(
+                width: 46, height: 46,
+                decoration: BoxDecoration(
+                  color: scheme.surface.withValues(alpha: .65),
+                  borderRadius: BorderRadius.circular(14)),
+                child: Icon(Icons.auto_stories_rounded, size: 27, color: scheme.primary),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('گنجینه گویش بشرویگی',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w900, color: scheme.onSurface)),
+                  Text('${Jalali.digits(_entries.length)} واژه و عبارت · هنر مردمی',
+                    style: Theme.of(context).textTheme.bodySmall),
+                ],
+              )),
+              Icon(Icons.diamond_outlined, color: scheme.primary.withValues(alpha: .5)),
+            ]),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
+          child: TextField(
+            onChanged: _search,
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              labelText: 'جست‌وجوی واژه یا معنی',
+              hintText: 'مثلاً نام یک واژه بشرویگی',
+              prefixIcon: const Icon(Icons.search_rounded),
+              filled: true,
+              fillColor: scheme.surfaceContainerLow,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: scheme.outlineVariant)),
+            ),
+          ),
+        ),
+        if (results.isEmpty)
+          Padding(padding: const EdgeInsets.all(20),
+            child: Text(_entries.isEmpty
+              ? 'در حال دریافت واژه‌ها…' : 'واژه‌ای پیدا نشد.',
+              textAlign: TextAlign.center)),
+        Expanded(
+          child: ListView.builder(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.fromLTRB(12, 2, 12, 28),
+            itemCount: results.length,
+            itemBuilder: (context, row) {
+              final index = results[row];
+              final entry = _entries[index];
+              final hasAudio = _officialAudio(entry[2]);
+              final playing = _playing && _playingIndex == index;
+              final card = RepaintBoundary(child: Container(
+                margin: const EdgeInsets.only(bottom: 9),
+                decoration: BoxDecoration(
+                  color: playing
+                    ? scheme.primaryContainer.withValues(alpha: .6)
+                    : scheme.surface,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: playing ? scheme.primary.withValues(alpha: .55)
+                      : scheme.outlineVariant.withValues(alpha: .7)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsetsDirectional.fromSTEB(12, 12, 9, 12),
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                    Container(
+                      width: 38, height: 38,
+                      decoration: BoxDecoration(
+                        color: scheme.secondaryContainer.withValues(alpha: .6),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      alignment: Alignment.center,
+                      child: Icon(Icons.menu_book_rounded, color: scheme.primary,
+                        size: 21),
+                    ),
+                    const SizedBox(width: 11),
+                    Expanded(child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(entry[0], textAlign: TextAlign.start,
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w900, color: scheme.primary)),
+                        const SizedBox(height: 3),
+                        Text(entry[1], textAlign: TextAlign.start,
+                          style: Theme.of(context).textTheme.bodyMedium),
+                      ],
+                    )),
+                    if (hasAudio)
+                      IconButton(
+                        tooltip: playing ? 'توقف تلفظ' : 'پخش تلفظ واژه',
+                        onPressed: () => _listen(index),
+                        icon: Icon(playing
+                          ? Icons.stop_circle_rounded
+                          : Icons.play_circle_outline_rounded,
+                          color: scheme.primary),
+                      ),
+                    IconButton(
+                      tooltip: 'اشتراک‌گذاری واژه',
+                      icon: Icon(Icons.ios_share_rounded,
+                        color: scheme.onSurfaceVariant, size: 21),
+                      onPressed: () => SmsBridge.shareText(
+                        [entry[0], entry[1], if (hasAudio) entry[2], _source].join('\\n'),
+                        subject: 'واژه‌نامه بشرویه'),
+                    ),
+                  ]),
+                ),
+              ));
+              if (reduceMotion) return card;
+              return TweenAnimationBuilder<double>(
+                key: ValueKey('word-$index'),
+                tween: Tween(begin: .975, end: 1),
+                duration: const Duration(milliseconds: 170),
+                curve: Curves.easeOutCubic,
+                builder: (context, value, child) =>
+                  Transform.scale(scale: value, child: child),
+                child: card,
+              );
+            },
+          ),
+        ),
       ])),
     );
   }
+
 }

@@ -56,6 +56,26 @@ void main() {
     store.dispose();
   });
 
+  testWidgets('group-specific retry inbox never includes failures from other groups',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final store = AppStore(android: false);
+    final at = DateTime(2026, 11, 22);
+    store.ingestForTesting([
+      MessageRecord(sender: '09120000001', body: 'فقط عضو این گروه',
+        date: at, outgoing: true, type: 5, id: 101),
+      MessageRecord(sender: '09120000002', body: 'ناموفق گروه دیگر',
+        date: at, outgoing: true, type: 5, id: 102),
+    ]);
+    await tester.pumpWidget(MaterialApp(
+      home: FailedMessagesScreen(store: store, restrictedIds: {101})));
+    await tester.pumpAndSettle();
+    expect(find.text('فقط عضو این گروه'), findsOneWidget);
+    expect(find.text('ناموفق گروه دیگر'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+    store.dispose();
+  });
+
   testWidgets('group item in inbox expands and opens its real group view',
       (tester) async {
     SharedPreferences.setMockInitialValues({});

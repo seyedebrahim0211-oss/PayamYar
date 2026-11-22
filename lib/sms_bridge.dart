@@ -205,6 +205,14 @@ class SmsBridge {
     await _channel.invokeMethod<String>('queueSms', {
       'to': normalizeNumber(to), 'body': body, 'group': group, 'groupTime': groupTime?.millisecondsSinceEpoch, 'subscriptionId': sim, 'delayMs': delay.inMilliseconds,
     }) ?? '';
+  /// No attempt is considered successful until Android reports radio acceptance.
+  static Future<Map<String, dynamic>> bulkState() async {
+    if (!supported) return {'paused': false, 'queued': 0, 'waiting': false};
+    return await _channel.invokeMapMethod<String, dynamic>('bulkSmsState') ?? {};
+  }
+  static Future<bool> resumeBulk() async =>
+    supported && (await _channel.invokeMethod<bool>('resumeBulkSms') ?? false);
+
   /// Native queue survives the conversation screen and can be restored after restart.
   static Future<List<Map<dynamic, dynamic>>> pending() async {
     if (!supported) return [];

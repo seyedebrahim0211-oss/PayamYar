@@ -7,6 +7,8 @@ import '../sms_bridge.dart';
 import '../sms_groups.dart';
 import 'compose_screen.dart';
 import 'failed_message_actions.dart';
+import 'failed_messages_screen.dart';
+import 'bulk_queue_notice.dart';
 import 'conversation_screen.dart';
 import 'message_interactions.dart';
 
@@ -372,6 +374,7 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
         ],
       ),
       body: Column(children: [
+        const BulkQueueNotice(),
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
           child: Container(
@@ -453,6 +456,26 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
                     ],
                   ),
                 ),
+                if (!_showMemberHistory && failedCount > 0)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.restart_alt_rounded),
+                        label: Text('انتخاب و ارسال مجدد ${Jalali.digits(failedCount)} پیام ناموفق'),
+                        onPressed: () async {
+                          final ids = sent.where((r) => r.record?.failedSendOrDelivery == true)
+                              .map((r) => r.record?.id).whereType<int>().toSet();
+                          if (ids.isEmpty) return;
+                          await Navigator.of(context).push(MaterialPageRoute<void>(
+                            builder: (_) => FailedMessagesScreen(
+                              store: store, restrictedIds: ids)));
+                          if (mounted) setState(_loadHistory);
+                        },
+                      ),
+                    ),
+                  ),
                 if (!_showMemberHistory) SizedBox(
                   height: 48,
                   child: ListView(
