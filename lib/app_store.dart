@@ -373,8 +373,12 @@ class AppStore extends ChangeNotifier {
       messages = _buffer;
       if (!_progressive) _rebuild();
       _buffer = [];
-      sims = await SmsBridge.subscriptions();
-      if (!sims.any((s) => s['id'] == selectedSim)) selectedSim = -1;
+      sims = (await SmsBridge.subscriptions())
+          .where((s) => s['id'] is int && (s['id'] as int) >= 0).toList();
+      if (!sims.any((s) => s['id'] == selectedSim)) {
+        // Single-SIM phones need no extra choice; dual-SIM phones always do.
+        selectedSim = sims.length == 1 ? sims.single['id'] as int : -1;
+      }
       unawaited(_loadNames());
     } catch (_) {
       error = 'خواندن پیامک‌های گوشی ممکن نشد.';
@@ -635,6 +639,7 @@ class AppStore extends ChangeNotifier {
   // ───────────── backup ─────────────
 
   void selectSim(int id) {
+    if (!sims.any((sim) => sim['id'] == id && id >= 0)) return;
     selectedSim = id;
     notifyListeners();
   }
@@ -822,6 +827,11 @@ class AppStore extends ChangeNotifier {
       onNotice?.call('برای ثبت مطمئن پیام ارسالی، ابتدا پیام‌یار را برنامه پیش‌فرض پیامک کنید. متن شما حفظ شد.');
       return null;
     }
+    final sendSim = groupSim ?? selectedSim;
+    if (sendSim < 0 || !sims.any((sim) => sim['id'] == sendSim)) {
+      onNotice?.call('سیم‌کارت ارسال مشخص نیست. ابتدا سیم‌کارت ۱ یا ۲ را انتخاب کنید؛ متن پیام حفظ شد.');
+      return null;
+    }
     try {
       final now = DateTime.now();
       final delay = scheduledAt == null
@@ -831,7 +841,7 @@ class AppStore extends ChangeNotifier {
         onNotice?.call('زمان ارسال را بین ۵ ثانیه تا ۳۰ روز آینده تنظیم کنید.');
         return null;
       }
-      final id = await SmsBridge.queue(target, text, groupSim ?? selectedSim, delay: delay, group: groupSim != null, groupTime: groupTime);
+      final id = await SmsBridge.queue(target, text, sendSim, delay: delay, group: groupSim != null, groupTime: groupTime);
       final pending = PendingSend(id, target, text, now.add(delay),
           scheduled: scheduledAt != null, window: delay);
       pendingSends.add(pending);
