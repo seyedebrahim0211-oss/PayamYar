@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../jalali.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app_store.dart';
+import '../group_sim_choice.dart';
 import '../security/vault.dart';
 import '../text_polish.dart';
 import '../sms_bridge.dart';
@@ -332,14 +333,14 @@ class _ComposeScreenState extends State<ComposeScreen> {
   }
 
   Future<int?> _groupSim() async {
-    final selected = _explicitGroupSim;
-    if (selected == null) {
+    if (_explicitGroupSim == null) {
       store.onNotice?.call('برای ارسال گروهی، سیم‌کارت را در بخش «سیم‌کارت ارسال گروهی» انتخاب کنید.');
       return null;
     }
     try {
       final active = await SmsBridge.subscriptions();
-      if (!active.any((sim) => sim['id'] == selected)) {
+      final selected = GroupSimChoice.active(_explicitGroupSim, active);
+      if (selected == null) {
         store.onNotice?.call('سیم‌کارت انتخاب‌شده دیگر فعال نیست؛ دوباره انتخاب کنید.');
         if (mounted) setState(() => _explicitGroupSim = null);
         return null;
