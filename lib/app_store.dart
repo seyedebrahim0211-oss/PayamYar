@@ -877,6 +877,9 @@ class AppStore extends ChangeNotifier {
     return ok;
   }
 
+  /// Coalesce UI updates while staging a bulk SMS queue.
+  void notifyBulkQueueChanged() => notifyListeners();
+
   Timer? _sendPoll;
   DateTime? _nextPollAt;
   bool _polling = false;
@@ -894,7 +897,9 @@ class AppStore extends ChangeNotifier {
     // Hundreds of contacts should not cancel/recreate a status timer for each
     // queue insertion; keep an already-armed earlier wake.
     if (_sendPoll?.isActive == true &&
-        _nextPollAt != null && !_nextPollAt!.isAfter(requestedAt)) return;
+        _nextPollAt != null && !_nextPollAt!.isAfter(requestedAt)) {
+      return;
+    }
     _sendPoll?.cancel();
     _nextPollAt = requestedAt;
     _sendPoll = Timer(duration, _pollSends);
