@@ -620,14 +620,6 @@ class _ComposeScreenState extends State<ComposeScreen> {
         Expanded(child: ListView(
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24), children: [
-          Row(children: [
-            Icon(Icons.people_alt_outlined, color: scheme.primary),
-            const SizedBox(width: 8),
-            Text('۱. گیرندگان', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
-            const Spacer(),
-            Text('$count از $maxRecipients', style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
-          ]),
-          const SizedBox(height: 10),
           if (widget.lockGroupRecipients)
             Card(
               child: ListTile(
@@ -660,13 +652,19 @@ class _ComposeScreenState extends State<ComposeScreen> {
                     filled: false,
                   ),
                 )),
+                if (to.text.trim().isNotEmpty && _isNumber(_normalize(to.text.trim())))
+                  IconButton(
+                    tooltip: 'افزودن شماره',
+                    onPressed: _addTyped,
+                    icon: const Icon(Icons.add_circle_outline),
+                  ),
                 IconButton.filledTonal(
-                  tooltip: 'افزودن شماره',
-                  onPressed: _addTyped,
-                  icon: const Icon(Icons.add_rounded),
+                  tooltip: 'انتخاب از مخاطبان',
+                  onPressed: openingContacts ? null : _openContacts,
+                  icon: const Icon(Icons.contacts_outlined),
                 ),
               ]),
-              if (_contacts.isNotEmpty) ...[
+              if (_suggestions.isNotEmpty) ...[
                 const SizedBox(height: 6),
                 Text(to.text.trim().isEmpty ? 'مخاطبین پرکاربرد' : 'پیشنهاد بر اساس نام و شماره',
                   style: Theme.of(context).textTheme.labelMedium?.copyWith(color: scheme.primary)),
@@ -705,21 +703,35 @@ class _ComposeScreenState extends State<ComposeScreen> {
                       label: Text(contactNames[number] ?? number,
                         textDirection: TextDirection.rtl),
                       tooltip: number,
-                      onDeleted: () { setState(() => recipients.remove(number)); _saveDraft(); },
+                      onDeleted: () {
+                        setState(() { recipients.remove(number); _refreshSuggestions(); });
+                        _saveDraft();
+                      },
                     ),
                   if (recipients.length > 8)
                     Chip(label: Text('و ${recipients.length - 8} نفر دیگر…')),
                 ]),
               ],
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: openingContacts ? null : _openContacts,
-                icon: openingContacts
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.contacts_rounded),
-                label: const Text('انتخاب مخاطب • چندتایی • انتخاب همه'),
-              ),
             ]),
+          ),
+          const SizedBox(height: 18),
+
+          TextField(
+            controller: body,
+            onChanged: (_) { _saveDraft(); setState(() {}); },
+            maxLength: 2000,
+            minLines: 4,
+            // Grow with the text so the page scrolls; an inner scrollable field made the
+            // page stick when the finger landed on it.
+            maxLines: null,
+            textAlignVertical: TextAlignVertical.top,
+            decoration: const InputDecoration(
+              labelText: 'متن پیام',
+              hintText: 'پیام خود را بنویسید…',
+              alignLabelWithHint: true,
+              counterText: '',
+              contentPadding: EdgeInsets.all(18),
+            ),
           ),
           if (!widget.lockGroupRecipients && (count > 1 || groupMode)) ...[
             const SizedBox(height: 12),
@@ -777,7 +789,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
                   Row(children: [
                     Icon(Icons.sim_card_rounded, color: scheme.primary),
                     const SizedBox(width: 9),
-                    Expanded(child: Text('۲. سیم‌کارت ارسال گروهی • ضروری',
+                    Expanded(child: Text('سیم‌کارت ارسال گروهی',
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w800))),
                     IconButton(
@@ -830,7 +842,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
                   Row(children: [
                     Icon(Icons.sim_card_outlined, color: scheme.primary),
                     const SizedBox(width: 9),
-                    Expanded(child: Text('۲. سیم‌کارت ارسال',
+                    Expanded(child: Text('سیم‌کارت ارسال',
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800))),
                     IconButton(
                       tooltip: 'بازخوانی سیم‌کارت‌ها',
@@ -859,25 +871,6 @@ class _ComposeScreenState extends State<ComposeScreen> {
               ),
             ),
           ],
-          const SizedBox(height: 18),
-          Text('۳. متن پیام', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 10),
-          TextField(
-            controller: body,
-            onChanged: (_) { _saveDraft(); setState(() {}); },
-            maxLength: 2000,
-            minLines: 4,
-            // Grow with the text so the page scrolls; an inner scrollable field made the
-            // page stick when the finger landed on it.
-            maxLines: null,
-            textAlignVertical: TextAlignVertical.top,
-            decoration: const InputDecoration(
-              hintText: 'پیام خود را اینجا بنویسید…',
-              alignLabelWithHint: true,
-              counterText: '',
-              contentPadding: EdgeInsets.all(18),
-            ),
-          ),
           Align(alignment: AlignmentDirectional.centerStart,
             child: TextButton.icon(
               onPressed: () async {
@@ -902,7 +895,6 @@ class _ComposeScreenState extends State<ComposeScreen> {
               initiallyExpanded: false,
               leading: const Icon(Icons.library_books_outlined),
               title: const Text('پیام‌های آماده و مناسبتی'),
-              subtitle: const Text('اختیاری؛ برای دیدن پیشنهادها باز کنید'),
               children: [
                 ListTile(
                   leading: const Icon(Icons.event_outlined),
