@@ -107,7 +107,8 @@ class _FailedMessagesScreenState extends State<FailedMessagesScreen> {
         final at = DateTime.now();
         final pending = await widget.store.send(
             message.sender, message.body, exactBody: true,
-            groupSim: batchSim, groupTime: batchSim == null ? null : at);
+            groupSim: batchSim, groupTime: batchSim == null ? null : at,
+            silent: true);
         if (pending != null) {
           queued++;
           _retried.add(message.id!);
@@ -126,6 +127,7 @@ class _FailedMessagesScreenState extends State<FailedMessagesScreen> {
         }
       }
     } finally {
+      widget.store.notifyListeners();
       if (mounted) setState(() => _busy = false);
     }
     widget.store.onNotice?.call(
