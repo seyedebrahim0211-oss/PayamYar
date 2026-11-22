@@ -427,7 +427,9 @@ class _ComposeScreenState extends State<ComposeScreen> {
     for (final number in targets) {
       if (stopQueueing) break;
       final queuedAt = DateTime.now();
-      final pending = await store.send(number, text, groupSim: groupSim, groupTime: savedGroup == null ? null : queuedAt);
+      final pending = await store.send(number, text, groupSim: groupSim,
+        groupTime: savedGroup == null ? null : queuedAt,
+        silent: targets.length > 1);
       processed++;
       if (stopQueueing && pending != null) {
         await store.undo(pending);
@@ -448,6 +450,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
         }
       }
     }
+    if (targets.length > 1) store.notifyListeners();
     // Log only messages actually accepted into the native queue.
     // The group's original text is encrypted in Android Keystore; delivery
     // status is reconciled against SMS rows, never fabricated as 'sent'.
