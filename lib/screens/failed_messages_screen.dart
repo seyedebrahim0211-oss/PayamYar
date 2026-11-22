@@ -69,6 +69,7 @@ class _FailedMessagesScreenState extends State<FailedMessagesScreen> {
         return;
       }
       if (!mounted) return;
+      widget.store.sims = sims;
       if (sims.isEmpty) {
         widget.store.onNotice?.call('سیم‌کارت فعال یافت نشد؛ مجوز تلفن را بررسی کنید.');
         return;
