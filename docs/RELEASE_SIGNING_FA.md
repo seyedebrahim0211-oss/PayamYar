@@ -16,9 +16,9 @@ A82C3ACB328F3D6DE57D60297F8E2DCBD7384AAAE5172B5FBEEC38B3E31BBE0F
 2. `winget install --id GitHub.cli -e` و سپس `gh auth login` با حساب Admin مخزن.
 3. در PowerShell داخل همان پوشه:
    ```
-   powershell -NoProfile -ExecutionPolicy Bypass -File .\Set-PayamYar-GitHub-Secrets.ps1 -RunWorkflow
+   powershell -NoProfile -ExecutionPolicy Bypass -File .\Set-PayamYar-GitHub-Secrets.ps1 -IncludeWpSecret -RunWorkflow
    ```
-4. اسکریپت پیش از ثبت، رمز و اثر انگشت را بررسی و این چهار Secret را ذخیره می‌کند: `PAYAMYAR_KEYSTORE_BASE64`، `PAYAMYAR_KEYSTORE_PASSWORD`، `PAYAMYAR_KEY_ALIAS`، `PAYAMYAR_KEY_PASSWORD`.
+4. اسکریپت پیش از ثبت، رمز و اثر انگشت را بررسی و این چهار Secret را ذخیره می‌کند: `PAYAMYAR_KEYSTORE_BASE64`، `PAYAMYAR_KEYSTORE_PASSWORD`، `PAYAMYAR_KEY_ALIAS`، `PAYAMYAR_KEY_PASSWORD`. این Secretها در **محیط محافظت‌شده `release`** ذخیره می‌شوند که فقط شاخه `main` به آن دسترسی دارد، و نسخه‌های قدیمی سطح مخزن حذف می‌شوند؛ با `-IncludeWpSecret` کلید `PAYAMYAR_WP_SECRET` هم به محیط `production` می‌رود که پیش از هر انتشار به‌روزرسانی درون‌برنامه، تأیید دستی شما را می‌خواهد (در صفحه Actions دکمه Review deployments).
 
 رمز و کلید را در issue، comment، commit، Releases، WordPress یا پیام عمومی قرار ندهید. از ZIP دو نسخه پشتیبان آفلاین در دو محل امن نگه دارید؛ ازدست‌رفتن کلید یعنی عدم امکان به‌روزرسانی نسخه‌های رسمی بعدی.
 

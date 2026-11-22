@@ -78,6 +78,10 @@ jobs:
           if-no-files-found: ignore
   android:
     needs: analyze
+    # Signing secrets live in the 'release' environment, which only main may use, so a
+    # workflow_dispatch from another branch can't read the permanent key. PRs build with
+    # a throwaway key in an unprotected environment.
+    environment: ${{ github.event_name == 'pull_request' && 'pr-validation' || 'release' }}
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
@@ -276,6 +280,7 @@ jobs:
     name: Publish signed Android APK to Releases
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: [android, overlay-ui]
+    environment: release
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -314,6 +319,8 @@ jobs:
     name: Publish to honarmardomi.ir (site download + in-app update)
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: github_release
+    # Pushes an in-app update to every user: requires a manual approval in GitHub.
+    environment: production
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
