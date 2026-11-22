@@ -127,7 +127,15 @@ jobs:
             -keystore "$PAYAMYAR_KEYSTORE_PATH" \
             -storepass "$PAYAMYAR_KEYSTORE_PASSWORD" -keypass "$PAYAMYAR_KEY_PASSWORD" \
             -dname "CN=CI Build Test Only, O=PayamYar"
-          flutter build apk --release
+          for attempt in 1 2 3 4; do
+            if flutter build apk --release; then break; fi
+            if [ "$attempt" -eq 4 ]; then
+              echo "::error::Validation Gradle build failed after four attempts."
+              exit 1
+            fi
+            echo "::warning::Validation Gradle build failed; retry $attempt/3 after backoff."
+            sleep $((15 * attempt))
+          done
           # Same identity checks as the official build, so they are proven before a release relies on them.
           aapt="$(find "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/opt/android-sdk}}/build-tools" -maxdepth 2 -type f -name aapt2 | sort -V | tail -n 1)"
           badging="$("$aapt" dump badging build/app/outputs/flutter-apk/app-release.apk | head -n 1)"
