@@ -241,7 +241,7 @@ class _DialectCardState extends State<DialectCard> with WidgetsBindingObserver {
               textAlign: TextAlign.center)),
         Expanded(
           child: ListView.builder(
-            cacheExtent: 300,
+            scrollCacheExtent: 300,
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: const EdgeInsets.fromLTRB(12, 2, 12, 28),
             itemCount: results.length,
@@ -309,7 +309,7 @@ class _DialectCardState extends State<DialectCard> with WidgetsBindingObserver {
               ));
               if (reduceMotion) return card;
               return TweenAnimationBuilder<double>(
-                key: ValueKey('word-${index}'),
+                key: ValueKey('word-$index'),
                 tween: Tween(begin: .975, end: 1),
                 duration: const Duration(milliseconds: 170),
                 curve: Curves.easeOutCubic,
