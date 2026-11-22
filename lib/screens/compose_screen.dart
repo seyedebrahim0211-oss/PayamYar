@@ -16,6 +16,7 @@ import 'contact_picker.dart';
 import 'share_contact_sms.dart';
 import 'conversation_screen.dart';
 import 'send_control.dart';
+import 'bulk_queue_notice.dart';
 
 /// SMS composition with an internal phone book and explicit multi-send confirmation.
 class ComposeScreen extends StatefulWidget {
@@ -399,7 +400,9 @@ class _ComposeScreenState extends State<ComposeScreen> {
           content: Text('متن پیام به ${targets.length} شماره، به‌صورت پیامک جداگانه ارسال می‌شود. '
             'اپراتور ممکن است برای هر پیامک هزینه دریافت کند. '
             'سیم‌کارت انتخابی: ${store.sims.where((sim) => sim['id'] == groupSim).map((sim) => sim['label']).firstOrNull ?? 'انتخاب‌شده'}. '
-            'پس از تأیید، هر پیام جداگانه به صف ارسال می‌رود. به محدودیت‌های اپراتور و هزینه احتمالی توجه کنید؛ $undoNote'),
+            'پس از تأیید، پیام‌ها در صف کنترل‌شده (حداکثر ۱۲ تلاش در دقیقه و فاصله دست‌کم ۴ ثانیه) ثبت می‌شوند. '
+            'پس از تأیید ارسال شبکه، نوبت مخاطب بعدی می‌رسد؛ در خطای شبکه صف متوقف می‌شود. '
+            'این روش تضمین عبور از محدودیت اپراتور نیست؛ $undoNote'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('بازگشت')),
             FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('تأیید و ارسال')),
@@ -741,18 +744,22 @@ class _ComposeScreenState extends State<ComposeScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(13),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  Text('روش ارسال به چند نفر', style: Theme.of(context).textTheme.titleSmall),
+                  Text('ارسال یک متن به چند مخاطب', style: Theme.of(context).textTheme.titleSmall),
                   const SizedBox(height: 10),
                   SegmentedButton<bool>(
                     segments: const [
                       ButtonSegment(value: false, icon: Icon(Icons.person_outline_rounded),
-                        label: Text('جداگانه')),
+                        label: Text('چند مخاطب')),
                       ButtonSegment(value: true, icon: Icon(Icons.groups_rounded),
                         label: Text('گروه پیامکی')),
                     ],
                     selected: {groupMode},
                     onSelectionChanged: sending ? null : (v) => setState(() => groupMode = v.first),
                   ),
+                  const SizedBox(height: 8),
+                  const Text('هر مخاطب یک پیامک جداگانه دریافت می‌کند؛ ارسال‌ها '
+                    'به ترتیب انجام می‌شوند. هزینه هر پیام بر اساس تعرفه سیم‌کارت است.',
+                    textAlign: TextAlign.center, style: TextStyle(fontSize: 12)),
                   if (groupMode) ...[
                     const SizedBox(height: 12),
                     TextField(
@@ -966,6 +973,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
             border: Border(top: BorderSide(color: scheme.outlineVariant.withValues(alpha: .5))),
           ),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const BulkQueueNotice(),
             Row(children: [
               SendControl(
                 key: const ValueKey('compose-send-control'),
@@ -999,7 +1007,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
               ),
               const SizedBox(width: 12),
               Expanded(child: Text(sending
-                  ? '${Jalali.digits(queuedCount)} از ${Jalali.digits(count)} در صف'
+                  ? '${Jalali.digits(queuedCount)} از ${Jalali.digits(count)} ثبت در صف کنترل‌شده'
                   : count > 1 ? 'ارسال جداگانه به ${Jalali.digits(count)} مخاطب' : 'ارسال پیامک',
                 style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w800))),
             ]),
