@@ -249,19 +249,35 @@ object SmsCore {
         groupTimer?.cancel(false)
         groupTimer = null
         groupDue = Long.MAX_VALUE
+        migrateLegacyPause(c)
         val p = prefs(c)
-        if (p.getBoolean("bulk.paused", false)) return
         val now = System.currentTimeMillis()
         val active = p.getString("bulk.active", null)
         if (active != null) {
             val started = p.getLong("bulk.activeAt", now)
             if (now - started >= BULK_ACK_TIMEOUT_MS) {
-                pauseBulk(c, "شبکه در مهلت مقرر دریافت پیامک را تأیید نکرد؛ ادامه نیاز به بررسی و تأیید شما دارد.")
+                val old = status(c, active)
+                if (old == "queued") {
+                    // Crashed before dispatch removed the queued item: no attempt.
+                    check(p.edit().remove("bulk.active").remove("bulk.activeAt")
+                        .putLong("bulk.nextAt", now + BULK_GAP_MS).commit())
+                    val earliest = p.all.entries.filter {
+                        it.key.startsWith("group:") && it.value is Long
+                    }.map { it.value as Long }.minOrNull()
+                    if (earliest != null) scheduleGroup(c, maxOf(earliest, now + BULK_GAP_MS))
+                } else {
+                    val outcome = BulkQueuePolicy.afterTimeout(old)
+                    if (outcome != old) check(p.edit().putString("status:$active", outcome).commit())
+                    // A missing acknowledgement is NOT proof of failure; do
+                    // not retry this attempted message or call it delivered.
+                    bulkReceipt(c, active, outcome)
+                }
             } else {
                 scheduleGroup(c, started + BULK_ACK_TIMEOUT_MS)
             }
             return
         }
+
         val rows = p.all.entries.filter { it.key.startsWith("group:") && it.value is Long }
             .sortedBy { it.value as Long }
         val first = rows.firstOrNull() ?: return
@@ -272,17 +288,50 @@ object SmsCore {
         val due = maxOf(first.value as Long, p.getLong("bulk.nextAt", 0L), windowLimit)
         if (due > now) { scheduleGroup(c, due); return }
         val id = first.key.removePrefix("group:")
-        // Persist the in-flight gate before touching the radio. On process death
-        // an ambiguous attempt remains un-retried; later items must not overtake it.
+        val raw = p.getString("queue:$id", null)
+        if (raw == null) {
+            // A stale queue index must not stall the next recipient.
+            check(p.edit().remove("group:$id")
+                .putString("status:$id", "queue_unreadable").commit())
+            val after = rows.drop(1).firstOrNull()?.value as? Long
+            if (after != null) scheduleGroup(c, maxOf(after, now + BULK_GAP_MS))
+            return
+        }
+        val accessProblem = when {
+            !isDefault(c) -> "پیام‌یار باید پیامک‌رسان پیش‌فرض باشد."
+            ContextCompat.checkSelfPermission(c, Manifest.permission.SEND_SMS) !=
+                PackageManager.PERMISSION_GRANTED -> "مجوز ارسال پیامک غیرفعال شده است."
+            else -> {
+                val savedSim = runCatching {
+                    JSONObject(SecureVault.decryptQueue(raw)).getInt("sim")
+                }.getOrNull()
+                // Let dispatch explicitly mark an unreadable encrypted payload.
+                if (savedSim == null) null else runCatching {
+                    resolveSubscription(c, savedSim)
+                    null
+                }.getOrElse { it.message ?: "سیم‌کارت انتخاب‌شده در دسترس نیست." }
+            }
+        }
+        if (accessProblem != null) {
+            // Do not consume hundreds of messages while the phone is offline
+            // from the default-SMS role or has lost its selected SIM/permission.
+            // Recheck periodically, without attempting a single SMS.
+            val recheck = now + BulkQueuePolicy.PREFLIGHT_RECHECK_MS
+            check(p.edit().putString("bulk.reason", accessProblem)
+                .putLong("bulk.nextAt", recheck).commit())
+            scheduleGroup(c.applicationContext, recheck)
+            return
+        }
+        // Commit the in-flight gate before calling Android's SMS API. An app
+        // crash cannot cause this same message to be sent automatically twice.
         check(p.edit().putString("bulk.active", id).putLong("bulk.activeAt", now)
+            .remove("bulk.reason")
             .putLong("bulk.windowStart", if (withinWindow) window else now)
             .putInt("bulk.windowCount", count + 1).commit())
         scheduleGroup(c, now + BULK_ACK_TIMEOUT_MS)
         dispatch(c, id)
         val state = status(c, id)
-        if (state.startsWith("send_failed") || state == "queue_unreadable") {
-            bulkReceipt(c, id, state)
-        }
+        if (BulkQueuePolicy.isSettled(state)) bulkReceipt(c, id, state)
     }
 
     fun receiveAlarm(c: Context, id: String) {
