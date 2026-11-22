@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../app_store.dart';
 import '../message_logic.dart';
+import '../sms_bridge.dart';
 
 /// Failed SMS is a real provider row. Editing queues a NEW SMS; it never edits
 /// an already attempted network message or silently deletes its audit trail.
@@ -130,9 +131,47 @@ Future<void> failedMessageActions(
     if (confirmed != true) return;
   }
 
+  int? retrySim;
+  if (store.android) {
+    // Even repeated individual retry taps share the same paced native queue.
+    List<Map<dynamic, dynamic>> active;
+    try {
+      active = await SmsBridge.subscriptions();
+    } catch (_) {
+      store.onNotice?.call('سیم‌کارت‌های فعال شناسایی نشدند.');
+      return;
+    }
+    if (!context.mounted) return;
+    if (active.isEmpty) {
+      store.onNotice?.call('سیم‌کارت فعال در دسترس نیست.');
+      return;
+    }
+    final chosen = await showDialog<int>(
+      context: context,
+      builder: (dialog) => SimpleDialog(
+        title: const Text('سیم‌کارت ارسال مجدد'),
+        children: [
+          for (final sim in active)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(dialog, sim['id'] as int),
+              child: Padding(padding: const EdgeInsets.all(8),
+                child: Text(sim['label']?.toString() ?? 'سیم‌کارت')),
+            ),
+        ],
+      ),
+    );
+    if (chosen == null || !context.mounted) return;
+    try {
+      retrySim = await SmsBridge.resolveSendSim(chosen);
+      store.sims = active;
+    } catch (_) {
+      store.onNotice?.call('سیم‌کارت انتخابی غیرفعال است.');
+      return;
+    }
+  }
   final at = DateTime.now();
   final pending = await store.send(message.sender, body, exactBody: true,
-      groupTime: onRetried == null ? null : at);
+      groupSim: retrySim, groupTime: onRetried == null ? null : at);
   if (pending != null) {
     store.onNotice?.call('در صف ارسال مجدد قرار گرفت؛ نتیجهٔ نهایی بعداً مشخص می‌شود.');
     await onRetried?.call(pending, at);
