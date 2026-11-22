@@ -519,14 +519,8 @@ object SmsCore {
             delivered && deliveryFailure -> "delivery_failed"
             delivered && accepted.size == count -> "delivered"
             delivered -> previous
-            code != Activity.RESULT_OK && code != Activity.RESULT_CANCELED ->
-                "send_failed:${SmsSendDiagnostic.describe(code)}"
-            previous.startsWith("send_failed") || previous == "delivery_failed" -> previous
-            acks.size < count -> if (code == Activity.RESULT_CANCELED && previous == "pending") {
-                "send_unconfirmed"
-            } else previous
-            accepted.size == count -> "accepted_by_radio"
-            else -> "send_unconfirmed"
+            else -> BulkQueuePolicy.sentStatus(previous, code, acks.size,
+                accepted.size, count, SmsSendDiagnostic.describe(code))
         }
         preferences.edit().putStringSet(ackKey, acks).putStringSet(okKey, accepted)
             .putString("status:$id", next).commit()
