@@ -34,6 +34,7 @@ class _MessageCollectionState extends State<MessageCollection> {
   DateTimeRange? period;
   int generation = 0;
   Timer? timer;
+  final _searchText = TextEditingController();
   bool get cleanup => widget.kind == CollectionKind.cleanup;
 
   @override
@@ -47,6 +48,7 @@ class _MessageCollectionState extends State<MessageCollection> {
   void dispose() {
     widget.store.removeListener(_schedule);
     timer?.cancel();
+    _searchText.dispose();
     super.dispose();
   }
 
@@ -145,6 +147,7 @@ class _MessageCollectionState extends State<MessageCollection> {
                 style: Theme.of(context).textTheme.bodySmall),
               const SizedBox(height: 12),
               TextField(
+                controller: _searchText,
                 autofocus: false,
                 textInputAction: TextInputAction.search,
                 textAlign: TextAlign.right,
@@ -185,7 +188,7 @@ class _MessageCollectionState extends State<MessageCollection> {
           if (query.isNotEmpty || linksOnly || amountsOnly || category != null || period != null)
             TextButton.icon(onPressed: () {
               FocusManager.instance.primaryFocus?.unfocus();
-              query = ''; linksOnly = false; amountsOnly = false;
+              _searchText.clear(); query = ''; linksOnly = false; amountsOnly = false;
               category = null; period = null;
               _schedule();
             }, icon: const Icon(Icons.restart_alt_rounded, size: 18),
