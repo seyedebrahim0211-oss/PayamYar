@@ -246,7 +246,7 @@ object SmsCore {
             .sortedBy { it.value as Long }
         val first = rows.firstOrNull() ?: return
         val window = p.getLong("bulk.windowStart", 0L)
-        val withinWindow = now - window in 0 until BULK_WINDOW_MS
+        val withinWindow = window > 0L && now >= window && now - window < BULK_WINDOW_MS
         val count = if (withinWindow) p.getInt("bulk.windowCount", 0) else 0
         val windowLimit = if (count >= BULK_WINDOW_LIMIT) window + BULK_WINDOW_MS else now
         val due = maxOf(first.value as Long, p.getLong("bulk.nextAt", 0L), windowLimit)
