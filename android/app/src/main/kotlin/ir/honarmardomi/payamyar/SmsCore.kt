@@ -306,10 +306,11 @@ object SmsCore {
                     JSONObject(SecureVault.decryptQueue(raw)).getInt("sim")
                 }.getOrNull()
                 // Let dispatch explicitly mark an unreadable encrypted payload.
-                if (savedSim == null) null else runCatching {
-                    resolveSubscription(c, savedSim)
-                    null
-                }.getOrElse { it.message ?: "سیم‌کارت انتخاب‌شده در دسترس نیست." }
+                if (savedSim == null) null else {
+                    val failure = runCatching { resolveSubscription(c, savedSim) }.exceptionOrNull()
+                    if (failure == null) null
+                    else failure.message ?: "سیم‌کارت انتخاب‌شده در دسترس نیست."
+                }
             }
         }
         if (accessProblem != null) {
