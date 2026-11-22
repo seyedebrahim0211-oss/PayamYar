@@ -12,6 +12,11 @@ void main() {
     final m = MessageRecord(sender: 'بانک', body: 'برداشت 100,000 ریال', date: DateTime(2026));
     expect(FinanceLogic.parse(m)?.amountTomans, 10000);
   });
+  test('bank SMS written with Arabic yeh/kaf is still parsed', () {
+    final m = MessageRecord(sender: '+9820000', body: 'بانك ملت واريز ۱۰۰,۰۰۰ ريال', date: DateTime(2026));
+    expect(FinanceLogic.parse(m)?.amountTomans, 10000);
+    expect(FinanceLogic.parse(m)?.kind, FinanceKind.deposit);
+  });
   test('personal messages excluded', () {
     final m = MessageRecord(sender: 'دوست', body: '۲۰۰۰ تومان خرید', date: DateTime(2026));
     expect(FinanceLogic.parse(m), isNull);

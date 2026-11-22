@@ -60,8 +60,12 @@ class _TemplatesSheetState extends State<_TemplatesSheet> {
                   ...category.where((t) => MessageSearch.matches(t, templateFilter)),
               }.toList(growable: false);
         final canSave = widget.currentText.trim().isNotEmpty && !store.templates.contains(widget.currentText.trim());
-        return SizedBox(
-          height: MediaQuery.sizeOf(context).height * .72,
+        // Shrink above the keyboard so search results stay visible while typing.
+        final mq = MediaQuery.of(context);
+        return Padding(
+          padding: EdgeInsets.only(bottom: mq.viewInsets.bottom),
+          child: SizedBox(
+          height: (mq.size.height - mq.viewInsets.bottom - 48).clamp(220.0, mq.size.height * .72).toDouble(),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Padding(padding: const EdgeInsets.fromLTRB(20, 0, 20, 8), child: Text('پیام‌های آماده',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800))),
@@ -78,7 +82,8 @@ class _TemplatesSheetState extends State<_TemplatesSheet> {
                 ),
               ),
             ),
-            SizedBox(height: 46, child: ListView(
+            // Height follows the text scale so chip labels are not clipped.
+            SizedBox(height: MediaQuery.textScalerOf(context).scale(46), child: ListView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
               children: [
@@ -111,7 +116,7 @@ class _TemplatesSheetState extends State<_TemplatesSheet> {
                   setState(() => group = mine);
                 })),
           ]),
-        );
+        ));
       },
     );
   }

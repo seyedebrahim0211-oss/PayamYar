@@ -98,17 +98,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  // Built once per state: a fresh Listenable.merge on every build made the
+  // ListenableBuilder detach and re-attach its listeners each time.
+  late final Listenable _changes = Listenable.merge([store, settings, AppLock.instance]);
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([store, settings, AppLock.instance]),
+      listenable: _changes,
       builder: (context, _) {
         final scheme = Theme.of(context).colorScheme;
         final delay = settings.sendDelayEnabled ? '${Jalali.digits(settings.sendDelaySeconds)} ثانیه فرصت لغو' : 'ارسال فوری';
         const feedback = {SentFeedback.sound: 'صدای کوتاه ارسال', SentFeedback.notification: 'اعلان', SentFeedback.silent: 'بی‌صدا'};
         return Scaffold(
           appBar: AppBar(title: const Text('تنظیمات')),
-          body: ListView(padding: const EdgeInsets.fromLTRB(16, 4, 16, 28), children: [
+          // PageStorageKey keeps the scroll offset when returning to this tab.
+          body: ListView(key: const PageStorageKey<String>('settings-tab'), padding: EdgeInsets.fromLTRB(16, 4, 16, 28 + MediaQuery.paddingOf(context).bottom), children: [
             _HeaderCard(packageInfo: packageInfo, store: store, checking: checking, onCheck: _checkUpdate,
               onSecretTap: _secretTap),
             const SizedBox(height: 14),
@@ -374,7 +379,7 @@ class _Page extends StatelessWidget {
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: Text(title)),
     body: ListenableBuilder(listenable: listenable,
-      builder: (context, _) => ListView(padding: const EdgeInsets.fromLTRB(16, 0, 16, 28), children: children(context))),
+      builder: (context, _) => ListView(padding: EdgeInsets.fromLTRB(16, 0, 16, 28 + MediaQuery.paddingOf(context).bottom), children: children(context))),
   );
 }
 
@@ -570,6 +575,12 @@ class AppearanceSettingsPage extends StatelessWidget {
       ]),
       SettingsGroup(title: 'پیمایش و عملکرد', children: [
         SwitchListTile(
+          secondary: const Icon(Icons.swipe),
+          title: const Text('کشیدن روی گفتگو'),
+          subtitle: const Text('به راست برای بایگانی، به چپ برای خوانده‌شدن. این انتخاب جای کشیدن بین صفحه‌ها را می‌گیرد.'),
+          value: settings.swipeRows,
+          onChanged: (value) => settings.update(swipeRows: value)),
+        SwitchListTile(
           secondary: const Icon(Icons.swipe_outlined),
           title: const Text('کشیدن بین صفحه‌ها'),
           subtitle: const Text('با کشیدن سریع افقی بین گفتگوها، مخاطبین، گروه‌ها، گزارش‌ها و تنظیمات بروید.'),
@@ -584,6 +595,12 @@ class AppearanceSettingsPage extends StatelessWidget {
       ]),
       SettingsGroup(title: 'شخصی‌سازی ظاهر و فونت', children: [
         Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SwitchListTile(title: const Text('رنگ پس‌زمینهٔ گوشی'), subtitle: const Text('رنگ هماهنگ با تصویر زمینه در اندروید ۱۲ و بالاتر'),
+            value: settings.useWallpaper, onChanged: (value) async {
+              if (!await settings.selectWallpaper(value) && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('رنگ سیستمی روی این گوشی در دسترس نیست.')));
+              }
+            }),
           const Text('رنگ برنامه'),
           const SizedBox(height: 10),
           Wrap(spacing: 12, runSpacing: 10, children: [

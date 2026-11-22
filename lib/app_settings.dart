@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -72,7 +73,13 @@ class AppSettings extends ChangeNotifier {
   /// App-side recipient selection capacity, not an operator sending allowance.
   /// For >500, the user must explicitly opt in; all SMS remain subject to carrier policy.
   int recipientCapacity = 500;
-  bool swipeTabs = true;
+  // Off by default: a horizontal-swipe recogniser competes with vertical list
+  // scrolling, so diagonal thumb flicks were often swallowed. Stored under a new
+  // key so existing installs get the new default; users can still opt in.
+  bool swipeTabs = false;
+  bool swipeRows = false;
+  bool useWallpaper = false;
+  Color? wallpaperAccent;
   bool reduceEffects = false;
 
   // ── chat look ──
@@ -167,7 +174,10 @@ class AppSettings extends ChangeNotifier {
     replyTone = (p.getInt('replyTone') ?? 0).clamp(0, 2).toInt();
     smartReplies = p.getBool('smartReplies') ?? true;
     recipientCapacity = _capacity(p.getInt('recipientCapacity') ?? 500);
-    swipeTabs = p.getBool('swipeTabs') ?? true;
+    useWallpaper = p.getBool('useWallpaper') ?? false;
+    if (useWallpaper) await _loadWallpaper();
+    swipeRows = p.getBool('swipeRows') ?? false;
+    swipeTabs = p.getBool('swipeTabsV2') ?? false;
     reduceEffects = p.getBool('reduceEffects') ?? false;
     chatStyle = ChatStyle.values[(p.getInt('chatStyle') ?? 0).clamp(0, ChatStyle.values.length - 1).toInt()];
     bubbleText = (p.getDouble('bubbleText') ?? 15.5).clamp(13, 20).toDouble();
@@ -212,11 +222,29 @@ class AppSettings extends ChangeNotifier {
 
   static int _capacity(int value) => const [500, 1000, 2000].contains(value) ? value : 500;
 
+  Future<void> _loadWallpaper() async {
+    try {
+      final value = await const MethodChannel('ir.honarmardomi.payamyar/sms').invokeMethod<int>('wallpaperAccent');
+      wallpaperAccent = value == null ? null : Color(value);
+    } catch (_) { wallpaperAccent = null; }
+  }
+  Future<bool> selectWallpaper(bool value) async {
+    if (value) {
+      await _loadWallpaper();
+      if (wallpaperAccent == null) return false;
+    }
+    useWallpaper = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('useWallpaper', value);
+    notifyListeners();
+    return true;
+  }
+
   Future<void> update({int? palette, ThemeMode? mode, bool? autoNight, int? nightStart, int? nightEnd, double? scale, int? fontChoice,
       bool? hidePreview, bool? notifyPreview, bool? notifyIncoming, bool? notifySent,
       bool? sendDelayEnabled, int? sendDelaySeconds, SentFeedback? sentFeedback, bool? enterToSend,
       bool? signatureEnabled, String? signature, bool? smartReplies, int? replyTone, int? recipientCapacity,
-       bool? swipeTabs, bool? reduceEffects, ChatStyle? chatStyle,
+       bool? swipeTabs, bool? swipeRows, bool? reduceEffects, ChatStyle? chatStyle,
       double? bubbleText, bool? quietHours, int? quietStart, int? quietEnd}) async {
     this.palette = palette ?? this.palette;
     this.mode = mode ?? this.mode;
@@ -238,7 +266,10 @@ class AppSettings extends ChangeNotifier {
     this.replyTone = (replyTone ?? this.replyTone).clamp(0, 2).toInt();
     this.smartReplies = smartReplies ?? this.smartReplies;
     this.recipientCapacity = _capacity(recipientCapacity ?? this.recipientCapacity);
+    this.swipeRows = swipeRows ?? this.swipeRows;
     this.swipeTabs = swipeTabs ?? this.swipeTabs;
+    if (swipeRows == true) this.swipeTabs = false;
+    if (swipeTabs == true) this.swipeRows = false;
     this.reduceEffects = reduceEffects ?? this.reduceEffects;
     this.chatStyle = chatStyle ?? this.chatStyle;
     this.bubbleText = bubbleText ?? this.bubbleText;
@@ -275,7 +306,8 @@ class AppSettings extends ChangeNotifier {
     await p.setInt('replyTone', replyTone);
     await p.setBool('smartReplies', smartReplies);
     await p.setInt('recipientCapacity', recipientCapacity);
-    await p.setBool('swipeTabs', swipeTabs);
+    await p.setBool('swipeRows', swipeRows);
+    await p.setBool('swipeTabsV2', swipeTabs);
     await p.setBool('reduceEffects', reduceEffects);
     await p.setInt('chatStyle', chatStyle.index);
     await p.setDouble('bubbleText', bubbleText);
@@ -405,7 +437,7 @@ class AppSettings extends ChangeNotifier {
     'privatePreview': hidePreview, 'notifyPreview': notifyPreview, 'notifyIncoming': notifyIncoming,
     'notifySent': notifySent, 'sentFeedback': sentFeedback.index, 'sendDelayEnabled': sendDelayEnabled,
     'sendDelaySeconds': sendDelaySeconds, 'enterToSend': enterToSend, 'signatureEnabled': signatureEnabled,
-    'signature': signature, 'smartReplies': smartReplies, 'replyTone': replyTone, 'recipientCapacity': recipientCapacity, 'swipeTabs': swipeTabs,
+    'signature': signature, 'smartReplies': smartReplies, 'replyTone': replyTone, 'recipientCapacity': recipientCapacity, 'swipeTabs': swipeTabs, 'swipeRows': swipeRows,
      'reduceEffects': reduceEffects, 'chatStyle': chatStyle.index,
     'bubbleText': bubbleText, 'quietHours': quietHours, 'quietStart': quietStart, 'quietEnd': quietEnd,
     ...notifyJson(),
@@ -428,7 +460,7 @@ class AppSettings extends ChangeNotifier {
       sendDelayEnabled: v<bool>('sendDelayEnabled'), sendDelaySeconds: i('sendDelaySeconds'),
       enterToSend: v<bool>('enterToSend'), signatureEnabled: v<bool>('signatureEnabled'),
       signature: v<String>('signature'), smartReplies: v<bool>('smartReplies'), replyTone: v<int>('replyTone'),
-       recipientCapacity: i('recipientCapacity'), swipeTabs: v<bool>('swipeTabs'),
+       recipientCapacity: i('recipientCapacity'), swipeTabs: v<bool>('swipeTabs'), swipeRows: v<bool>('swipeRows'),
        reduceEffects: v<bool>('reduceEffects'),
       chatStyle: i('chatStyle') == null ? null
           : ChatStyle.values[i('chatStyle')!.clamp(0, ChatStyle.values.length - 1).toInt()],

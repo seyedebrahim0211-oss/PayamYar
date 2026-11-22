@@ -44,7 +44,8 @@ class Birthday {
     final id = raw['id']?.toString() ?? '';
     final number = raw['number']?.toString() ?? '';
     final month = i('month', 0), day = i('day', 0);
-    if (id.isEmpty || number.isEmpty || month < 1 || month > 12 || day < 1 || day > 31) return null;
+    // Jalali months 7-12 have at most 30 days; an impossible date would never fire.
+    if (id.isEmpty || number.isEmpty || month < 1 || month > 12 || day < 1 || day > (month <= 6 ? 31 : 30)) return null;
     return Birthday(id: id, name: raw['name']?.toString() ?? number, number: number, month: month, day: day,
         year: i('year', 0), hour: i('hour', 9).clamp(0, 23).toInt(), minute: i('minute', 0).clamp(0, 59).toInt(),
         message: raw['message']?.toString() ?? defaultBirthdayMessage,

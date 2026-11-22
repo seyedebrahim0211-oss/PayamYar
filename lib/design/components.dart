@@ -106,8 +106,10 @@ class SmartCard extends StatelessWidget {
                           style: TextButton.styleFrom(
                             foregroundColor: tint,
                             padding: const EdgeInsets.symmetric(horizontal: SSpace.sm, vertical: 0),
-                            minimumSize: const Size(0, 32),
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            // At least 48dp to tap (accessibility); the old 32dp
+                            // shrink-wrapped target was easy to miss.
+                            minimumSize: const Size(48, 48),
+                            tapTargetSize: MaterialTapTargetSize.padded,
                             textStyle: const TextStyle(fontSize: SType.micro + .5, fontWeight: FontWeight.w700),
                           ),
                           child: Text(actionLabel!),

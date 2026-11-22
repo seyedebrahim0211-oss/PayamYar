@@ -36,6 +36,22 @@ class ConversationInsights {
     return out;
   }
 
+  /// True when the latest message is an incoming personal message that seems to
+  /// expect an answer (a question or a request) and the user has not replied for
+  /// at least [after]. [messages] is newest first. Advisory only; nothing is sent.
+  static bool awaitingReply(List<MessageRecord> messages,
+      {DateTime? now, Duration after = const Duration(hours: 2)}) {
+    if (messages.isEmpty) return false;
+    final last = messages.first;
+    if (last.outgoing || last.body.trim().isEmpty) return false;
+    if (MessageLogic.category(last) != MessageCategory.personal) return false;
+    if (MessageLogic.otp(last.body) != null || MessageLogic.risk(last.body, sender: last.sender).suspicious) return false;
+    final age = (now ?? DateTime.now()).difference(last.date);
+    if (age < after || age > const Duration(days: 14)) return false;
+    final t = _clean(last.body).toLowerCase();
+    return t.contains('؟') || t.contains('?') || _taskCues.any(t.contains);
+  }
+
   static List<String> securityWarnings(List<MessageRecord> messages) {
     final out = <String>[];
     for (final msg in messages.where((m) => !m.outgoing).take(40)) {

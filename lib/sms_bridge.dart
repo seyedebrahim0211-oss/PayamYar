@@ -165,6 +165,12 @@ class SmsBridge {
   /// Opens Android's "default SMS app" dialog; true when PayamYar was chosen.
   static Future<bool> requestDefault() async => await _channel.invokeMethod<bool>('requestDefault') ?? false;
   static Future<void> openAppSettings() => _channel.invokeMethod<bool>('openAppSettings');
+  static Future<void> calendarDraft(String title, DateTime? start) =>
+      _channel.invokeMethod<void>('calendarDraft', {'title': title, 'start': start?.millisecondsSinceEpoch});
+
+  static Future<void> muteConversation(String address, int hours) =>
+      _channel.invokeMethod<bool>('muteConversation', {'address': address, 'hours': hours});
+
   static Future<void> manageBlocked() => _channel.invokeMethod<bool>('manageBlocked');
   static Future<void> block(String address) => _channel.invokeMethod<bool>('blockNumber', {'address': address});
 

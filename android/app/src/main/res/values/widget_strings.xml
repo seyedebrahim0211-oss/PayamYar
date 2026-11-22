@@ -1,0 +1,5 @@
+<resources>
+    <string name="widget_title">صندوق پیام‌یار</string>
+    <string name="widget_compose">پیام جدید</string>
+    <string name="widget_recent">آخرین گفتگو</string>
+</resources>

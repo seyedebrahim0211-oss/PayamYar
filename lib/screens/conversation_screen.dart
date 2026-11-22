@@ -12,10 +12,12 @@ import '../app_store.dart';
 import '../chat_theme.dart';
 import '../design/tokens.dart';
 import '../jalali.dart';
+import '../security/chat_drafts.dart';
 import '../message_logic.dart';
 import '../message_search.dart';
 import '../sms_bridge.dart';
 import '../smart_assistant.dart';
+import '../smart/message_actions.dart';
 import '../smart/smart_sms_engine.dart';
 import '../conversation_insights.dart';
 import 'compose_screen.dart';
@@ -32,8 +34,9 @@ class ConversationScreen extends StatefulWidget {
   /// Draft placed in the composer, e.g. from an sms: link or the phone's Contacts app.
   final String initialText;
   final String initialSearch;
+  final int? initialMessageId;
   const ConversationScreen({super.key, required this.store, required this.address,
-    this.initialText = '', this.initialSearch = ''});
+    this.initialText = '', this.initialSearch = '', this.initialMessageId});
   @override
   State<ConversationScreen> createState() => _ConversationScreenState();
 }
@@ -49,8 +52,41 @@ class _Entry {
 class _ConversationScreenState extends State<ConversationScreen> with WidgetsBindingObserver {
   late final input = TextEditingController(text: widget.initialText);
   final focus = FocusNode();
+  Timer? _draftTimer;
+  String _lastText = '';
+  bool _draftDirty = false;
+  void _draftChanged() {
+    if (_lastText == input.text) return;
+    _lastText = input.text;
+    _edited = true;
+    _draftDirty = true;
+    _draftTimer?.cancel();
+    _draftTimer = Timer(const Duration(milliseconds: 350), _flushDraft);
+  }
+  void _flushDraft() {
+    _draftTimer?.cancel();
+    if (!_draftDirty) return;
+    _draftDirty = false;
+    final notify = store.onNotice;
+    unawaited(ChatDrafts.save(widget.address, input.text).catchError((Object _) {
+      notify?.call('ذخیرهٔ پیش‌نویس گفتگو ممکن نشد.');
+    }));
+  }
+  Future<void> _restoreDraft() async {
+    try {
+      final draft = await ChatDrafts.read(widget.address);
+      if (mounted && !_edited && input.text.isEmpty && draft != null) {
+        _lastText = draft;
+        input.value = TextEditingValue(text: draft, selection: TextSelection.collapsed(offset: draft.length));
+      }
+    } catch (_) { if (mounted) store.onNotice?.call('خواندن پیش‌نویس گفتگو ممکن نشد.'); }
+  }
+  bool _edited = false;
   final _searchController = TextEditingController();
   final _itemScroll = ItemScrollController();
+  // Tracks visible rows so a "jump to latest" button can appear after scrolling
+  // back through history; listened to via ValueListenableBuilder (no setState per pixel).
+  final _itemPositions = ItemPositionsListener.create();
   bool _searchVisible = false;
   String _searchQuery = '';
   int _matchIndex = 0;
@@ -94,6 +130,9 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
   @override
   void initState() {
     super.initState();
+    _lastText = input.text;
+    input.addListener(_draftChanged);
+    if (input.text.isEmpty) unawaited(_restoreDraft());
     _chatChanges = Listenable.merge([store, settings, ChatPersonalizations.instance]);
     unawaited(ChatPersonalizations.instance.load());
     _searchQuery = widget.initialSearch;
@@ -119,6 +158,7 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) _flushDraft();
     if (state != AppLifecycleState.resumed && _revealedAmounts.isNotEmpty && mounted) {
       setState(_revealedAmounts.clear);
     }
@@ -128,6 +168,8 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     store.removeListener(_onStoreChanged);
+    _flushDraft();
+    input.removeListener(_draftChanged);
     input.dispose();
     _searchTimer?.cancel();
     _searchController.dispose();
@@ -143,8 +185,12 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
     if (!mounted) return;
     setState(() => sending = false);
     if (pending != null || !store.android) {
-      input.clear();
+      if (input.text.trim() == text) input.clear();
       HapticFeedback.selectionClick();
+      // Follow the message the user just sent, even if they had scrolled up.
+      if (_itemScroll.isAttached) {
+        unawaited(_itemScroll.scrollTo(index: 0, duration: const Duration(milliseconds: 250), curve: Curves.easeOut));
+      }
     }
     if (pending != null && scheduledAt != null) {
       store.onNotice?.call('ارسال برای ${Jalali.time(scheduledAt)} زمان‌بندی شد.');
@@ -225,7 +271,7 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
           if (tasks.isEmpty) const Text('مورد مشخصی پیدا نشد.'),
           for (final item in tasks) ListTile(dense: true, leading: const Icon(Icons.task_alt_rounded),
             title: Text(item),
-            trailing: IconButton(icon: const Icon(Icons.copy_outlined),
+            trailing: IconButton(tooltip: 'کپی این مورد', icon: const Icon(Icons.copy_outlined),
               onPressed: () => Clipboard.setData(ClipboardData(text: item)))),
           const SizedBox(height: 12),
           Text('هشدارهای امنیتی', style: Theme.of(ctx).textTheme.titleMedium),
@@ -279,12 +325,52 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
     if (text != null) input.text = text;
   }
 
+  Future<void> _mute() async {
+    final hours = await showDialog<int>(context: context, builder: (d) => SimpleDialog(
+      title: const Text('اعلان‌های این گفتگو'),
+      children: [for (final option in const {1: 'سکوت برای یک ساعت', 8: 'سکوت برای هشت ساعت', -1: 'سکوت تا اطلاع بعدی', 0: 'فعال کردن اعلان‌ها'}.entries)
+        SimpleDialogOption(onPressed: () => Navigator.pop(d, option.key), child: Text(option.value))]));
+    if (hours == null || !mounted) return;
+    final notice = store.onNotice;
+    try {
+      await SmsBridge.muteConversation(widget.address, hours);
+      notice?.call(hours == 0 ? 'اعلان‌های این گفتگو فعال شد.' : 'اعلان‌های این گفتگو بی‌صدا شد.');
+    } catch (_) { notice?.call('تنظیم اعلان ذخیره نشد.'); }
+  }
+
   void _messageActions(MessageRecord m) {
+    final parcel = MessageActions.shipment(m);
+    final calendar = MessageActions.calendar(m);
     final pinnedHere = m.id != null && store.pinnedMessageId(widget.address) == m.id;
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      builder: (ctx) => SafeArea(child: ListView(shrinkWrap: true, children: [
+        if (calendar != null && SmsBridge.supported) ListTile(leading: const Icon(Icons.event_outlined),
+          title: Text('افزودن ${calendar.title} به تقویم'), onTap: () async {
+            Navigator.pop(ctx);
+            try { await SmsBridge.calendarDraft(calendar.title, calendar.start); }
+            catch (_) { store.onNotice?.call('برنامهٔ تقویم در دسترس نیست.'); }
+          }),
+        if (parcel != null) ListTile(leading: const Icon(Icons.local_shipping_outlined),
+          title: const Text('پیگیری مرسوله'), subtitle: Text('کپی کد و باز کردن ${parcel.site.host}'),
+          onTap: () async {
+            Navigator.pop(ctx);
+            try {
+              await Clipboard.setData(ClipboardData(text: parcel.code));
+              if (await launchUrl(parcel.site, mode: LaunchMode.externalApplication)) return;
+            } catch (_) {}
+            store.onNotice?.call('باز کردن سامانهٔ رهگیری ممکن نشد.');
+          }),
+        if (canReply) ListTile(leading: const Icon(Icons.format_quote), title: const Text('نقل‌قول در پاسخ'), onTap: () {
+          Navigator.pop(ctx);
+          final excerpt = m.body.characters.take(90).join().replaceAll(RegExp(r'\s+'), ' ');
+          _insert('«$excerpt»\n');
+          focus.requestFocus();
+        }),
+        if (m.id != null) ListTile(leading: Icon(store.starredIds.contains(m.id) ? Icons.star : Icons.star_outline),
+          title: Text(store.starredIds.contains(m.id) ? 'برداشتن ستاره' : 'ستاره‌زدن پیام'),
+          onTap: () { Navigator.pop(ctx); store.toggleStar(m.id!); }),
         ListTile(leading: const Icon(Icons.copy_rounded), title: const Text('کپی متن'), onTap: () {
           Clipboard.setData(ClipboardData(text: m.body));
           Navigator.pop(ctx);
@@ -325,7 +411,10 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
                 content: const Text('این پیام برای همیشه از گوشی حذف می‌شود.'),
                 actions: [
                   TextButton(onPressed: () => Navigator.pop(dialog, false), child: const Text('انصراف')),
-                  TextButton(onPressed: () => Navigator.pop(dialog, true), child: const Text('حذف')),
+                  // Destructive action is tinted with the error color.
+                  TextButton(
+                    style: TextButton.styleFrom(foregroundColor: Theme.of(dialog).colorScheme.error),
+                    onPressed: () => Navigator.pop(dialog, true), child: const Text('حذف')),
                 ]));
               if (ok == true) await store.deleteMessages([m.id!]);
             }),
@@ -517,12 +606,14 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
               PopupMenuButton<String>(
                 onSelected: (v) {
                   if (v == 'style') { _stylePicker(); }
+                  else if (v == 'mute') { _mute(); }
                   else if (v == 'insights') { _showInsights(); }
                   else { _menu(v); }
                 },
                 itemBuilder: (_) => [
                   const PopupMenuItem(value: 'style', child: Text('قالب گفتگو')),
                   const PopupMenuItem(value: 'insights', child: Text('دستیار هوشمند آفلاین')),
+                  if (SmsBridge.supported) const PopupMenuItem(value: 'mute', child: Text('سکوت گفتگو')),
                   const PopupMenuItem(value: 'copy', child: Text('کپی شماره')),
                   PopupMenuItem(value: 'archive', child: Text(store.isArchived(widget.address) ? 'خارج کردن از بایگانی' : 'بایگانی')),
                   if (SmsBridge.supported) const PopupMenuItem(value: 'block', child: Text('مسدود کردن')),
@@ -599,11 +690,16 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
                     ),
                   ),
                 Expanded(child: items.isEmpty
-                    ? const EmptyState(icon: Icons.chat_outlined, title: 'هنوز پیامی نیست', subtitle: 'اولین پیام را بنویسید.')
-                    : ScrollablePositionedList.builder(
+                    // Scrollable so opening the keyboard in a new chat cannot overflow.
+                    ? const SingleChildScrollView(child: EmptyState(icon: Icons.chat_outlined, title: 'هنوز پیامی نیست', subtitle: 'اولین پیام را بنویسید.'))
+                    : Stack(fit: StackFit.expand, children: [
+                      ScrollablePositionedList.builder(
                         itemScrollController: _itemScroll,
+                        itemPositionsListener: _itemPositions,
                         reverse: true,
                         padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
+                        initialScrollIndex: widget.initialMessageId == null ? 0 :
+                            items.indexWhere((entry) => entry.message?.id == widget.initialMessageId).clamp(0, items.length - 1),
                         itemCount: items.length,
                         itemBuilder: (context, i) {
                           final e = items[i];
@@ -627,9 +723,35 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
                           return _bubbleFor(e.message!, pinnedId, look,
                             searchHit: matchSet.contains(e.message),
                             selectedHit: identical(e.message, selectedMatch));
-                        })),
+                        }),
+                      // "Jump to latest" appears only once the newest rows (index 0,
+                      // bottom of the reversed list) have scrolled out of view.
+                      PositionedDirectional(
+                        end: 12, bottom: 12,
+                        child: ValueListenableBuilder<Iterable<ItemPosition>>(
+                          valueListenable: _itemPositions.itemPositions,
+                          builder: (context, positions, _) {
+                            final away = positions.isNotEmpty &&
+                                positions.map((p) => p.index).reduce((a, b) => a < b ? a : b) > 2;
+                            if (!away) return const SizedBox.shrink();
+                            return FloatingActionButton.small(
+                              heroTag: null,
+                              tooltip: 'رفتن به آخرین پیام',
+                              onPressed: () {
+                                if (_itemScroll.isAttached) {
+                                  unawaited(_itemScroll.scrollTo(index: 0,
+                                    duration: const Duration(milliseconds: 300), curve: Curves.easeOut));
+                                }
+                              },
+                              child: const Icon(Icons.keyboard_double_arrow_down_rounded),
+                            );
+                          },
+                        ),
+                      ),
+                    ])),
                 if (canReply && quickReplies.isNotEmpty)
-                  SizedBox(height: 45, child: ListView(
+                  // Height follows the text scale so chips are not clipped at large font sizes.
+                  SizedBox(height: MediaQuery.textScalerOf(context).scale(45), child: ListView(
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     children: [
@@ -658,10 +780,12 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
                   )),
                 if (canReply) _inputBar(scheme, look) else Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(14),
                   color: scheme.surface.withValues(alpha: .85),
-                  child: Text('این فرستنده پاسخ پیامکی دریافت نمی‌کند.', textAlign: TextAlign.center,
-                    style: TextStyle(color: scheme.onSurfaceVariant))),
+                  // SafeArea keeps the notice above the system navigation bar (edge-to-edge).
+                  child: SafeArea(top: false, child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Text('این فرستنده پاسخ پیامکی دریافت نمی‌کند.', textAlign: TextAlign.center,
+                      style: TextStyle(color: scheme.onSurfaceVariant))))),
               ]),
             ),
             ]),
@@ -944,16 +1068,20 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
                 onUndo: () async {
                   final list = store.pendingSends.where(
                     (p) => store.key(p.to) == store.key(widget.address) && !p.scheduled).toList();
-                  String? restore;
+                  final sig = settings.signature;
+                  String strip(String b) => settings.signatureEnabled && sig.isNotEmpty && b.endsWith('\n$sig')
+                      ? b.substring(0, b.length - sig.length - 1) : b;
+                  // Every cancelled message comes back (oldest first), and whatever the user
+                  // is typing right now is kept instead of being overwritten.
+                  final restored = <String>[];
                   for (final p in list) {
-                    if (await store.undo(p)) restore ??= p.body;
+                    if (await store.undo(p)) restored.add(strip(p.body));
                   }
-                  if (restore != null && mounted) {
-                    final sig = settings.signature;
-                    final text = settings.signatureEnabled && sig.isNotEmpty && restore.endsWith('\n$sig')
-                        ? restore.substring(0, restore.length - sig.length - 1) : restore;
-                    input.text = text;
-                    input.selection = TextSelection.collapsed(offset: text.length);
+                  if (restored.isNotEmpty && mounted) {
+                    final current = input.text.trim();
+                    final text = [...restored, if (current.isNotEmpty) current].join('\n');
+                    input.value = TextEditingValue(
+                        text: text, selection: TextSelection.collapsed(offset: text.length));
                   }
                 },
               ),
@@ -1013,7 +1141,13 @@ class _Bubble extends StatelessWidget {
       alignment: outgoing ? AlignmentDirectional.centerStart : AlignmentDirectional.centerEnd,
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .8),
-        child: GestureDetector(
+        // A bare GestureDetector gives screen readers no context; describe the bubble
+        // and announce what long-press does.
+        child: Semantics(
+          container: true,
+          label: [outgoing ? 'پیام ارسالی' : 'پیام دریافتی', if (time.isNotEmpty) time, if (status != null) status!].join('، '),
+          onLongPressHint: onLongPress == null ? null : 'گزینه‌های پیام',
+          child: GestureDetector(
           onLongPress: onLongPress,
           onTap: onTap,
           child: Container(
@@ -1063,7 +1197,9 @@ class _Bubble extends StatelessWidget {
                 onPhoneMessage: onPhoneMessage),
               if (text.length > 260 || text.split('\n').length > 8)
                 TextButton(
-                  style: TextButton.styleFrom(foregroundColor: fg, padding: EdgeInsets.zero),
+                  // Zero padding kept the tap target tiny; keep a 48dp-high minimum.
+                  style: TextButton.styleFrom(foregroundColor: fg, padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: const Size(64, 48)),
                   onPressed: () => showDialog<void>(
                     context: context,
                     builder: (ctx) => AlertDialog(
@@ -1100,6 +1236,7 @@ class _Bubble extends StatelessWidget {
               ]),
             ]),
           ),
+        ),
         ),
       ),
     );

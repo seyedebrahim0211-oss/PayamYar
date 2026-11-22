@@ -1,0 +1,10 @@
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="compose" android:icon="@drawable/ic_payamyar" android:shortcutShortLabel="@string/widget_compose">
+        <intent android:action="android.intent.action.SENDTO" android:targetPackage="ir.honarmardomi.payamyar"
+            android:targetClass="ir.honarmardomi.payamyar.MainActivity" android:data="smsto:"/>
+    </shortcut>
+    <shortcut android:shortcutId="recent" android:icon="@drawable/ic_payamyar" android:shortcutShortLabel="@string/widget_recent">
+        <intent android:action="ir.honarmardomi.payamyar.OPEN_RECENT" android:targetPackage="ir.honarmardomi.payamyar"
+            android:targetClass="ir.honarmardomi.payamyar.MainActivity"/>
+    </shortcut>
+</shortcuts>

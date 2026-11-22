@@ -10,6 +10,12 @@ void main() {
     expect(ConversationLogic.group(m).length, 1);
     expect(ConversationLogic.group(m).first.latest.body, 'دوم');
   });
+  test('all common Iranian mobile forms map to one key', () {
+    for (final n in ['09123456789', '+989123456789', '00989123456789', '989123456789', '9123456789']) {
+      expect(ConversationLogic.normalize(n), '09123456789', reason: n);
+    }
+    expect(ConversationLogic.normalize('30001234'), '30001234');
+  });
   test('different senders are separated', () {
     final m = [
       MessageRecord(sender:'BankA', body:'اول', date:DateTime(2026)),

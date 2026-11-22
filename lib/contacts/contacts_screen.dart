@@ -203,7 +203,7 @@ class _ContactsScreenState extends State<ContactsScreen> with WidgetsBindingObse
         await exportContacts(context, contacts, list);
       case 'delete':
         final count = Jalali.digits(list.length);
-        final ok = await confirm(context, 'حذف $count مخاطب', 'مخاطبان از دفترچه تلفن گوشی حذف می‌شوند و قابل بازگشت نیستند.');
+        final ok = await confirm(context, 'حذف $count مخاطب', 'مخاطبان از دفترچه تلفن گوشی حذف می‌شوند و قابل بازگشت نیستند.', destructive: true);
         if (ok) {
           final n = await contacts.remove(list);
           final shown = Jalali.digits(n);
@@ -226,7 +226,7 @@ class _ContactsScreenState extends State<ContactsScreen> with WidgetsBindingObse
         return Scaffold(
           appBar: selecting
               ? AppBar(
-                  leading: IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => setState(selected.clear)),
+                  leading: IconButton(tooltip: 'خروج از حالت انتخاب', icon: const Icon(Icons.close_rounded), onPressed: () => setState(selected.clear)),
                   title: Text('${Jalali.digits(selected.length)} انتخاب‌شده'),
                   actions: [
                     IconButton(
@@ -332,7 +332,7 @@ class _ContactsScreenState extends State<ContactsScreen> with WidgetsBindingObse
                             prefixIcon: const Icon(Icons.search_rounded),
                             suffixIcon: query.isEmpty
                                 ? null
-                                : IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => setState(() {
+                                : IconButton(tooltip: 'پاک کردن جستجو', icon: const Icon(Icons.close_rounded), onPressed: () => setState(() {
                                       search.clear();
                                       query = '';
                                     })),
@@ -357,7 +357,8 @@ class _ContactsScreenState extends State<ContactsScreen> with WidgetsBindingObse
                     })),
                     SliverToBoxAdapter(
                       child: SizedBox(
-                        height: 52,
+                        // Height follows the text scale so chip labels are not clipped.
+                        height: MediaQuery.textScalerOf(context).scale(52),
                         child: ListView(scrollDirection: Axis.horizontal, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), children: [
                           Padding(
                             padding: const EdgeInsetsDirectional.only(end: 6),
@@ -400,7 +401,27 @@ class _ContactsScreenState extends State<ContactsScreen> with WidgetsBindingObse
                     ),
                     if (contacts.loading && contacts.contacts.isEmpty)
                       const SliverToBoxAdapter(child: Padding(padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator()))),
-                    if (!contacts.loading && list.isEmpty)
+                    // A failed load used to look like an empty phone book; show the
+                    // error and a way to retry instead.
+                    if (!contacts.loading && list.isEmpty && contacts.error != null)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.all(40),
+                          child: Column(children: [
+                            Icon(Icons.error_outline_rounded, size: 56, color: scheme.error),
+                            const SizedBox(height: 10),
+                            Text(contacts.error!, textAlign: TextAlign.center,
+                                style: Theme.of(context).textTheme.titleMedium),
+                            const SizedBox(height: 12),
+                            FilledButton.tonalIcon(
+                              onPressed: () => contacts.load(ask: true),
+                              icon: const Icon(Icons.refresh_rounded),
+                              label: const Text('تلاش دوباره'),
+                            ),
+                          ]),
+                        ),
+                      )
+                    else if (!contacts.loading && list.isEmpty)
                       SliverToBoxAdapter(
                         child: Padding(
                           padding: const EdgeInsets.all(40),
@@ -413,7 +434,7 @@ class _ContactsScreenState extends State<ContactsScreen> with WidgetsBindingObse
                         ),
                       ),
                     SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(8, 0, 8, 96),
+                      padding: EdgeInsets.fromLTRB(8, 0, 8, 96 + MediaQuery.paddingOf(context).bottom),
                       sliver: SliverList.builder(
                         itemCount: list.length,
                         itemBuilder: (context, i) {

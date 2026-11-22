@@ -20,12 +20,14 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
-    <application android:supportsRtl="true" android:allowBackup="false" android:label="پیام‌یار" android:name="${applicationName}"
+    <application android:supportsRtl="true" android:allowBackup="false" android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules" android:label="پیام‌یار" android:name="${applicationName}"
         android:icon="@drawable/ic_payamyar" android:roundIcon="@drawable/ic_payamyar" android:usesCleartextTraffic="false">
         <activity android:name=".MainActivity" android:exported="true"
             android:launchMode="singleTop" android:taskAffinity=""
             android:theme="@style/LaunchTheme" android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true" android:windowSoftInputMode="adjustResize">
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/payamyar_shortcuts"/>
             <meta-data android:name="io.flutter.embedding.android.NormalTheme" android:resource="@style/NormalTheme"/>
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
@@ -85,6 +87,10 @@
         </service>
         <receiver android:name=".SendStatusReceiver" android:exported="false">
             <intent-filter><action android:name="ir.honarmardomi.payamyar.SMS_SENT"/></intent-filter>
+        </receiver>
+        <receiver android:name=".InboxWidget" android:exported="false" android:label="@string/widget_title">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE"/></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/payamyar_widget_info"/>
         </receiver>
         <provider android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.updates"

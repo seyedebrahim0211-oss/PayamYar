@@ -5,6 +5,11 @@ class SmartAssistant {
 
   static bool _any(String v, List<String> words) => words.any(v.contains);
 
+  /// Whole-word match, so short keywords do not fire inside other words
+  /// (e.g. «عید» inside the name «سعید» or inside «بعید»).
+  static bool _anyWord(String v, List<String> words) => words.any((w) =>
+      RegExp('(^|[^\\u0600-\\u06FF])${RegExp.escape(w)}(\$|[^\\u0600-\\u06FF])').hasMatch(v));
+
   /// Up to three short replies for the latest incoming personal message.
   /// [now] picks greetings suited to the time of day.
   static List<String> suggestReplies(String incoming, {DateTime? now, int tone = 0}) {
@@ -28,7 +33,7 @@ class SmartAssistant {
     if (_any(v, ['تسلیت', 'غم آخرتان', 'روحش شاد', 'خدا رحمت'])) {
       return const ['ممنون از همدردی شما 🙏', 'لطف دارید', 'خدا رحمت کند'];
     }
-    if (_any(v, ['عید', 'نوروز', 'سال نو'])) {
+    if (_anyWord(v, ['عید', 'عیدت', 'عیدتون', 'نوروز', 'سال نو', 'سال نوتون'])) {
       return const ['عید شما هم مبارک 🌷', 'سال خوبی داشته باشید', 'ممنون، همچنین'];
     }
     if (_any(v, ['ممنون', 'مرسی', 'تشکر', 'سپاس', 'دستت درد نکنه'])) {

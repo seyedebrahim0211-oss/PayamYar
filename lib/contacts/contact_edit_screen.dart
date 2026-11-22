@@ -273,7 +273,7 @@ class _ContactEditScreenState extends State<ContactEditScreen> {
           ),
         ],
       ),
-      body: ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 32), children: [
+      body: ListView(padding: EdgeInsets.fromLTRB(16, 8, 16, 32 + MediaQuery.paddingOf(context).bottom), children: [
         Center(
           child: GestureDetector(
             onTap: _photoMenu,

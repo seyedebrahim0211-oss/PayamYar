@@ -7,6 +7,7 @@ import '../bank_privacy.dart';
 import '../brand_mark.dart';
 import '../design/tokens.dart';
 import '../conversation_logic.dart';
+import '../conversation_insights.dart';
 import '../jalali.dart';
 import '../message_logic.dart';
 import '../message_search.dart';
@@ -23,6 +24,8 @@ import 'failed_messages_screen.dart';
 import 'settings_screen.dart';
 import 'widgets.dart';
 import 'dialect_card.dart';
+import 'message_collection.dart';
+import 'whats_new_card.dart';
 
 class HomeShell extends StatefulWidget {
   final AppStore store;
@@ -35,11 +38,20 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   int tab = 0;
   bool _contactsVisited = false;
+  // Lets the shell ask the inbox to scroll to top when its tab is tapped again.
+  final _inboxKey = GlobalKey<_ConversationsPageState>();
 
-  void _selectTab(int next) => setState(() {
-    tab = next;
-    if (next == 1) _contactsVisited = true;
-  });
+  void _selectTab(int next) {
+    // Re-tapping the selected "گفتگوها" tab is the familiar "back to top" gesture.
+    if (next == tab) {
+      if (next == 0) _inboxKey.currentState?.scrollToTop();
+      return;
+    }
+    setState(() {
+      tab = next;
+      if (next == 1) _contactsVisited = true;
+    });
+  }
   DateTime? _lastUpdateCheck;
 
   @override
@@ -90,7 +102,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final value = await SmsBridge.composeIntent();
     if (value == null || !mounted) return;
     final open = value['open']?.toString();
-    final to = Uri.decodeComponent(value['to']?.toString() ?? '').trim();
+    // A malformed link from a web page (e.g. "sms:%ZZ") must not crash the app.
+    var to = value['to']?.toString() ?? '';
+    try { to = Uri.decodeComponent(to); } catch (_) {}
+    to = to.trim();
     final body = value['body']?.toString() ?? '';
     // "Message" from the phone's Contacts app (smsto:NUMBER) goes straight into that
     // person's chat, keeping its history; several recipients still open the composer.
@@ -123,7 +138,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         child: Stack(children: [
           Offstage(
             offstage: tab != 0,
-            child: TickerMode(enabled: tab == 0, child: ConversationsPage(store: widget.store, settings: widget.settings))),
+            child: TickerMode(enabled: tab == 0, child: ConversationsPage(key: _inboxKey, store: widget.store, settings: widget.settings))),
           if (_contactsVisited) Offstage(offstage: tab != 1,
             child: TickerMode(enabled: tab == 1, child: ContactsScreen(store: widget.store))),
           if (tab == 2) GroupsScreen(store: widget.store),
@@ -279,6 +294,8 @@ class _ConversationsPageState extends State<ConversationsPage> {
   String? folder;
   Timer? _searchDebounce;
   final search = TextEditingController();
+  // Owned here (disposed below) so the shell can scroll the inbox back to top.
+  final _scroll = ScrollController();
   int _generation = 0;
   int _revision = -1;
   int _directory = -1;
@@ -376,7 +393,13 @@ class _ConversationsPageState extends State<ConversationsPage> {
     _searchDebounce?.cancel();
     store.removeListener(_storeChanged);
     search.dispose();
+    _scroll.dispose();
     super.dispose();
+  }
+
+  void scrollToTop() {
+    if (!_scroll.hasClients || _scroll.offset == 0) return;
+    unawaited(_scroll.animateTo(0, duration: SMotion.slow, curve: Curves.easeOutCubic));
   }
 
   List<Conversation> _filtered() {
@@ -401,7 +424,9 @@ class _ConversationsPageState extends State<ConversationsPage> {
         FilledButton(onPressed: () => Navigator.pop(ctx, controller.text), child: const Text('ساخت پوشه')),
       ],
     ));
-    controller.dispose();
+    // The dialog's TextField still uses the controller during its exit animation;
+    // disposing right away can throw "used after being disposed".
+    WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
     if (name == null) return;
     final created = await store.folders.create(name);
     if (mounted && !created) {
@@ -540,6 +565,13 @@ class _ConversationsPageState extends State<ConversationsPage> {
               if (!widget.archive)
                 PopupMenuButton<String>(
                   onSelected: (v) {
+                    for (final kind in CollectionKind.values) {
+                      if (v == kind.name) {
+                        Navigator.of(context).push(MaterialPageRoute<void>(
+                          builder: (_) => MessageCollection(store: store, kind: kind)));
+                        return;
+                      }
+                    }
                     if (v == 'archive') {
                       Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) =>
                         ConversationsPage(store: store, settings: widget.settings, archive: true)));
@@ -553,6 +585,8 @@ class _ConversationsPageState extends State<ConversationsPage> {
                     }
                   },
                   itemBuilder: (_) => [
+                    for (final kind in CollectionKind.values.where((kind) => kind != CollectionKind.codes))
+                      PopupMenuItem(value: kind.name, child: Text(kind.title)),
                     const PopupMenuItem(value: 'archive', child: Text('بایگانی')),
                     const PopupMenuItem(value: 'failed', child: Text('پیام‌های ارسال‌نشده')),
                     const PopupMenuItem(value: 'read', child: Text('خواندن همه')),
@@ -562,12 +596,14 @@ class _ConversationsPageState extends State<ConversationsPage> {
           ),
           body: GestureDetector(
             behavior: HitTestBehavior.translucent,
-            onHorizontalDragEnd: (details) {
-              if (widget.settings.swipeTabs) _cycleInbox(details.primaryVelocity ?? 0);
-            },
+            // Register the horizontal recogniser only when the user opted in; an always-on
+            // detector competes with vertical scrolling and swallows diagonal flicks.
+            onHorizontalDragEnd: widget.settings.swipeTabs
+                ? (details) => _cycleInbox(details.primaryVelocity ?? 0)
+                : null,
             child: RefreshIndicator(
             onRefresh: store.android ? store.loadAll : () async {},
-            child: CustomScrollView(slivers: [
+            child: CustomScrollView(controller: _scroll, slivers: [
               SliverToBoxAdapter(child: Padding(
                 padding: const EdgeInsets.fromLTRB(14, 2, 14, 6),
                 child: DecoratedBox(
@@ -603,6 +639,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
                     ),
                   ),
                 ))),
+              if (!widget.archive && query.isEmpty) const SliverToBoxAdapter(child: WhatsNewCard()),
               if (store.android && !widget.archive && query.isEmpty)
                 const SliverToBoxAdapter(child: DialectCard()),
               if (store.update != null && !store.updateDismissed && !widget.archive)
@@ -626,7 +663,8 @@ class _ConversationsPageState extends State<ConversationsPage> {
                   padding: EdgeInsets.all(40),
                   child: Center(child: CircularProgressIndicator()))),
               if (!widget.archive)
-                SliverToBoxAdapter(child: SizedBox(height: 44, child: ListView(
+                // Scales with text size and leaves room for 48dp chip tap targets.
+                SliverToBoxAdapter(child: SizedBox(height: MediaQuery.textScalerOf(context).scale(44) + 16, child: ListView(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                   children: [
@@ -640,9 +678,11 @@ class _ConversationsPageState extends State<ConversationsPage> {
                       () => Navigator.of(context).push(MaterialPageRoute<void>(
                         builder: (_) => FailedMessagesScreen(store: store))),
                       tint: scheme.error, icon: Icons.outbox_rounded),
+                    _chip('کدهای تأیید', false, () => Navigator.push(context, MaterialPageRoute<void>(
+                      builder: (_) => MessageCollection(store: store, kind: CollectionKind.codes))), icon: Icons.password),
                     for (final c in MessageCategory.values)
                       _chip(categoryName(c), category == c, () => setState(() => category = category == c ? null : c),
-                        tint: _categoryTint(c), icon: _categoryIcon(c)),
+                        tint: _readableTint(_categoryTint(c), scheme.brightness), icon: _categoryIcon(c)),
                     for (final title in store.folders.titles)
                       _chip('📁 $title', folder == title, () => setState(() => folder = folder == title ? null : title)),
                     _chip('＋ پوشه', false, _createFolder),
@@ -678,7 +718,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
                   itemCount: list.length,
                   itemBuilder: (context, i) {
                     final c = list[i];
-                    return ConversationTile(
+                    final tile = ConversationTile(
                       key: ValueKey('conv-${store.key(c.address)}'),
                       store: store,
                       conversation: c,
@@ -687,6 +727,19 @@ class _ConversationsPageState extends State<ConversationsPage> {
                       hit: _hits[c.address],
                       onLongPress: () => _actions(c),
                     );
+                    if (!widget.settings.swipeRows) return tile;
+                    final right = Directionality.of(context) == TextDirection.rtl
+                        ? DismissDirection.endToStart : DismissDirection.startToEnd;
+                    return Dismissible(key: ValueKey('swipe-${store.key(c.address)}'),
+                      background: const ColoredBox(color: Color(0xff135956), child: Align(
+                        alignment: AlignmentDirectional.centerStart, child: Padding(padding: EdgeInsets.all(16), child: Icon(Icons.mark_email_read, color: Colors.white)))),
+                      secondaryBackground: const ColoredBox(color: Color(0xff135956), child: Align(
+                        alignment: AlignmentDirectional.centerEnd, child: Padding(padding: EdgeInsets.all(16), child: Icon(Icons.archive, color: Colors.white)))),
+                      confirmDismiss: (direction) async {
+                        if (direction == right) { store.toggleArchive(c.address); }
+                        else { await store.markRead(c); }
+                        return false;
+                      }, child: tile);
                   },
                 ),
               ),
@@ -704,9 +757,8 @@ class _ConversationsPageState extends State<ConversationsPage> {
     final foreground = tint == null && selected ? Colors.white : shade;
     return Padding(
       padding: const EdgeInsetsDirectional.only(end: 6),
+      // Default density/tap-target size keeps each filter at least 48dp tall to tap.
       child: FilterChip(
-        visualDensity: VisualDensity.compact,
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
         labelPadding: const EdgeInsetsDirectional.only(start: 2, end: 3),
         padding: const EdgeInsets.symmetric(horizontal: 5),
         label: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -885,6 +937,11 @@ Color _categoryTint(MessageCategory category) => switch (category) {
   MessageCategory.service => const Color(0xFF536D83),
 };
 
+/// The category tints are dark; on a dark surface they fall below readable
+/// contrast, so they are blended toward white in dark mode.
+Color _readableTint(Color tint, Brightness brightness) =>
+    brightness == Brightness.dark ? Color.lerp(tint, Colors.white, .45)! : tint;
+
 IconData _categoryIcon(MessageCategory category) => switch (category) {
   MessageCategory.banking => Icons.account_balance_rounded,
   MessageCategory.personal => Icons.person_outline_rounded,
@@ -909,9 +966,13 @@ class ConversationTile extends StatelessWidget {
     final unread = info?.unread ?? 0;
     final name = store.displayName(conversation.address);
     final category = info?.category ?? MessageCategory.personal;
-    final tint = _categoryTint(category);
+    final tint = _readableTint(_categoryTint(category), scheme.brightness);
     final pinned = store.isPinned(conversation.address);
     final bold = unread > 0;
+    // Offline nudge: a personal question/request left unanswered for 2h+. Only the latest
+    // message is inspected, so this stays cheap for every visible tile.
+    final awaiting = !hidePreview && hit == null &&
+        ConversationInsights.awaitingReply(conversation.messages.take(1).toList());
     final bodyQuery = hit?.query ?? '';
     final previewMessage = hit?.first ?? m;
     final preview = hidePreview ? 'متن پیام مخفی است' : BankPrivacy.preview(category,
@@ -968,6 +1029,14 @@ class ConversationTile extends StatelessWidget {
                   Expanded(child: Text.rich(searchHighlight(preview, hidePreview ? '' : bodyQuery), maxLines: 1, overflow: TextOverflow.ellipsis,
                     style: TextStyle(color: bold ? scheme.onSurface : scheme.onSurfaceVariant,
                       fontWeight: bold ? FontWeight.w600 : null))),
+                  if (awaiting)
+                    Padding(padding: const EdgeInsetsDirectional.only(start: 5),
+                      child: Tooltip(message: 'این پیام منتظر پاسخ شماست',
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(Icons.reply_rounded, size: 14, color: scheme.tertiary),
+                          const SizedBox(width: 2),
+                          Text('منتظر پاسخ', style: TextStyle(color: scheme.tertiary, fontSize: 11, fontWeight: FontWeight.w700)),
+                        ]))),
                   if (hit != null)
                     Padding(padding: const EdgeInsetsDirectional.only(start: 5),
                       child: Text('${Jalali.digits(hit!.count)} نتیجه',
@@ -994,7 +1063,10 @@ Future<void> confirmDeleteConversation(BuildContext context, AppStore store, Con
     content: Text('همه ${Jalali.digits(c.count)} پیام گفتگو با ${store.displayName(c.address)} برای همیشه از گوشی حذف می‌شود.'),
     actions: [
       TextButton(onPressed: () => Navigator.pop(dialog, false), child: const Text('انصراف')),
-      TextButton(onPressed: () => Navigator.pop(dialog, true), child: const Text('حذف')),
+      // Destructive action is tinted with the error color.
+      TextButton(
+        style: TextButton.styleFrom(foregroundColor: Theme.of(dialog).colorScheme.error),
+        onPressed: () => Navigator.pop(dialog, true), child: const Text('حذف')),
     ]));
   if (ok != true) return;
   await store.deleteMessages(c.messages.where((m) => m.id != null).map((m) => m.id!).toList());

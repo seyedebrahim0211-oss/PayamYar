@@ -397,7 +397,9 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
           builder: (context, _) => FutureBuilder<List<_BatchBody>>(
             future: _batchBodies,
             builder: (context, snap) {
-              if (!_showMemberHistory && snap.connectionState != ConnectionState.done) {
+              // Keep showing the previous rows while a refreshed future loads; replacing the
+              // list with a spinner disposed it and threw the user back to the newest item.
+              if (!_showMemberHistory && !snap.hasData) {
                 return const Center(child: CircularProgressIndicator());
               }
               final rows = _showMemberHistory

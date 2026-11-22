@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Registers the four PayamYar Android release-signing secrets in GitHub Actions — safely.
 
@@ -14,8 +14,14 @@
   * Secrets are sent to `gh secret set` through standard input (no trailing newline,
     never on the command line, never written to a temp file, never printed).
 
+  * The secrets go into the protected GitHub Environment 'release' (usable only from
+    main), not into repository-level secrets that ANY branch's workflow could read.
+    After a successful upload the old repository-level copies are deleted.
+  * -IncludeWpSecret also moves PAYAMYAR_WP_SECRET into the 'production' environment
+    (manual approval before every in-app update is published).
+
 .EXAMPLE
-  powershell -NoProfile -ExecutionPolicy Bypass -File .\Set-PayamYar-GitHub-Secrets.ps1
+  powershell -NoProfile -ExecutionPolicy Bypass -File .\Set-PayamYar-GitHub-Secrets.ps1 -IncludeWpSecret
   powershell -NoProfile -ExecutionPolicy Bypass -File .\Set-PayamYar-GitHub-Secrets.ps1 -RunWorkflow
 #>
 [CmdletBinding()]
@@ -24,6 +30,10 @@ param(
     [string]$SecretsJson  = (Join-Path $PSScriptRoot 'PayamYar-RELEASE-SECRETS-PRIVATE.json'),
     [string]$Repo         = 'seyedebrahim0211-oss/PayamYar',
     [string]$ExpectedSha256 = 'A82C3ACB328F3D6DE57D60297F8E2DCBD7384AAAE5172B5FBEEC38B3E31BBE0F',
+    [string]$Environment  = 'release',
+    [string]$WpEnvironment = 'production',
+    [switch]$IncludeWpSecret,
+    [switch]$KeepRepoSecrets,
     [switch]$VerifyOnly,
     [switch]$RunWorkflow
 )
@@ -61,10 +71,10 @@ function Get-JsonValue($json, [string[]]$names) {
     return $null
 }
 
-function Set-GhSecret([string]$name, [string]$value) {
+function Set-GhSecret([string]$name, [string]$value, [string]$envName = $Environment) {
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = 'gh'
-    $psi.Arguments = "secret set $name --repo $Repo"
+    $psi.Arguments = "secret set $name --repo $Repo --env $envName"
     $psi.UseShellExecute = $false
     $psi.RedirectStandardInput = $true
     $psi.RedirectStandardOutput = $true
@@ -76,7 +86,17 @@ function Set-GhSecret([string]$name, [string]$value) {
     $err = $p.StandardError.ReadToEnd()
     $p.WaitForExit()
     if ($p.ExitCode -ne 0) { Fail "ثبت $name ناموفق بود: $($err.Trim())" }
-    Ok "$name ثبت شد"
+    Ok "$name در محیط $envName ثبت شد"
+}
+
+# Removes an old repository-level copy (readable by any branch) once the environment copy exists.
+function Remove-RepoSecret([string]$name) {
+    if ($KeepRepoSecrets) { return }
+    $names = (& gh secret list --repo $Repo --json name --jq '.[].name' 2>$null)
+    if ($names -notcontains $name) { return }
+    & gh secret delete $name --repo $Repo 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) { Ok "نسخه قدیمی سطح مخزن $name حذف شد" }
+    else { Write-Host "  حذف نسخه سطح مخزن $name ناموفق بود؛ از Settings > Secrets حذفش کنید." -ForegroundColor DarkYellow }
 }
 
 Write-Host 'پیامیار — ثبت امن کلید امضای دائمی در GitHub Actions' -ForegroundColor Yellow
@@ -95,6 +115,9 @@ if ($LASTEXITCODE -ne 0) {
 $admin = (& gh api "repos/$Repo" --jq '.permissions.admin' 2>$null)
 if ("$admin".Trim() -ne 'true') { Fail "حساب واردشده دسترسی Admin روی $Repo ندارد." }
 Ok "دسترسی Admin روی $Repo تأیید شد"
+& gh api "repos/$Repo/environments/$Environment" 2>$null | Out-Null
+if ($LASTEXITCODE -ne 0) { Fail "محیط محافظت‌شده «$Environment» در مخزن وجود ندارد (Settings > Environments)." }
+Ok "محیط محافظت‌شده $Environment پیدا شد"
 
 Step 'خواندن فایل کلید و مشخصات محرمانه'
 if (-not (Test-Path -LiteralPath $KeystorePath)) {
@@ -167,15 +190,32 @@ if ($keytool) {
 
 if ($VerifyOnly) { Write-Host "`nبررسی کامل شد؛ با -VerifyOnly چیزی در GitHub ثبت نشد." -ForegroundColor Yellow; exit 0 }
 
-Step 'ثبت رمزگذاری‌شده چهار Secret در GitHub'
+Step "ثبت رمزگذاری‌شده چهار Secret در محیط محافظت‌شده $Environment"
 Set-GhSecret 'PAYAMYAR_KEYSTORE_BASE64'   ([Convert]::ToBase64String($keystoreBytes))
 Set-GhSecret 'PAYAMYAR_KEYSTORE_PASSWORD' $storePass
 Set-GhSecret 'PAYAMYAR_KEY_ALIAS'         $alias
 Set-GhSecret 'PAYAMYAR_KEY_PASSWORD'      $keyPass
 $storePass = $null; $keyPass = $null; [GC]::Collect()
 
+Step 'حذف نسخه‌های قدیمی سطح مخزن (قابل خواندن از هر شاخه)'
+foreach ($n in 'PAYAMYAR_KEYSTORE_BASE64','PAYAMYAR_KEYSTORE_PASSWORD','PAYAMYAR_KEY_ALIAS','PAYAMYAR_KEY_PASSWORD') { Remove-RepoSecret $n }
+
+if ($IncludeWpSecret) {
+    Step "ثبت کلید انتشار سایت در محیط $WpEnvironment (با تأیید دستی)"
+    $wp = Get-JsonValue $json @('PAYAMYAR_WP_SECRET','wpSecret','wp_secret','siteSecret')
+    if (-not $wp) { $wp = ConvertTo-Plain (Read-Host 'PAYAMYAR_WP_SECRET' -AsSecureString) }
+    if (-not $wp) { Fail 'PAYAMYAR_WP_SECRET خالی است.' }
+    Set-GhSecret 'PAYAMYAR_WP_SECRET' $wp $WpEnvironment
+    $wp = $null
+    Remove-RepoSecret 'PAYAMYAR_WP_SECRET'
+}
+
 Step 'نام Secretهای موجود (بدون مقدار)'
+Write-Host '  سطح مخزن:'
 & gh secret list --repo $Repo
+Write-Host "  محیط $($Environment):"
+& gh secret list --repo $Repo --env $Environment
+if ($IncludeWpSecret) { Write-Host "  محیط $($WpEnvironment):"; & gh secret list --repo $Repo --env $WpEnvironment }
 
 if ($RunWorkflow) {
     Step 'اجرای ساخت رسمی روی main'

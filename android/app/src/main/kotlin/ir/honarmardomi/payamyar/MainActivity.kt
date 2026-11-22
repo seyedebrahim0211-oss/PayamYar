@@ -14,6 +14,9 @@ import android.provider.BlockedNumberContract
 import android.provider.ContactsContract
 import android.provider.Settings
 import android.provider.Telephony
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyPermanentlyInvalidatedException
+import android.security.keystore.KeyProperties
 import android.telecom.TelecomManager
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -22,7 +25,12 @@ import androidx.biometric.BiometricPrompt
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.security.KeyStore
+import java.security.SecureRandom
 import java.util.concurrent.Executors
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
 
 open class MainActivity : FlutterFragmentActivity() {
     companion object {
@@ -63,8 +71,44 @@ open class MainActivity : FlutterFragmentActivity() {
         }
     }
 
+    // BIOMETRIC_STRONG only: a CryptoObject cannot be used with BIOMETRIC_WEAK/DEVICE_CREDENTIAL.
     private val biometricStrength = BiometricManager.Authenticators.BIOMETRIC_STRONG
     private var activePrompt: BiometricPrompt? = null
+    private val bioKeyAlias = "payamyar_bio_v1"
+
+    private fun deleteBioKey() {
+        try { KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(bioKeyAlias) } catch (_: Exception) { }
+    }
+
+    /**
+     * ENCRYPT cipher over a Keystore key that only a biometric auth can unlock and that Android
+     * destroys when a new fingerprint/face is enrolled. Null means "use the PIN instead".
+     */
+    private fun bioCipher(): Cipher? = try {
+        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        val existing = store.getKey(bioKeyAlias, null) as? SecretKey
+        val key: SecretKey = if (existing != null) existing else {
+            val spec = KeyGenParameterSpec.Builder(bioKeyAlias,
+                    KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .setUserAuthenticationRequired(true)
+                .setInvalidatedByBiometricEnrollment(true) // API 24 == minSdk
+                .build()
+            val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+            generator.init(spec)
+            generator.generateKey()
+        }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, key)
+        cipher
+    } catch (_: KeyPermanentlyInvalidatedException) {
+        // A biometric was enrolled since the key was made: refuse now (PIN fallback);
+        // a fresh key is generated on the next attempt.
+        deleteBioKey()
+        null
+    } catch (_: Exception) { null }
 
     private fun authenticate(result: MethodChannel.Result) {
         if (activePrompt != null || isFinishing || isDestroyed ||
@@ -72,6 +116,8 @@ open class MainActivity : FlutterFragmentActivity() {
             result.success(false)
             return
         }
+        val cipher = bioCipher()
+        if (cipher == null) { result.success(false); return }
         var finished = false
         fun finish(ok: Boolean) {
             if (finished) return
@@ -81,7 +127,17 @@ open class MainActivity : FlutterFragmentActivity() {
         }
         val prompt = BiometricPrompt(this, ContextCompat.getMainExecutor(this),
             object : BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(auth: BiometricPrompt.AuthenticationResult) = finish(true)
+                override fun onAuthenticationSucceeded(auth: BiometricPrompt.AuthenticationResult) {
+                    // Trust only the Keystore: doFinal succeeds solely if this auth really
+                    // unlocked the key, so a hooked/faked callback cannot unlock the app.
+                    val ok = try {
+                        val c = auth.cryptoObject?.cipher
+                        c != null && c.doFinal(ByteArray(16).also { SecureRandom().nextBytes(it) }).isNotEmpty()
+                    } catch (_: KeyPermanentlyInvalidatedException) {
+                        deleteBioKey(); false
+                    } catch (_: Exception) { false }
+                    finish(ok)
+                }
                 override fun onAuthenticationError(code: Int, message: CharSequence) = finish(false)
                 override fun onAuthenticationFailed() {
                     activePrompt?.cancelAuthentication()
@@ -93,7 +149,8 @@ open class MainActivity : FlutterFragmentActivity() {
             prompt.authenticate(BiometricPrompt.PromptInfo.Builder()
                 .setTitle("ورود به پیام‌یار")
                 .setNegativeButtonText("ورود با رمز")
-                .setAllowedAuthenticators(biometricStrength).build())
+                .setAllowedAuthenticators(biometricStrength).build(),
+                BiometricPrompt.CryptoObject(cipher))
         } catch (_: RuntimeException) { finish(false) }
     }
 
@@ -270,10 +327,25 @@ open class MainActivity : FlutterFragmentActivity() {
                     }
                 }
                 "previewSentSound" -> { SentSound.play(this); result.success(null) }
+                "calendarDraft" -> {
+                    val action = Intent(Intent.ACTION_INSERT, android.provider.CalendarContract.Events.CONTENT_URI)
+                        .putExtra(android.provider.CalendarContract.Events.TITLE, call.argument<String>("title"))
+                    (call.argument<Number>("start"))?.toLong()?.let {
+                        action.putExtra(android.provider.CalendarContract.EXTRA_EVENT_BEGIN_TIME, it)
+                        action.putExtra(android.provider.CalendarContract.EXTRA_EVENT_END_TIME, it + 3_600_000L)
+                    }
+                    try { startActivity(action); result.success(null) }
+                    catch (_: Exception) { result.error("calendar", "تقویم در دسترس نیست", null) }
+                }
+                "wallpaperAccent" -> {
+                    if (Build.VERSION.SDK_INT >= 31) result.success(getColor(android.R.color.system_accent1_500).toLong() and 0xffffffffL)
+                    else result.success(null)
+                }
                 "setSecureScreen" -> {
                     // Blocks screenshots, screen recording and the recent-apps preview of private chats.
                     if (call.argument<Boolean>("on") == true) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
                     else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+                    worker.execute { runCatching { InboxWidget.refresh(this) } }
                     Notifier.redactForLock(this)
                     FloatingNotifications.refresh()
                     result.success(null)
@@ -282,7 +354,10 @@ open class MainActivity : FlutterFragmentActivity() {
                     // Only fixed https pages of the SMS panel provider (charging credit, login).
                     val url = call.argument<String>("url").orEmpty()
                     val host = try { Uri.parse(url).host.orEmpty() } catch (_: Exception) { "" }
-                    if (url.startsWith("https://") && (host == "melipayamak.com" || host.endsWith(".melipayamak.com"))) {
+                    // '\' and '@' are rejected: browsers and android.net.Uri can disagree on the host
+                    // of "https://evil\@melipayamak.com", which would bypass the allow-list.
+                    if (url.startsWith("https://") && !url.contains('\\') && !url.contains('@') &&
+                        (host == "melipayamak.com" || host.endsWith(".melipayamak.com"))) {
                         try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))); result.success(true) }
                         catch (_: Exception) { result.success(false) }
                     } else result.success(false)
@@ -332,7 +407,9 @@ open class MainActivity : FlutterFragmentActivity() {
                     val data = intent
                     val address = data.data?.schemeSpecificPart?.substringBefore('?').orEmpty()
                     val open = data.getStringExtra("open_address")
-                        ?.takeIf { data.getStringExtra("open_token") == launchToken(this) }
+                        ?.takeIf { java.security.MessageDigest.isEqual(
+                            data.getStringExtra("open_token").orEmpty().toByteArray(),
+                            launchToken(this).toByteArray()) }
                     // External text shares are drafts only; never send automatically.
                     // Accept plain text, not arbitrary files or parcelable payloads.
                     val shared = when {
@@ -342,9 +419,21 @@ open class MainActivity : FlutterFragmentActivity() {
                             data.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
                         else -> null
                     }?.trim()?.take(2000)?.takeIf { it.isNotEmpty() }
+                    if (data.action == InboxWidget.OPEN_RECENT) {
+                        intent = Intent(this, MainActivity::class.java)
+                        worker.execute {
+                            val last = if (!SmsCore.isDefault(this)) null else runCatching {
+                                contentResolver.query(Telephony.Sms.CONTENT_URI, arrayOf("address"), null, null, "date DESC")?.use {
+                                    if (it.moveToFirst()) it.getString(0) else null
+                                }
+                            }.getOrNull()
+                            runOnUiThread { result.success(last?.let { mapOf("open" to it) }) }
+                        }
+                        return@setMethodCallHandler
+                    }
                     result.success(if (open != null) mapOf("open" to open)
                         else if (data.action == Intent.ACTION_SENDTO) mapOf("to" to address,
-                            "body" to (data.getStringExtra("sms_body") ?: ""))
+                            "body" to (data.getStringExtra("sms_body") ?: "").take(2000))
                         else if (shared != null) mapOf("to" to "", "body" to shared)
                         else null)
                     intent = Intent(this, MainActivity::class.java)
@@ -357,6 +446,10 @@ open class MainActivity : FlutterFragmentActivity() {
                             "readMessages" -> SmsCore.read(this, call.argument<Int>("limit") ?: 300)
                             "resolveSendSim" -> SmsCore.resolveSubscription(this, call.argument<Int>("sim") ?: -1)
                             "subscriptions" -> SmsCore.subscriptions(this)
+                            "muteConversation" -> {
+                                Notifier.mute(this, call.argument<String>("address").orEmpty(), call.argument<Int>("hours") ?: 0)
+                                true
+                            }
                             "pendingSms" -> SmsCore.pending(this)
                             "contactNames" -> {
                                 if (call.argument<Boolean>("force") == true) nameIndexAt = -1

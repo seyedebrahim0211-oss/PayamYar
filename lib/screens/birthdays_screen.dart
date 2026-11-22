@@ -50,7 +50,9 @@ class _BirthdaysScreenState extends State<BirthdaysScreen> {
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+            // Destructive action uses the error color.
+            style: FilledButton.styleFrom(minimumSize: const Size(0, 44),
+              backgroundColor: Theme.of(ctx).colorScheme.error, foregroundColor: Theme.of(ctx).colorScheme.onError),
             child: const Text('حذف'),
           ),
         ],

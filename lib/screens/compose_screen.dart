@@ -1,9 +1,11 @@
 import 'dart:async' show Timer, unawaited;
+import 'dart:convert' show jsonDecode, jsonEncode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../jalali.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../app_store.dart';
+import '../security/vault.dart';
 import '../text_polish.dart';
 import '../sms_bridge.dart';
 import '../sms_groups.dart';
@@ -68,16 +70,64 @@ class _ComposeScreenState extends State<ComposeScreen> {
   }
 
   Future<void> _restore() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (!mounted) return;
     final hasInitial = widget.initialTo != null || widget.initialBody != null ||
         widget.initialRecipients != null || widget.createGroup;
+    final draft = hasInitial ? null : await _readDraft();
+    if (!mounted) return;
     setState(() {
-      to.text = hasInitial ? widget.initialTo ?? '' : prefs.getString('draft_to') ?? '';
-      body.text = hasInitial ? widget.initialBody ?? '' : prefs.getString('draft_body') ?? '';
-      if (!hasInitial) recipients.addAll(prefs.getStringList('draft_recipients') ?? []);
+      to.text = hasInitial ? widget.initialTo ?? '' : draft?.to ?? '';
+      body.text = hasInitial ? widget.initialBody ?? '' : draft?.body ?? '';
+      if (!hasInitial) recipients.addAll(draft?.recipients ?? const <String>[]);
       if (widget.initialRecipients != null) recipients.addAll(widget.initialRecipients!);
     });
+  }
+
+  // Drafts contain message text and phone numbers, so they are kept in the
+  // Keystore-backed Vault instead of plain SharedPreferences.
+  static const _draftToKey = 'draft_to';
+  static const _draftBodyKey = 'draft_body';
+  static const _draftRecipientsKey = 'draft_recipients';
+
+  static Future<({String to, String body, List<String> recipients})> _readDraft() async {
+    // One-time migration from older builds that stored drafts in plain prefs.
+    final prefs = await SharedPreferences.getInstance();
+    final legacyTo = prefs.getString(_draftToKey);
+    final legacyBody = prefs.getString(_draftBodyKey);
+    final legacyRecipients = prefs.getStringList(_draftRecipientsKey);
+    if (legacyTo != null || legacyBody != null || legacyRecipients != null) {
+      final legacy = (to: legacyTo ?? '', body: legacyBody ?? '',
+        recipients: legacyRecipients ?? const <String>[]);
+      try {
+        await _writeDraft(legacy.to, legacy.body, legacy.recipients);
+      } catch (_) {
+        // Vault unavailable: keep the plain copy so the draft is not lost.
+        return legacy;
+      }
+      await prefs.remove(_draftToKey);
+      await prefs.remove(_draftBodyKey);
+      await prefs.remove(_draftRecipientsKey);
+      return legacy;
+    }
+    try {
+      final rawRecipients = await Vault.get(_draftRecipientsKey);
+      final decoded = rawRecipients == null || rawRecipients.isEmpty ? null : jsonDecode(rawRecipients);
+      return (
+        to: await Vault.get(_draftToKey) ?? '',
+        body: await Vault.get(_draftBodyKey) ?? '',
+        recipients: decoded is List ? decoded.map((e) => e.toString()).toList() : const <String>[],
+      );
+    } catch (_) {
+      return (to: '', body: '', recipients: const <String>[]);
+    }
+  }
+
+  static Future<void> _writeDraft(String number, String message, List<String> selected) async {
+    // Empty fields are removed rather than stored.
+    Future<void> save(String key, String value) =>
+        value.isEmpty ? Vault.remove(key) : Vault.put(key, value);
+    await save(_draftToKey, number);
+    await save(_draftBodyKey, message);
+    await save(_draftRecipientsKey, selected.isEmpty ? '' : jsonEncode(selected));
   }
 
   Future<void> _loadSuggestions() async {
@@ -131,10 +181,11 @@ class _ComposeScreenState extends State<ComposeScreen> {
     final number = to.text;
     final message = body.text;
     final selected = recipients.toList(growable: false);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('draft_to', number);
-    await prefs.setString('draft_body', message);
-    await prefs.setStringList('draft_recipients', selected);
+    try {
+      await _writeDraft(number, message, selected);
+    } catch (_) {
+      // Never fall back to plain storage for message drafts.
+    }
   }
 
   @override
@@ -147,8 +198,12 @@ class _ComposeScreenState extends State<ComposeScreen> {
     super.dispose();
   }
 
-  String _normalize(String number) => SmsBridge.normalizeNumber(number)
-      .replaceAll(RegExp(r'[\s()\-]'), '');
+  // Canonical form (0912…), so +98912… and 0912… are one recipient, not two SMS.
+  // Invalid input is returned as typed so validation can still report it.
+  String _normalize(String number) {
+    final plain = SmsBridge.normalizeNumber(number).replaceAll(RegExp(r'[\s()\-]'), '');
+    return _isNumber(plain) ? RecipientSuggestions.key(plain) : plain;
+  }
   bool _isNumber(String number) => RegExp(r'^\+?[0-9]{3,15}$').hasMatch(number);
 
   void _addTyped() {
@@ -364,11 +419,16 @@ class _ComposeScreenState extends State<ComposeScreen> {
     }
     if (!mounted) return;
     if (stopQueueing) {
+      // Numbers whose undo window already ran out are still going to receive the SMS;
+      // restoring them too would make a second tap on Send message them twice.
+      final stillGoing = {
+        for (final p in undoGroup) if (store.pendingSends.contains(p)) store.key(p.to)
+      };
       setState(() {
         sending = false;
         recipients
           ..clear()
-          ..addAll(targets);
+          ..addAll(targets.where((t) => !stillGoing.contains(store.key(t))));
         body.text = text;
       });
       await _saveDraft(immediate: true);
@@ -581,7 +641,8 @@ class _ComposeScreenState extends State<ComposeScreen> {
                       trailing: const Icon(Icons.add_circle_outline),
                       onTap: () => _chooseSuggestion(item)),
                 if (to.text.trim().isEmpty && _suggestions.isNotEmpty)
-                  SizedBox(height: 40, child: ListView(
+                  // Height follows the text scale so chip labels are not clipped.
+                  SizedBox(height: MediaQuery.textScalerOf(context).scale(40), child: ListView(
                     scrollDirection: Axis.horizontal,
                     children: [
                       for (final item in _suggestions)
@@ -673,7 +734,9 @@ class _ComposeScreenState extends State<ComposeScreen> {
             onChanged: (_) { _saveDraft(); setState(() {}); },
             maxLength: 2000,
             minLines: 4,
-            maxLines: 7,
+            // Grow with the text so the page scrolls; an inner scrollable field made the
+            // page stick when the finger landed on it.
+            maxLines: null,
             textAlignVertical: TextAlignVertical.top,
             decoration: const InputDecoration(
               hintText: 'پیام خود را اینجا بنویسید…',
@@ -696,7 +759,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
           const SizedBox(height: 6),
           Row(children: [
             Expanded(child: SmsCounter(text: body.text)),
-            Text('${body.text.length}/۲۰۰۰', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
+            Text('${Jalali.digits(body.text.length)}/۲۰۰۰', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
           ]),
           const SizedBox(height: 18),
           Row(children: [
@@ -780,14 +843,22 @@ class _ComposeScreenState extends State<ComposeScreen> {
                 onSend: () => _send(),
                 onUndo: () async {
                   var cancelled = 0;
+                  final cancelledTo = <String>[];
                   stopQueueing = true;
                   for (final request in List<PendingSend>.of(undoGroup)) {
                     if (!request.deadline.isAfter(DateTime.now())) continue;
                     if (!store.pendingSends.contains(request)) continue;
-                    if (await store.undo(request)) cancelled++;
+                    if (await store.undo(request)) {
+                      cancelled++;
+                      cancelledTo.add(request.to);
+                    }
                   }
                   if (!mounted) return;
                   setState(() {
+                    // Put back exactly the recipients whose message was really cancelled.
+                    for (final n in cancelledTo) {
+                      if (!recipients.any((r) => store.key(r) == store.key(n))) recipients.add(n);
+                    }
                     undoGroup.removeWhere((p) => !store.pendingSends.contains(p));
                     if (cancelled > 0 || sending) body.text = lastSentBody;
                   });
@@ -796,8 +867,8 @@ class _ComposeScreenState extends State<ComposeScreen> {
               ),
               const SizedBox(width: 12),
               Expanded(child: Text(sending
-                  ? '$queuedCount از $count در صف'
-                  : count > 1 ? 'ارسال جداگانه به $count مخاطب' : 'ارسال پیامک',
+                  ? '${Jalali.digits(queuedCount)} از ${Jalali.digits(count)} در صف'
+                  : count > 1 ? 'ارسال جداگانه به ${Jalali.digits(count)} مخاطب' : 'ارسال پیامک',
                 style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w800))),
             ]),
             const SizedBox(height: 6),

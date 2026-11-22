@@ -18,6 +18,7 @@ class AppLock extends ChangeNotifier {
   bool enabled = false;
   bool secureScreen = false;
   int? pinLength;
+  bool autoUnlock = true;
   bool biometric = false;
   bool biometricAvailable = false;
   int _lockGeneration = 0;
@@ -59,7 +60,13 @@ class AppLock extends ChangeNotifier {
       // Never disable a persisted lock when the device's Keystore key is lost.
       // Such a state needs explicit recovery, never automatic unrestricted access.
       locked = enabled;
-      pinLength = p.getInt('appPinLength');
+      autoUnlock = p.getBool('autoUnlockPin') ?? true;
+      final legacy = p.getInt('appPinLength');
+      pinLength = int.tryParse(await Vault.get('app_pin_length') ?? '') ?? legacy;
+      if (legacy != null) {
+        if (enabled) await Vault.put('app_pin_length', legacy.toString());
+        await p.remove('appPinLength');
+      }
       biometric = p.getBool('appBiometric') ?? false;
       if (Platform.isAndroid) {
         try { biometricAvailable = await _channel.invokeMethod<bool>('biometricAvailable') == true; }
@@ -80,7 +87,7 @@ class AppLock extends ChangeNotifier {
     final p = await SharedPreferences.getInstance();
     await p.setBool('appLock', enabled);
     await p.setBool('appBiometric', biometric);
-    if (pinLength != null) await p.setInt('appPinLength', pinLength!);
+    await p.setBool('autoUnlockPin', autoUnlock);
     await p.setBool('secureScreen', secureScreen);
     await p.setInt('relockSeconds', relockSeconds);
   }
@@ -96,6 +103,7 @@ class AppLock extends ChangeNotifier {
   Future<void> enable(String pin) async {
     await Vault.setPin(vaultName, pin);
     pinLength = pin.length;
+    await Vault.put('app_pin_length', pin.length.toString());
     enabled = true;
     locked = false;
     await _save();
@@ -105,6 +113,8 @@ class AppLock extends ChangeNotifier {
 
   Future<void> disable() async {
     await Vault.remove(vaultName);
+    await Vault.remove('app_pin_length');
+    pinLength = null;
     biometric = false;
     enabled = false;
     locked = false;
@@ -120,6 +130,12 @@ class AppLock extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setAutoUnlock(bool value) async {
+    autoUnlock = value;
+    await _save();
+    notifyListeners();
+  }
+
   Future<void> setRelock(int seconds) async {
     relockSeconds = seconds;
     await _save();
@@ -131,7 +147,7 @@ class AppLock extends ChangeNotifier {
     if (r.ok) {
       if (pinLength != pin.length) {
         pinLength = pin.length;
-        await _save();
+        await Vault.put('app_pin_length', pin.length.toString());
       }
       locked = false;
       notifyListeners();
@@ -204,7 +220,7 @@ class _LockGateState extends State<LockGate> with WidgetsBindingObserver {
                 behavior: HitTestBehavior.opaque,
                 onTap: () {},
                 child: PinScreen(
-                  autoLength: widget.lock.pinLength,
+                  autoLength: widget.lock.autoUnlock ? widget.lock.pinLength : null,
                   onBiometric: widget.lock.biometric && widget.lock.biometricAvailable
                       ? widget.lock.unlockBiometric : null,
                   title: 'پیام‌یار قفل است',
@@ -415,6 +431,29 @@ Future<String?> askNewPin(BuildContext context, {String title = 'رمز جدید
   return completer.future;
 }
 
+/// Asks for the current app PIN. Returns true only after a correct PIN.
+/// Turning the lock off or changing the PIN must not be possible for someone who
+/// merely picks up an already-unlocked phone.
+Future<bool> confirmCurrentPin(BuildContext context, {String title = 'رمز فعلی'}) async {
+  var ok = false;
+  await Navigator.of(context).push(MaterialPageRoute<void>(
+    fullscreenDialog: true,
+    builder: (ctx) => PinScreen(
+      title: title,
+      subtitle: 'برای ادامه رمز فعلی را وارد کنید',
+      onCancel: () => Navigator.pop(ctx),
+      onSubmit: (pin) async {
+        final r = await Vault.verifyPin(AppLock.vaultName, pin);
+        if (!r.ok) return r.message;
+        ok = true;
+        if (ctx.mounted) Navigator.pop(ctx);
+        return null;
+      },
+    ),
+  ));
+  return ok;
+}
+
 /// Settings page: app lock on/off, change PIN, relock delay, screenshot protection.
 class AppLockSettingsPage extends StatelessWidget {
   final AppLock lock;
@@ -445,12 +484,18 @@ class AppLockSettingsPage extends StatelessWidget {
                       onNotice?.call('قفل برنامه فعال شد.');
                     }
                   } else {
+                    if (!await confirmCurrentPin(context)) return;
                     await lock.disable();
                     onNotice?.call('قفل برنامه غیرفعال شد.');
                   }
                 },
               ),
               if (lock.enabled) ...[
+                SwitchListTile(
+                  title: const Text('باز کردن خودکار پس از ورود رمز'),
+                  value: lock.autoUnlock,
+                  onChanged: lock.setAutoUnlock,
+                ),
                 if (lock.biometricAvailable) SwitchListTile(
                   secondary: const Icon(Icons.fingerprint),
                   title: const Text('ورود با اثر انگشت'),
@@ -462,6 +507,8 @@ class AppLockSettingsPage extends StatelessWidget {
                   leading: Icon(Icons.password_rounded, color: scheme.primary),
                   title: const Text('تغییر رمز'),
                   onTap: () async {
+                    if (!await confirmCurrentPin(context)) return;
+                    if (!context.mounted) return;
                     final pin = await askNewPin(context, title: 'رمز جدید قفل');
                     if (pin != null) {
                       await lock.enable(pin);

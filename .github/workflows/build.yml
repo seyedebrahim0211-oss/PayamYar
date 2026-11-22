@@ -14,8 +14,8 @@ jobs:
   analyze:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: stable
           flutter-version: '3.47.9'
@@ -23,15 +23,17 @@ jobs:
         shell: bash
         run: |
           mkdir -p assets/fonts
-          curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/main/ofl/vazirmatn/Vazirmatn%5Bwght%5D.ttf' --output assets/fonts/Vazirmatn.ttf
-          curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/main/ofl/vazirmatn/OFL.txt' --output assets/fonts/OFL.txt
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5/ofl/vazirmatn/Vazirmatn%5Bwght%5D.ttf' --output assets/fonts/Vazirmatn.ttf
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5/ofl/vazirmatn/OFL.txt' --output assets/fonts/OFL.txt
+          # The font ships inside the signed APK: verify it byte-for-byte.
+          printf '%s  %s\n' 696249a2c74b39ffdef55de4df2809c5b639d3ff80d618d8160a095d2fd49dca assets/fonts/Vazirmatn.ttf 17e355067c8284f47743a1ee3b1ef7ff684ff0601eda357f9353b10b3016ab31 assets/fonts/OFL.txt | sha256sum -c -
       - run: flutter create --project-name payamyar --org ir.honarmardomi --platforms android --no-overwrite .
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
         env:
           PAYAMYAR_PREVIEW_DIR: ${{ runner.temp }}/notification-preview
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: github.event_name == 'pull_request'
         with:
           name: notification-preview
@@ -43,8 +45,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: stable
           flutter-version: '3.47.9'
@@ -52,21 +54,23 @@ jobs:
         shell: bash
         run: |
           mkdir -p assets/fonts
-          curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/main/ofl/vazirmatn/Vazirmatn%5Bwght%5D.ttf' --output assets/fonts/Vazirmatn.ttf
-          curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/main/ofl/vazirmatn/OFL.txt' --output assets/fonts/OFL.txt
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5/ofl/vazirmatn/Vazirmatn%5Bwght%5D.ttf' --output assets/fonts/Vazirmatn.ttf
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5/ofl/vazirmatn/OFL.txt' --output assets/fonts/OFL.txt
+          # The font ships inside the signed APK: verify it byte-for-byte.
+          printf '%s  %s\n' 696249a2c74b39ffdef55de4df2809c5b639d3ff80d618d8160a095d2fd49dca assets/fonts/Vazirmatn.ttf 17e355067c8284f47743a1ee3b1ef7ff684ff0601eda357f9353b10b3016ab31 assets/fonts/OFL.txt | sha256sum -c -
           flutter create --project-name payamyar --org ir.honarmardomi --platforms android --no-overwrite .
           printf '\napply(from = "payamyar.gradle")\n' >> android/app/build.gradle.kts
           flutter pub get
           sudo chmod 666 /dev/kvm
       - name: Test real overlay windows, long text, privacy and stop on Android 15
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 35
           arch: x86_64
           target: google_apis
           disable-animations: true
           script: cd android && ./gradlew :app:connectedDebugAndroidTest
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: floating-ui-test-results
@@ -74,11 +78,15 @@ jobs:
           if-no-files-found: ignore
   android:
     needs: analyze
+    # Signing secrets live in the 'release' environment, which only main may use, so a
+    # workflow_dispatch from another branch can't read the permanent key. PRs build with
+    # a throwaway key in an unprotected environment.
+    environment: ${{ github.event_name == 'pull_request' && 'pr-validation' || 'release' }}
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           channel: stable
           flutter-version: '3.47.9'
@@ -86,8 +94,10 @@ jobs:
         shell: bash
         run: |
           mkdir -p assets/fonts
-          curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/main/ofl/vazirmatn/Vazirmatn%5Bwght%5D.ttf' --output assets/fonts/Vazirmatn.ttf
-          curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/main/ofl/vazirmatn/OFL.txt' --output assets/fonts/OFL.txt
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5/ofl/vazirmatn/Vazirmatn%5Bwght%5D.ttf' --output assets/fonts/Vazirmatn.ttf
+          curl --fail --location --retry 3 'https://raw.githubusercontent.com/google/fonts/8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5/ofl/vazirmatn/OFL.txt' --output assets/fonts/OFL.txt
+          # The font ships inside the signed APK: verify it byte-for-byte.
+          printf '%s  %s\n' 696249a2c74b39ffdef55de4df2809c5b639d3ff80d618d8160a095d2fd49dca assets/fonts/Vazirmatn.ttf 17e355067c8284f47743a1ee3b1ef7ff684ff0601eda357f9353b10b3016ab31 assets/fonts/OFL.txt | sha256sum -c -
       - run: flutter create --project-name payamyar --org ir.honarmardomi --platforms android --no-overwrite .
       - name: Apply PayamYar Gradle settings (minSdk, release signing)
         shell: bash
@@ -253,7 +263,7 @@ jobs:
         shell: bash
         run: rm -f "$RUNNER_TEMP/payamyar-release.p12" "$RUNNER_TEMP/apk-verify.txt"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: github.event_name != 'pull_request'
         with:
           name: PayamYar-Android
@@ -270,12 +280,13 @@ jobs:
     name: Publish signed Android APK to Releases
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: [android, overlay-ui]
+    environment: release
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: PayamYar-Android
           path: release-apk
@@ -287,7 +298,7 @@ jobs:
           test -n "$VERSION"
           echo "number=$VERSION" >> "$GITHUB_OUTPUT"
       - name: Create official GitHub release with signed APK
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: v${{ steps.version.outputs.number }}
           name: پیامیار Android v${{ steps.version.outputs.number }} (رسمی)
@@ -308,10 +319,12 @@ jobs:
     name: Publish to honarmardomi.ir (site download + in-app update)
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: github_release
+    # Pushes an in-app update to every user: requires a manual approval in GitHub.
+    environment: production
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: PayamYar-Android
           path: release-apk

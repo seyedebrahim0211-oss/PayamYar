@@ -230,8 +230,7 @@ ReportResult buildReportAt(List<MessageRecord> messages, DateTime now) {
   }
 
   int? bucket(ReportPeriod p, DateTime d) {
-    final day = DateTime(d.year, d.month, d.day);
-    final back = today.difference(day).inDays;
+    final back = Jalali.dayDiff(today, d); // DST-safe calendar-day distance
     switch (p) {
       case ReportPeriod.week:
         return back >= 0 && back < 7 ? 6 - back : null;

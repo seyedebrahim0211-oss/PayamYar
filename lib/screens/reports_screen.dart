@@ -182,7 +182,9 @@ class _ReportsScreenState extends State<ReportsScreen> with WidgetsBindingObserv
               ),
             ],
           ),
-          body: ListView(padding: const EdgeInsets.fromLTRB(16, 4, 16, 28), children: [
+          // PageStorageKey keeps the scroll offset when returning to this tab.
+          body: ListView(key: const PageStorageKey<String>('reports-tab'),
+            padding: EdgeInsets.fromLTRB(16, 4, 16, 28 + MediaQuery.paddingOf(context).bottom), children: [
             SegmentedButton<ReportPeriod>(
               showSelectedIcon: false,
               segments: [for (final x in ReportPeriod.values) ButtonSegment(value: x, label: Text(reportPeriodNames[x]!))],
@@ -217,13 +219,17 @@ class _ReportsScreenState extends State<ReportsScreen> with WidgetsBindingObserv
               const Padding(padding: EdgeInsets.all(30), child: Center(child: CircularProgressIndicator()))
             else ...[
               // ── KPIs with comparison to the previous period ──
-              GridView.count(
-                crossAxisCount: 2,
+              // A fixed aspect ratio clipped the KPI text at large font sizes; the
+              // tile height now grows with the text scale (32 = card margin + icon chrome).
+              GridView(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                mainAxisSpacing: 10,
-                crossAxisSpacing: 10,
-                childAspectRatio: 1.75,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  mainAxisExtent: MediaQuery.textScalerOf(context).scale(80) + 32,
+                ),
                 children: [
                   _Kpi(label: 'پیام دریافتی', value: Jalali.digits(p.received), icon: Icons.call_received_rounded,
                       change: percentChange(p.received, p.prevReceived), color: scheme.primary),

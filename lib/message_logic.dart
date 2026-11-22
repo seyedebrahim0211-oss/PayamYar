@@ -45,7 +45,8 @@ class MessageLogic {
   static final _ipLink = RegExp(r'https?://\d{1,3}(?:\.\d{1,3}){3}');
 
   static MessageCategory category(MessageRecord m) {
-    final s = ('${m.sender} ${m.body}').toLowerCase();
+    // Many bank gateways send Arabic ي/ك (e.g. «واريز ... ريال»); fold them first.
+    final s = ('${m.sender} ${m.body}').toLowerCase().replaceAll('ي', 'ی').replaceAll('ك', 'ک');
     if (_banking.hasMatch(s)) return MessageCategory.banking;
     if (_advertising.hasMatch(s)) return MessageCategory.advertising;
     if (_service.hasMatch(s)) return MessageCategory.service;
@@ -97,8 +98,25 @@ class MessageLogic {
       score += 2;
       reasons.add('درخواست نصب برنامه از لینک (احتمال بدافزار)');
     }
+    // Punycode hosts (xn--) can render as look-alike Persian/Latin letters.
+    if (hosts.any((h) => h.startsWith('xn--') || h.contains('.xn--'))) {
+      score += 2;
+      reasons.add('دامنه با حروف مشابه‌سازی‌شده (punycode)');
+    }
+    // "https://bank.ir@evil.top" shows a trusted name but opens the host after '@'.
+    if (RegExp(r'https?://[^\s/]*@').hasMatch(s)) {
+      score += 3;
+      reasons.add('لینک فریبنده با علامت @ که مقصد واقعی را پنهان می‌کند');
+    }
+    // Nobody legitimate asks for card secrets by SMS. Banks' own warnings
+    // ("هرگز رمز دوم را ارسال نکنید") are negated and must not be flagged.
+    if (RegExp(r'رمز\s*دوم|cvv2?|تاریخ\s*انقضا').hasMatch(s) && RegExp(r'ارسال|بفرست|وارد کن').hasMatch(s) &&
+        !RegExp(r'هرگز|نکنید|نفرستید|ندهید|نگذارید|خودداری').hasMatch(s)) {
+      score += 2;
+      reasons.add('درخواست اطلاعات محرمانه کارت بانکی');
+    }
     // Personal mobile numbers do not send official notices.
-    if (RegExp(r'^(\+98|0)?9\d{9}$').hasMatch(sender.replaceAll(' ', '')) && _lure.hasMatch(s) && unknownLink) {
+    if (RegExp(r'^(\+98|0098|98|0)?9\d{9}$').hasMatch(sender.replaceAll(' ', '')) && _lure.hasMatch(s) && unknownLink) {
       score += 1;
       reasons.add('پیام رسمی از شماره موبایل شخصی');
     }

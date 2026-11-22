@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../jalali.dart';
 import '../recipient_suggestions.dart';
 
 /// In-app contact list, without launching Android's external contact picker.
@@ -92,8 +93,14 @@ class _ContactPickerState extends State<_ContactPicker> {
     final visible = filtered;
     final allPicked = visible.isNotEmpty &&
         visible.every((c) => selected.contains(c['number']));
-    return SizedBox(
-      height: MediaQuery.sizeOf(context).height * .83,
+    // Shrink above the keyboard so search results and the confirm button stay reachable.
+    final mq = MediaQuery.of(context);
+    final height = (mq.size.height - mq.viewInsets.bottom - mq.padding.top - 24)
+        .clamp(240.0, mq.size.height * .83).toDouble();
+    return Padding(
+      padding: EdgeInsets.only(bottom: mq.viewInsets.bottom),
+      child: SizedBox(
+      height: height,
       child: Column(children: [
         Padding(
           padding: const EdgeInsetsDirectional.fromSTEB(18, 2, 18, 8),
@@ -102,7 +109,8 @@ class _ContactPickerState extends State<_ContactPicker> {
             const SizedBox(width: 8),
             Expanded(child: Text('انتخاب مخاطبان',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800))),
-            Text('${selected.length} انتخاب‌شده',
+            // Persian digits, consistent with the rest of the RTL UI.
+            Text('${Jalali.digits(selected.length)} انتخاب‌شده',
               style: TextStyle(fontSize: 12, color: colors.primary, fontWeight: FontWeight.bold)),
           ]),
         ),
@@ -132,7 +140,7 @@ class _ContactPickerState extends State<_ContactPicker> {
               label: Text(allPicked ? 'لغو انتخاب همه' : 'انتخاب همه نتایج'),
             ),
             const Spacer(),
-            Text('${visible.length} مخاطب',
+            Text('${Jalali.digits(visible.length)} مخاطب',
               style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant)),
           ]),
         ),
@@ -157,7 +165,8 @@ class _ContactPickerState extends State<_ContactPicker> {
                   secondary: CircleAvatar(
                     backgroundColor: colors.primaryContainer,
                     foregroundColor: colors.onPrimaryContainer,
-                    child: Text(name.isNotEmpty ? name.substring(0, 1) : '؟'),
+                    // runes: never split an emoji or surrogate pair.
+                    child: Text(name.isNotEmpty ? String.fromCharCode(name.runes.first) : '؟'),
                   ),
                   title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
                   subtitle: Text(number, textDirection: TextDirection.ltr,
@@ -170,10 +179,10 @@ class _ContactPickerState extends State<_ContactPicker> {
           child: FilledButton.icon(
             onPressed: () => Navigator.of(context).pop(selected),
             icon: const Icon(Icons.check_rounded),
-            label: Text('تأیید ${selected.length} مخاطب'),
+            label: Text('تأیید ${Jalali.digits(selected.length)} مخاطب'),
           ),
         )),
       ]),
-    );
+    ));
   }
 }
