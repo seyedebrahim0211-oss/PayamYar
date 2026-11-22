@@ -32,6 +32,22 @@ internal object BulkQueuePolicy {
         return (20_000L shl exponent).coerceAtMost(5 * 60_000L)
     }
 
+    /**
+     * Pure classification of Android's SENT callback across 1..255 SMS parts.
+     * -1 is Activity.RESULT_OK; 0 is Activity.RESULT_CANCELED (ambiguous).
+     * Network delivery receipts are interpreted separately.
+     */
+    fun sentStatus(previous: String, resultCode: Int, callbacks: Int,
+                   accepted: Int, parts: Int, diagnostic: String): String = when {
+        previous == "delivered" -> previous
+        resultCode != -1 && resultCode != 0 -> "send_failed:$diagnostic"
+        previous.startsWith("send_failed") || previous == "delivery_failed" -> previous
+        callbacks < parts -> if (resultCode == 0 && previous == "pending")
+            "send_unconfirmed" else previous
+        accepted == parts -> "accepted_by_radio"
+        else -> "send_unconfirmed"
+    }
+
     /** None of these statuses authorize a retry of the *same* attempted SMS. */
     fun canAutomaticallyRetryAttempted(status: String): Boolean = false
 }
