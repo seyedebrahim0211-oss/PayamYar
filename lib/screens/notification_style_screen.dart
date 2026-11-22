@@ -194,6 +194,7 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
 
   @override
   Widget build(BuildContext context) => Scaffold(
+        backgroundColor: Theme.of(context).colorScheme.surface,
         appBar: AppBar(title: const Text('ظاهر اعلان و پاسخ سریع')),
         body: ListenableBuilder(
           listenable: widget.settings,
@@ -246,6 +247,7 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                     onChanged: !SmsBridge.supported || _floatingBusy ? null : _toggleFloating,
                   ),
                   ExpansionTile(
+                    key: const PageStorageKey<String>('notification-floating-options'),
                     title: const Text('تنظیمات حباب و اندازهٔ متن'),
                     children: [
                     ListTile(
@@ -389,6 +391,7 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                     onChanged: (v) => sender == null ? s.updateNotify(bannerHue: v)
                         : _setSenderColor(sender, HSVColor.fromAHSV(1, v, .75, .57).toColor())),
                   ExpansionTile(
+                    key: const PageStorageKey<String>('notification-glass-details'),
                     title: const Text('جزئیات شیشه و قاب'),
                     children: [
                     ListTile(
@@ -547,10 +550,23 @@ class _NotificationStyleScreenState extends State<NotificationStyleScreen> with 
                 ]),
               ],
             );
-            if (!pinPreview) return controls;
+            // Give the long settings list its own opaque painting surface. A
+            // transparent scrolling layer underneath a continuously repainted
+            // glass preview could show a grey/unpainted region on some GPUs.
+            final scrollingSettings = ColoredBox(
+              color: scheme.surface,
+              child: RepaintBoundary(child: controls),
+            );
+            if (!pinPreview) return scrollingSettings;
             return Column(children: [
-              Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 0), child: preview),
-              Expanded(child: controls),
+              RepaintBoundary(child: ColoredBox(
+                color: scheme.surface,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: preview,
+                ),
+              )),
+              Expanded(child: scrollingSettings),
             ]);
           },
         ),
@@ -585,7 +601,9 @@ class _ActionSettings extends StatelessWidget {
           value: s.swipeRightRead, onChanged: (v) => s.updateNotify(swipeRightRead: v)),
       SwitchListTile(title: const Text('خواندن پیام با کشیدن کارت به چپ'),
           value: s.swipeLeftRead, onChanged: (v) => s.updateNotify(swipeLeftRead: v)),
-      ExpansionTile(title: const Text('دکمه‌های دیگر'), children: [
+      ExpansionTile(
+        key: const PageStorageKey<String>('notification-more-actions'),
+        title: const Text('دکمه‌های دیگر'), children: [
         SwitchListTile(title: const Text('گفتگو'), value: s.notifyOpen,
             onChanged: (v) => s.updateNotify(notifyOpen: v)),
         SwitchListTile(title: const Text('بستن کارت'), value: s.notifyDismiss,
@@ -621,12 +639,13 @@ class _PreviewStage extends StatelessWidget {
             colors: [Color.lerp(tint, Colors.white, .55)!, const Color(0xFFF3E3BE), Color.lerp(tint, Colors.white, .2)!],
           ),
         ),
-        child: Stack(clipBehavior: Clip.none, children: [
+        child: Stack(clipBehavior: Clip.hardEdge, children: [
           const Positioned(top: -10, left: 20, child: _Blob(color: Color(0xFFDDA54A), size: 70)),
           Positioned(bottom: -14, right: 30, child: _Blob(color: tint, size: 90)),
           const Positioned(top: 30, right: -10, child: _Blob(color: Color(0xFF9F5369), size: 46)),
           Align(
             alignment: settings.bannerTop ? Alignment.topCenter : Alignment.bottomCenter,
+            heightFactor: 1,
             child: ConstrainedBox(constraints: BoxConstraints(maxWidth: settings.bannerMaxWidth),
               child: GlassBannerCard(banner: banner, settings: settings, interactive: false)),
           ),

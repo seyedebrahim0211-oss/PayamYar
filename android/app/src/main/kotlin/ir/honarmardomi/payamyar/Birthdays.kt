@@ -96,11 +96,13 @@ object Birthdays {
             val name = b.optString("name").ifBlank { b.optString("number") }
             val tag = 7000 + (id.hashCode() and 0x3FF)
             if (b.optBoolean("autoSend", true) && matches(b, today, tomorrow) && state.getString("sent:$id", "") != dayKey) {
-                state.edit().putString("sent:$id", dayKey).commit()
                 try {
                     val queued = SmsCore.queue(c, b.optString("number"), render(b, today[0]), b.optInt("sim", -1), 0)
+                    // Mark the occasion only after a real queue record was created.
+                    // A missing SIM or permission must not look like a successful send.
+                    state.edit().putString("sent:$id", dayKey).commit()
                     SmsCore.dispatch(c, queued)
-                    SmsCore.notify(c, tag, "🎂 تبریک تولد فرستاده شد", "پیامک تولد برای $name ارسال شد.")
+                    SmsCore.notify(c, tag, "🎂 تبریک تولد در صف ارسال", "پیامک تولد برای $name در صف ارسال قرار گرفت.")
                 } catch (e: Exception) {
                     SmsCore.notify(c, tag, "ارسال تبریک تولد انجام نشد", name + ": " + (e.message ?: "خطای ناشناخته"))
                 }

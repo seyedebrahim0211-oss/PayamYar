@@ -84,7 +84,7 @@ object SmsCore {
             ContentValues().apply { put("read", 1); put("seen", 1) }, "address = ? AND read = 0 AND date <= ?", arrayOf(address, through.toString()))
     }
     fun subscriptions(c: Context): List<Map<String, Any>> {
-        val result = mutableListOf<Map<String, Any>>(mapOf("id" to -1, "label" to "سیم‌کارت پیش‌فرض"))
+        val result = mutableListOf<Map<String, Any>>()
         if (ContextCompat.checkSelfPermission(c, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
             c.getSystemService(SubscriptionManager::class.java).activeSubscriptionInfoList?.forEach {
                 result.add(mapOf("id" to it.subscriptionId, "label" to "سیم ${it.simSlotIndex + 1} • ${it.displayName}"))
@@ -92,10 +92,9 @@ object SmsCore {
         }
         return result
     }
-    /** Resolve a usable subscription BEFORE showing the five-second undo message.
-     * Android returns INVALID_SUBSCRIPTION_ID when the device is set to "Ask every time".
-     * On single-SIM devices we can select the sole active subscription automatically.
-     */ 
+    /** Never route an SMS through Android's implicit default/ask-every-time subscription.
+     * A physical SIM must be selected and validated before the message enters the queue.
+     */
     fun resolveSubscription(c: Context, requested: Int): Int {
         val service = c.getSystemService(SubscriptionManager::class.java)
         val active = if (ContextCompat.checkSelfPermission(c, Manifest.permission.READ_PHONE_STATE) ==
@@ -103,17 +102,20 @@ object SmsCore {
             try { service.activeSubscriptionInfoList?.map { it.subscriptionId }.orEmpty() }
             catch (_: SecurityException) { emptyList() }
         } else emptyList()
-        if (requested >= 0) {
-            check(active.isEmpty() || active.contains(requested)) { "سیم‌کارت انتخابی فعال نیست؛ سیم‌کارت دیگری انتخاب کنید." }
-            return requested
-        }
-        @Suppress("DEPRECATION")
-        val defaultId = SubscriptionManager.getDefaultSmsSubscriptionId()
-        if (defaultId >= 0 && defaultId != Int.MAX_VALUE &&
-            (active.isEmpty() || active.contains(defaultId))) return defaultId
-        if (active.size == 1) return active.first()
-        error(if (active.size > 1) "برای ارسال، سیم‌کارت ۱ یا ۲ را در پیام‌یار انتخاب کنید."
-            else "سیم‌کارت فعال شناسایی نشد. وضعیت سیم‌کارت و دسترسی تلفن را بررسی کنید.")
+        check(active.isNotEmpty()) { "سیم‌کارت فعال شناسایی نشد. دسترسی تلفن را بررسی کنید." }
+        // Background actions (quick reply and scheduled greetings) pass -1,
+        // so use the last *explicitly selected* in-app SIM, never Android's
+        // implicit default subscription. A single active SIM is unambiguous.
+        val remembered = try {
+            c.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                .getLong("flutter.selected_send_sim", -1L).toInt()
+        } catch (_: ClassCastException) { -1 }
+        val selected = if (requested >= 0) requested
+            else if (active.size == 1) active.first()
+            else remembered
+        check(selected >= 0) { "قبل از ارسال، سیم‌کارت ۱ یا ۲ را در پیام‌یار انتخاب کنید." }
+        check(active.contains(selected)) { "سیم‌کارت انتخابی دیگر فعال نیست؛ دوباره انتخاب کنید." }
+        return selected
     }
 
     @Synchronized fun queue(c: Context, address: String, body: String, sim: Int, delayMs: Long = 5000, group: Boolean = false, groupTime: Long? = null): String {

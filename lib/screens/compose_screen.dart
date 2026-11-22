@@ -243,14 +243,19 @@ class _ComposeScreenState extends State<ComposeScreen> {
       }
       final contacts = await SmsBridge.listContacts();
       if (!mounted) return;
-      for (final item in contacts) {
-        final number = _normalize(item['number'] ?? '');
-        if (_isNumber(number)) contactNames[number] = item['name'] ?? number;
-      }
+      FocusManager.instance.primaryFocus?.unfocus();
+      final valid = contacts.where((c) => _isNumber(_normalize(c['number'] ?? '')))
+          .map((c) => <String, String>{'name': c['name'] ?? '', 'number': _normalize(c['number'] ?? '')})
+          .toList();
+      setState(() {
+        _contacts = valid;
+        _frequency = RecipientSuggestions.frequency(store.messages);
+        contactNames.addAll({for (final c in valid) c['number']!: c['name']!});
+        _refreshSuggestions();
+      });
       final selected = await showContactPicker(context,
-        frequency: RecipientSuggestions.frequency(store.messages),
-        contacts: contacts.where((c) => _isNumber(_normalize(c['number'] ?? '')))
-          .map((c) => <String,String>{'name': c['name'] ?? '', 'number': _normalize(c['number'] ?? '')}).toList(),
+        frequency: _frequency,
+        contacts: valid,
         selected: {...recipients}, maxSelection: maxRecipients);
       if (selected == null || !mounted) return;
       setState(() {
@@ -322,11 +327,15 @@ class _ComposeScreenState extends State<ComposeScreen> {
       final discovered = await SmsBridge.subscriptions();
       if (!mounted) return;
       setState(() {
-        store.sims = discovered;
-        if (!discovered.any((sim) => sim['id'] == _explicitGroupSim)) {
+        store.sims = discovered.where((sim) =>
+            sim['id'] is int && (sim['id'] as int) >= 0).toList();
+        if (!store.sims.any((sim) => sim['id'] == _explicitGroupSim)) {
           _explicitGroupSim = null;
         }
       });
+      if (store.sims.length == 1 && store.selectedSim != store.sims.first['id']) {
+        store.selectSim(store.sims.first['id'] as int);
+      }
     } catch (_) {
       // The user can try again. Never silently fall back to the default SIM.
     }
@@ -608,18 +617,9 @@ class _ComposeScreenState extends State<ComposeScreen> {
         title: Text(widget.lockGroupRecipients ? 'ارسال به گروه: ${groupName.text}' : 'پیام جدید'),
       ),
       body: Column(children: [
-        Expanded(child: ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 24), children: [
-          Row(children: [
-            Icon(Icons.people_alt_outlined, color: scheme.primary),
-            const SizedBox(width: 8),
-            Text('گیرندگان', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
-            const Spacer(),
-            Text('$count از $maxRecipients', style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12)),
-          ]),
-          const SizedBox(height: 10),
-          Align(alignment: AlignmentDirectional.centerStart,
-            child: TextButton.icon(onPressed: _pickOccasion, icon: const Icon(Icons.event_outlined),
-              label: const Text('پیام‌های مناسبتی'))),
+        Expanded(child: ListView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24), children: [
           if (widget.lockGroupRecipients)
             Card(
               child: ListTile(
@@ -637,9 +637,11 @@ class _ComposeScreenState extends State<ComposeScreen> {
               Row(children: [
                 Expanded(child: TextField(
                   controller: to,
-                  textDirection: TextDirection.ltr,
-                  textAlign: TextAlign.right,
-                  keyboardType: TextInputType.phone,
+                  textDirection: TextDirection.rtl,
+                  textAlign: TextAlign.start,
+                  keyboardType: TextInputType.text,
+                  autocorrect: false,
+                  onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                   textInputAction: TextInputAction.done,
                   onSubmitted: (_) => _addTyped(),
                   onChanged: (_) { _refreshSuggestions(); _saveDraft(); setState(() {}); },
@@ -650,13 +652,19 @@ class _ComposeScreenState extends State<ComposeScreen> {
                     filled: false,
                   ),
                 )),
+                if (to.text.trim().isNotEmpty && _isNumber(_normalize(to.text.trim())))
+                  IconButton(
+                    tooltip: 'افزودن شماره',
+                    onPressed: _addTyped,
+                    icon: const Icon(Icons.add_circle_outline),
+                  ),
                 IconButton.filledTonal(
-                  tooltip: 'افزودن شماره',
-                  onPressed: _addTyped,
-                  icon: const Icon(Icons.add_rounded),
+                  tooltip: 'انتخاب از مخاطبان',
+                  onPressed: openingContacts ? null : _openContacts,
+                  icon: const Icon(Icons.contacts_outlined),
                 ),
               ]),
-              if (_contacts.isNotEmpty) ...[
+              if (_suggestions.isNotEmpty) ...[
                 const SizedBox(height: 6),
                 Text(to.text.trim().isEmpty ? 'مخاطبین پرکاربرد' : 'پیشنهاد بر اساس نام و شماره',
                   style: Theme.of(context).textTheme.labelMedium?.copyWith(color: scheme.primary)),
@@ -695,21 +703,35 @@ class _ComposeScreenState extends State<ComposeScreen> {
                       label: Text(contactNames[number] ?? number,
                         textDirection: TextDirection.rtl),
                       tooltip: number,
-                      onDeleted: () { setState(() => recipients.remove(number)); _saveDraft(); },
+                      onDeleted: () {
+                        setState(() { recipients.remove(number); _refreshSuggestions(); });
+                        _saveDraft();
+                      },
                     ),
                   if (recipients.length > 8)
                     Chip(label: Text('و ${recipients.length - 8} نفر دیگر…')),
                 ]),
               ],
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: openingContacts ? null : _openContacts,
-                icon: openingContacts
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.contacts_rounded),
-                label: const Text('انتخاب مخاطب • چندتایی • انتخاب همه'),
-              ),
             ]),
+          ),
+          const SizedBox(height: 18),
+
+          TextField(
+            controller: body,
+            onChanged: (_) { _saveDraft(); setState(() {}); },
+            maxLength: 2000,
+            minLines: 4,
+            // Grow with the text so the page scrolls; an inner scrollable field made the
+            // page stick when the finger landed on it.
+            maxLines: null,
+            textAlignVertical: TextAlignVertical.top,
+            decoration: const InputDecoration(
+              labelText: 'متن پیام',
+              hintText: 'پیام خود را بنویسید…',
+              alignLabelWithHint: true,
+              counterText: '',
+              contentPadding: EdgeInsets.all(18),
+            ),
           ),
           if (!widget.lockGroupRecipients && (count > 1 || groupMode)) ...[
             const SizedBox(height: 12),
@@ -717,7 +739,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(13),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  Text('نوع ارسال', style: Theme.of(context).textTheme.titleSmall),
+                  Text('روش ارسال به چند نفر', style: Theme.of(context).textTheme.titleSmall),
                   const SizedBox(height: 10),
                   SegmentedButton<bool>(
                     segments: const [
@@ -767,7 +789,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
                   Row(children: [
                     Icon(Icons.sim_card_rounded, color: scheme.primary),
                     const SizedBox(width: 9),
-                    Expanded(child: Text('سیم‌کارت ارسال گروهی • ضروری',
+                    Expanded(child: Text('سیم‌کارت ارسال گروهی',
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w800))),
                     IconButton(
@@ -808,25 +830,47 @@ class _ComposeScreenState extends State<ComposeScreen> {
               ),
             ),
           ],
-          const SizedBox(height: 20),
-          Text('متن پیام', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 10),
-          TextField(
-            controller: body,
-            onChanged: (_) { _saveDraft(); setState(() {}); },
-            maxLength: 2000,
-            minLines: 4,
-            // Grow with the text so the page scrolls; an inner scrollable field made the
-            // page stick when the finger landed on it.
-            maxLines: null,
-            textAlignVertical: TextAlignVertical.top,
-            decoration: const InputDecoration(
-              hintText: 'پیام خود را اینجا بنویسید…',
-              alignLabelWithHint: true,
-              counterText: '',
-              contentPadding: EdgeInsets.all(18),
+          if (store.android && count <= 1 && !groupMode) ...[
+            const SizedBox(height: 12),
+            Card(
+              key: const ValueKey('compose-sim-choice'),
+              color: scheme.primaryContainer.withValues(alpha: .35),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Row(children: [
+                    Icon(Icons.sim_card_outlined, color: scheme.primary),
+                    const SizedBox(width: 9),
+                    Expanded(child: Text('سیم‌کارت ارسال',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800))),
+                    IconButton(
+                      tooltip: 'بازخوانی سیم‌کارت‌ها',
+                      onPressed: sending ? null : _reloadSims,
+                      icon: const Icon(Icons.refresh_rounded)),
+                  ]),
+                  if (store.sims.isEmpty)
+                    const Text('سیم‌کارت شناسایی نشد؛ دسترسی تلفن را فعال کنید و بازخوانی بزنید.')
+                  else
+                    Wrap(spacing: 8, runSpacing: 6, children: [
+                      for (final sim in store.sims)
+                        ChoiceChip(
+                          label: Text(sim['label']?.toString() ?? 'سیم‌کارت'),
+                          avatar: Icon(store.selectedSim == sim['id']
+                            ? Icons.check_circle_rounded : Icons.sim_card_rounded, size: 18),
+                          selected: store.selectedSim == sim['id'],
+                          onSelected: sending ? null : (_) =>
+                            setState(() => store.selectSim(sim['id'] as int)),
+                        ),
+                    ]),
+                  if (store.sims.isNotEmpty &&
+                      !store.sims.any((sim) => sim['id'] == store.selectedSim))
+                    Text('برای ارسال، سیم‌کارت ۱ یا ۲ را انتخاب کنید.',
+                      style: TextStyle(color: scheme.error, fontSize: 12)),
+                ]),
+              ),
             ),
-          ),
+          ],
           Align(alignment: AlignmentDirectional.centerStart,
             child: TextButton.icon(
               onPressed: () async {
@@ -843,28 +887,42 @@ class _ComposeScreenState extends State<ComposeScreen> {
             Expanded(child: SmsCounter(text: body.text)),
             Text('${Jalali.digits(body.text.length)}/۲۰۰۰', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
           ]),
-          const SizedBox(height: 18),
-          Row(children: [
-            Text('پیام‌های آماده', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
-            const Spacer(),
-            TextButton.icon(
-              onPressed: () async {
-                final result = await showTemplatesSheet(context, store, currentText: body.text);
-                if (result == null || !mounted) return;
-                setState(() => body.text = result);
-                _saveDraft();
-              },
-              icon: const Icon(Icons.library_books_outlined, size: 18),
-              label: const Text('مشاهده همه'),
+          const SizedBox(height: 12),
+          Card(
+            margin: EdgeInsets.zero,
+            child: ExpansionTile(
+              key: const ValueKey('compose-templates'),
+              initiallyExpanded: false,
+              leading: const Icon(Icons.library_books_outlined),
+              title: const Text('پیام‌های آماده و مناسبتی'),
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.event_outlined),
+                  title: const Text('پیشنهاد پیام مناسبتی'),
+                  onTap: _pickOccasion),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  child: Wrap(spacing: 8, runSpacing: 8, children: [
+                    for (final suggestion in quickTexts)
+                      ActionChip(label: Text(suggestion), onPressed: () {
+                        setState(() => body.text = suggestion);
+                        _saveDraft();
+                      }),
+                  ]),
+                ),
+                TextButton.icon(
+                  onPressed: () async {
+                    final result = await showTemplatesSheet(context, store, currentText: body.text);
+                    if (result == null || !mounted) return;
+                    setState(() => body.text = result);
+                    _saveDraft();
+                  },
+                  icon: const Icon(Icons.library_books_outlined, size: 18),
+                  label: const Text('مشاهده همه متن‌های آماده'),
+                ),
+              ],
             ),
-          ]),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            for (final suggestion in quickTexts)
-              ActionChip(label: Text(suggestion), onPressed: () {
-                setState(() => body.text = suggestion);
-                _saveDraft();
-              }),
-          ]),
+          ),
           const SizedBox(height: 12),
           Card(
             margin: EdgeInsets.zero,
@@ -898,16 +956,6 @@ class _ComposeScreenState extends State<ComposeScreen> {
               ],
             ),
           ),
-          if (store.sims.length > 2 && count <= 1 && !groupMode) ...[
-            const SizedBox(height: 16),
-            DropdownButtonFormField<int>(
-              initialValue: store.selectedSim,
-              decoration: const InputDecoration(labelText: 'سیم‌کارت ارسال', prefixIcon: Icon(Icons.sim_card_outlined)),
-              items: [for (final sim in store.sims)
-                DropdownMenuItem<int>(value: sim['id'] as int, child: Text(sim['label'].toString()))],
-              onChanged: sending ? null : (value) => setState(() => store.selectedSim = value ?? -1),
-            ),
-          ],
         ])),
         SafeArea(top: false, child: Container(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),

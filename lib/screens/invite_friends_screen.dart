@@ -18,9 +18,7 @@ class InviteFriendsScreen extends StatefulWidget {
 class _InviteFriendsScreenState extends State<InviteFriendsScreen> {
   static const link = 'https://honarmardomi.ir/payamyar/';
   static const invitation =
-      'پیام‌یار، پیام‌رسان پیامکی فارسی با طراحی الهام‌گرفته از هنر ایرانی است. '
-      'مدیریت منظم گفتگوها، جست‌وجوی پیشرفته، ارسال گروهی و حفاظت از حریم خصوصی '
-      'را در محیطی ساده و کاربردی فراهم می‌کند.\n'
+      'با پیام‌یار، پیامک‌های خود را جست‌وجو و دسته‌بندی کنید و از سیم‌کارت دلخواهتان برای مخاطبان گروه پیام بفرستید.\n'
       'دریافت برنامه: $link';
   static const _introKey = 'payamyar_invitation_intro_v1';
   String _intro = invitation;

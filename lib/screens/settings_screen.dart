@@ -214,6 +214,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: 'معرفی پیام‌یار به دوستان',
                 subtitle: 'دعوت با پیامک، اشتراک‌گذاری و لینک دانلود',
                 onTap: () => _open(InviteFriendsScreen(store: store))),
+              SettingsTile(icon: Icons.volunteer_activism_outlined, color: const Color(0xFFAE813C),
+                title: 'نذر فرهنگی؛ حمایت از پیام‌یار',
+                subtitle: 'کمک داوطلبانه با مبلغ دلخواه برای توسعه و امنیت برنامه',
+                onTap: () => _open(const CulturalSupportPage())),
               SettingsTile(icon: Icons.chat_outlined, color: scheme.primary,
                 title: 'ارتباط با ما', onTap: () => _open(const ContactPage())),
               SettingsTile(icon: Icons.info_outline_rounded, color: scheme.primary,
@@ -403,19 +407,38 @@ class SendingSettingsPage extends StatelessWidget {
               title: 'پیام‌رسان پیش‌فرض',
               subtitle: store.isDefault ? 'پیام‌یار پیام‌رسان پیش‌فرض گوشی است' : 'برای دریافت پیام‌های جدید فعال کنید',
               onTap: store.isDefault ? null : store.requestDefault),
-            if (store.sims.length > 2)
-              SettingsTile(icon: Icons.sim_card_outlined, color: scheme.primary, title: 'سیم‌کارت ارسال',
-                subtitle: store.sims.firstWhere((s) => s['id'] == store.selectedSim,
-                  orElse: () => store.sims.first)['label'].toString(),
-                onTap: () => showModalBottomSheet<void>(context: context, showDragHandle: true,
-                  builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    for (final sim in store.sims)
-                      ListTile(
-                        leading: Icon(store.selectedSim == sim['id'] ? Icons.radio_button_checked : Icons.radio_button_off,
-                          color: scheme.primary),
-                        title: Text(sim['label'].toString()),
-                        onTap: () { store.selectSim(sim['id'] as int); Navigator.pop(ctx); }),
-                  ])))),
+            SettingsTile(
+              icon: Icons.sim_card_outlined,
+              color: scheme.primary,
+              title: 'سیم‌کارت ارسال پیامک',
+              subtitle: store.sims.isEmpty
+                  ? 'سیم‌کارت فعال شناسایی نشد؛ دسترسی تلفن را بررسی کنید'
+                  : store.sims.where((sim) => sim['id'] == store.selectedSim)
+                      .map((sim) => sim['label'].toString()).firstOrNull
+                      ?? 'انتخاب نشده؛ سیم‌کارت ۱ یا ۲ را مشخص کنید',
+              onTap: store.sims.isEmpty ? SmsBridge.openAppSettings :
+                () => showModalBottomSheet<void>(
+                  context: context, showDragHandle: true,
+                  builder: (ctx) => SafeArea(child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const ListTile(title: Text('سیم‌کارت برای ارسال'),
+                        subtitle: Text('هیچ پیامکی با گزینهٔ «پیش‌فرض» ارسال نمی‌شود.')),
+                      for (final sim in store.sims)
+                        ListTile(
+                          leading: Icon(
+                            store.selectedSim == sim['id']
+                                ? Icons.radio_button_checked_rounded
+                                : Icons.radio_button_off_rounded,
+                            color: scheme.primary),
+                          title: Text(sim['label'].toString()),
+                          onTap: () {
+                            store.selectSim(sim['id'] as int);
+                            Navigator.pop(ctx);
+                          }),
+                    ],
+                  ))),
+            ),
           ]),
         SettingsGroup(title: 'ظرفیت فهرست گیرندگان', children: [
           Padding(

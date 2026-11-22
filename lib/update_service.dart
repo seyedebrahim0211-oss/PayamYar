@@ -40,6 +40,11 @@ String formatBytes(int bytes) {
 }
 
 class UpdateService {
+  // Marketplace editions must never offer sideloading an APK from the website.
+  // The dedicated store builds are compiled with --dart-define=PAYAMYAR_STORE.
+  static const distributionStore = String.fromEnvironment('PAYAMYAR_STORE');
+  static const isStoreBuild = distributionStore == 'bazaar' || distributionStore == 'myket';
+
   // Server-side administrator release manager: no GitHub, credentials or tokens in the app.
   static final _endpoint = Uri.parse('https://honarmardomi.ir/wp-json/payamyar/v1/release');
   /// Release identity is verified against the APK's real signing certificate,
@@ -64,6 +69,12 @@ class UpdateService {
   }
 
   static Future<ReleaseInfo> check() async {
+    if (isStoreBuild) {
+      // Marketplace updates are delivered through the corresponding store,
+      // not via a site-hosted APK or Android's package installer.
+      return const ReleaseInfo(version: '', available: false, url: '',
+          notes: 'به‌روزرسانی نسخهٔ فروشگاهی از بازار یا مایکت انجام می‌شود.');
+    }
     final manifest = await _readManifest();
     final version = manifest['version'] as String? ?? '';
     final published = manifest['published'] == true;

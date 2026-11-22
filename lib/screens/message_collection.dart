@@ -131,7 +131,14 @@ class _MessageCollectionState extends State<MessageCollection> {
           child: Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: .45),
+              gradient: LinearGradient(
+                begin: AlignmentDirectional.topStart,
+                end: AlignmentDirectional.bottomEnd,
+                colors: [
+                  Theme.of(context).colorScheme.primaryContainer,
+                  Theme.of(context).colorScheme.surface,
+                ],
+              ),
               border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: .16)),
               borderRadius: BorderRadius.circular(24),
             ),
@@ -167,8 +174,8 @@ class _MessageCollectionState extends State<MessageCollection> {
           )),
         SizedBox(height: 54, child: ListView(scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3), children: [
-          FilterChip(label: const Text('لینک‌دار'), selected: linksOnly, onSelected: (v) { linksOnly = v; _schedule(); }),
-          FilterChip(label: const Text('مبلغ‌دار'), selected: amountsOnly, onSelected: (v) { amountsOnly = v; _schedule(); }),
+          FilterChip(avatar: const Icon(Icons.link_rounded, size: 18), label: const Text('لینک‌دار'), selected: linksOnly, onSelected: (v) { linksOnly = v; _schedule(); }),
+          FilterChip(avatar: const Icon(Icons.payments_outlined, size: 18), label: const Text('مبلغ‌دار'), selected: amountsOnly, onSelected: (v) { amountsOnly = v; _schedule(); }),
           ActionChip(label: Text(period == null ? 'بازهٔ تاریخ' : 'حذف بازهٔ تاریخ'), onPressed: () async {
             if (period != null) { period = null; _schedule(); return; }
             final range = await showDateRangePicker(context: context, firstDate: DateTime(1970), lastDate: DateTime.now());

@@ -963,13 +963,42 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
   }
 
   Widget _inputBar(ColorScheme scheme, ChatLook look) {
-    final dualSim = store.sims.length > 2;
+    final dualSim = store.sims.length > 1;
     final pendingHere = store.pendingSends.where((p) => store.key(p.to) == store.key(widget.address)).toList();
     return SafeArea(
       top: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
+          if (dualSim)
+            Padding(
+              padding: const EdgeInsetsDirectional.only(start: 7, end: 7, bottom: 5),
+              child: Row(children: [
+                const Text('ارسال از:', style: TextStyle(fontSize: 12)),
+                const SizedBox(width: 8),
+                Expanded(child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(children: [
+                    for (final sim in store.sims)
+                      Padding(
+                        padding: const EdgeInsetsDirectional.only(end: 7),
+                        child: ChoiceChip(
+                          visualDensity: VisualDensity.compact,
+                          label: Text(sim['label'].toString()),
+                          selected: store.selectedSim == sim['id'],
+                          onSelected: (_) => setState(
+                            () => store.selectSim(sim['id'] as int)),
+                        ),
+                      ),
+                  ]),
+                )),
+              ]),
+            ),
+          if (store.android && store.sims.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text('سیم‌کارت فعال شناسایی نشد؛ مجوز تلفن را بررسی کنید.',
+                style: TextStyle(color: scheme.error, fontSize: 12))),
           ValueListenableBuilder<TextEditingValue>(
             valueListenable: input,
             builder: (context, value, _) => value.text.isEmpty
@@ -1010,19 +1039,6 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
                     focusedBorder: InputBorder.none,
                   ),
                 )),
-                if (dualSim)
-                  PopupMenuButton<int>(
-                    tooltip: 'انتخاب سیم‌کارت',
-                    icon: Icon(Icons.sim_card_outlined, color: scheme.primary),
-                    onSelected: (v) => setState(() => store.selectedSim = v),
-                    itemBuilder: (_) => [
-                      for (final sim in store.sims)
-                        CheckedPopupMenuItem(
-                          value: sim['id'] as int,
-                          checked: store.selectedSim == sim['id'],
-                          child: Text(sim['label'].toString())),
-                    ],
-                  ),
                 PopupMenuButton<String>(
                   tooltip: 'ابزارهای پیام',
                   icon: Icon(Icons.add_circle_outline_rounded, color: scheme.primary),
