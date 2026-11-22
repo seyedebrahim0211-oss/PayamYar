@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../app_store.dart';
 import '../sms_bridge.dart';
 import 'compose_screen.dart';
@@ -17,9 +18,60 @@ class InviteFriendsScreen extends StatefulWidget {
 class _InviteFriendsScreenState extends State<InviteFriendsScreen> {
   static const link = 'https://honarmardomi.ir/payamyar/';
   static const invitation =
-      'سلام! من از پیام‌یار برای مدیریت پیامک‌ها استفاده می‌کنم. '
-      'اگر دوست داشتی، از اینجا با امکاناتش آشنا شو و دانلودش کن:\n$link';
+      'پیام‌یار، پیام‌رسان پیامکی فارسی با طراحی الهام‌گرفته از هنر ایرانی است. '
+      'مدیریت منظم گفتگوها، جست‌وجوی پیشرفته، ارسال گروهی و حفاظت از حریم خصوصی '
+      'را در محیطی ساده و کاربردی فراهم می‌کند.\n'
+      'دریافت برنامه: $link';
+  static const _introKey = 'payamyar_invitation_intro_v1';
+  String _intro = invitation;
   bool picking = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadIntro();
+  }
+
+  Future<void> _loadIntro() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) setState(() => _intro = prefs.getString(_introKey) ?? invitation);
+  }
+
+  Future<void> _editIntro() async {
+    final controller = TextEditingController(text: _intro);
+    final next = await showDialog<String>(context: context, builder: (dialog) =>
+      AlertDialog(
+        title: const Text('ویرایش متن معرفی'),
+        content: SingleChildScrollView(child: TextField(
+          controller: controller,
+          autofocus: false,
+          maxLength: 500,
+          minLines: 5,
+          maxLines: 8,
+          decoration: const InputDecoration(
+            helperText: 'متن دلخواه شما فقط روی همین گوشی ذخیره می‌شود.',
+            border: OutlineInputBorder(),
+          ),
+        )),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialog, invitation),
+            child: const Text('متن پیش‌فرض')),
+          TextButton(onPressed: () => Navigator.pop(dialog),
+            child: const Text('انصراف')),
+          FilledButton(onPressed: () => Navigator.pop(dialog, controller.text.trim()),
+            child: const Text('ذخیره')),
+        ],
+      ));
+    // Dialog exit animation may still read its controller.
+    WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
+    if (!mounted || next == null || next.trim().isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_introKey, next.trim());
+    if (mounted) {
+      setState(() => _intro = next.trim());
+      _notice('متن معرفی ذخیره شد.');
+    }
+  }
 
   void _notice(String message) {
     if (!mounted) return;
@@ -61,19 +113,19 @@ class _InviteFriendsScreenState extends State<InviteFriendsScreen> {
   void _openComposer(List<String> recipients) {
     Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => ComposeScreen(
-        store: widget.store, initialRecipients: recipients, initialBody: invitation,
+        store: widget.store, initialRecipients: recipients, initialBody: _intro,
       ),
     ));
   }
 
   Future<void> _share() async {
     try {
-      if (await SmsBridge.shareText(invitation,
+      if (await SmsBridge.shareText(_intro,
           subject: 'دعوت به پیام‌یار', title: 'معرفی پیام‌یار به دوستان')) {
         return;
       }
     } catch (_) {}
-    await Clipboard.setData(const ClipboardData(text: invitation));
+    await Clipboard.setData(ClipboardData(text: _intro));
     _notice('متن دعوت کپی شد. می‌توانید برای دوستان بفرستید.');
   }
 
@@ -108,7 +160,13 @@ class _InviteFriendsScreenState extends State<InviteFriendsScreen> {
           ]),
         ),
         const SizedBox(height: 20),
-        Text('متن دعوت', style: Theme.of(context).textTheme.titleMedium),
+        Row(children: [
+          Expanded(child: Text('متن معرفی برنامه',
+            style: Theme.of(context).textTheme.titleMedium)),
+          TextButton.icon(onPressed: _editIntro,
+            icon: const Icon(Icons.edit_outlined, size: 18),
+            label: const Text('ویرایش')),
+        ]),
         const SizedBox(height: 8),
         DecoratedBox(
           decoration: BoxDecoration(
@@ -117,7 +175,7 @@ class _InviteFriendsScreenState extends State<InviteFriendsScreen> {
             borderRadius: BorderRadius.circular(20)),
           child: Padding(
             padding: const EdgeInsets.all(18),
-            child: SelectableText(invitation, style: const TextStyle(height: 1.85)),
+            child: SelectableText(_intro, style: const TextStyle(height: 1.85)),
           ),
         ),
         const SizedBox(height: 22),
