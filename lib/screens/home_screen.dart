@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import '../app_settings.dart';
 import '../app_store.dart';
 import '../bank_privacy.dart';
-import '../brand_mark.dart';
 import '../design/tokens.dart';
 import '../conversation_logic.dart';
 import '../conversation_insights.dart';
