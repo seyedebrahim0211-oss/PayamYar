@@ -241,7 +241,6 @@ class _DialectCardState extends State<DialectCard> with WidgetsBindingObserver {
               textAlign: TextAlign.center)),
         Expanded(
           child: ListView.builder(
-            scrollCacheExtent: 300,
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: const EdgeInsets.fromLTRB(12, 2, 12, 28),
             itemCount: results.length,
