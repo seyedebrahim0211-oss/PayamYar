@@ -306,7 +306,7 @@ class AppSettings extends ChangeNotifier {
     await p.setInt('replyTone', replyTone);
     await p.setBool('smartReplies', smartReplies);
     await p.setInt('recipientCapacity', recipientCapacity);
-    await p.setBool('swipeRows', this.swipeRows);
+    await p.setBool('swipeRows', swipeRows);
     await p.setBool('swipeTabsV2', swipeTabs);
     await p.setBool('reduceEffects', reduceEffects);
     await p.setInt('chatStyle', chatStyle.index);
