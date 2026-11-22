@@ -404,10 +404,27 @@ object SmsCore {
         }
         edit.apply()
     }
+    /** Re-arm persisted bulk sends when the app starts, without replaying any
+     * ambiguous radio attempt or altering unrelated scheduled SMS. */
+    @Synchronized fun recoverBulk(c: Context) {
+        migrateLegacyPause(c)
+        val p = prefs(c)
+        val now = System.currentTimeMillis()
+        val active = p.getString("bulk.active", null)
+        if (active != null) {
+            scheduleGroup(c.applicationContext,
+                maxOf(now, p.getLong("bulk.activeAt", now) + BULK_ACK_TIMEOUT_MS))
+            return
+        }
+        val first = p.all.entries.filter { it.key.startsWith("group:") && it.value is Long }
+            .map { it.value as Long }.minOrNull()
+        if (first != null) scheduleGroup(c.applicationContext,
+            maxOf(now, first, p.getLong("bulk.nextAt", 0L)))
+    }
+
     /** Restore future scheduled sends. Never duplicate an ambiguous in-flight SMS.
      * The paced bulk queue persists separately and survives an app/process restart. */
     @Synchronized fun recover(c: Context) {
-        migrateLegacyPause(c)
         val now = System.currentTimeMillis()
         val p = prefs(c)
         p.all.keys.filter { it.startsWith("queue:") }.forEach { key ->
@@ -421,11 +438,7 @@ object SmsCore {
                     .putString("status:$id", "cancelled_after_restart").commit()
             }
         }
-        val earliest = p.all.entries.filter { it.key.startsWith("group:") && it.value is Long }
-            .map { it.value as Long }.minOrNull()
-        if (earliest != null && !p.getBoolean("bulk.paused", false)) {
-            scheduleGroup(c.applicationContext, maxOf(earliest, now))
-        }
+        recoverBulk(c)
     }
     /** Read native queued messages so their scheduled state remains visible after app restart. */
     @Synchronized fun pending(c: Context): List<Map<String, Any>> =
