@@ -243,14 +243,19 @@ class _ComposeScreenState extends State<ComposeScreen> {
       }
       final contacts = await SmsBridge.listContacts();
       if (!mounted) return;
-      for (final item in contacts) {
-        final number = _normalize(item['number'] ?? '');
-        if (_isNumber(number)) contactNames[number] = item['name'] ?? number;
-      }
+      FocusManager.instance.primaryFocus?.unfocus();
+      final valid = contacts.where((c) => _isNumber(_normalize(c['number'] ?? '')))
+          .map((c) => <String, String>{'name': c['name'] ?? '', 'number': _normalize(c['number'] ?? '')})
+          .toList();
+      setState(() {
+        _contacts = valid;
+        _frequency = RecipientSuggestions.frequency(store.messages);
+        contactNames.addAll({for (final c in valid) c['number']!: c['name']!});
+        _refreshSuggestions();
+      });
       final selected = await showContactPicker(context,
-        frequency: RecipientSuggestions.frequency(store.messages),
-        contacts: contacts.where((c) => _isNumber(_normalize(c['number'] ?? '')))
-          .map((c) => <String,String>{'name': c['name'] ?? '', 'number': _normalize(c['number'] ?? '')}).toList(),
+        frequency: _frequency,
+        contacts: valid,
         selected: {...recipients}, maxSelection: maxRecipients);
       if (selected == null || !mounted) return;
       setState(() {
@@ -612,7 +617,9 @@ class _ComposeScreenState extends State<ComposeScreen> {
         title: Text(widget.lockGroupRecipients ? 'ارسال به گروه: ${groupName.text}' : 'پیام جدید'),
       ),
       body: Column(children: [
-        Expanded(child: ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 24), children: [
+        Expanded(child: ListView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24), children: [
           Row(children: [
             Icon(Icons.people_alt_outlined, color: scheme.primary),
             const SizedBox(width: 8),
@@ -638,9 +645,11 @@ class _ComposeScreenState extends State<ComposeScreen> {
               Row(children: [
                 Expanded(child: TextField(
                   controller: to,
-                  textDirection: TextDirection.ltr,
-                  textAlign: TextAlign.right,
-                  keyboardType: TextInputType.phone,
+                  textDirection: TextDirection.rtl,
+                  textAlign: TextAlign.start,
+                  keyboardType: TextInputType.text,
+                  autocorrect: false,
+                  onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                   textInputAction: TextInputAction.done,
                   onSubmitted: (_) => _addTyped(),
                   onChanged: (_) { _refreshSuggestions(); _saveDraft(); setState(() {}); },
