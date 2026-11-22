@@ -35,6 +35,39 @@ class BulkQueuePolicyTest {
         assertEquals("accepted_by_radio", BulkQueuePolicy.afterTimeout("accepted_by_radio"))
     }
 
+    @Test fun repeatedSuccessfulSingleSegmentModemReceiptsAdvanceExactlyOnce() {
+        repeat(3) {
+            assertEquals("accepted_by_radio",
+                BulkQueuePolicy.sentStatus("pending", -1, 1, 1, 1, ""))
+            assertEquals(4_000L, BulkQueuePolicy.nextDelayMs("accepted_by_radio", 0))
+        }
+    }
+
+    @Test fun partialMultipartAcknowledgementNeverClaimsWholeMessageWasSent() {
+        repeat(3) {
+            assertEquals("pending",
+                BulkQueuePolicy.sentStatus("pending", -1, 1, 1, 2, ""))
+            assertEquals("accepted_by_radio",
+                BulkQueuePolicy.sentStatus("pending", -1, 2, 2, 2, ""))
+            assertEquals("send_unconfirmed",
+                BulkQueuePolicy.sentStatus("pending", 0, 1, 0, 2, ""))
+            assertEquals("send_unconfirmed",
+                BulkQueuePolicy.sentStatus("send_unconfirmed", -1, 2, 1, 2, ""))
+            assertEquals("accepted_by_radio",
+                BulkQueuePolicy.sentStatus("send_unconfirmed", -1, 2, 2, 2, ""))
+        }
+    }
+
+    @Test fun repeatedRadioErrorsDoNotFabricateDeliveryOrAuthorizeRetries() {
+        repeat(3) {
+            assertEquals("send_failed:no_service",
+                BulkQueuePolicy.sentStatus("pending", 4, 1, 0, 1, "no_service"))
+            assertEquals("send_unconfirmed",
+                BulkQueuePolicy.sentStatus("pending", 0, 1, 0, 1, ""))
+            assertFalse(BulkQueuePolicy.canAutomaticallyRetryAttempted("send_unconfirmed"))
+        }
+    }
+
     @Test fun offlineGuardAndWindowLimitRemainConservative() {
         assertEquals(60_000L, BulkQueuePolicy.PREFLIGHT_RECHECK_MS)
         assertEquals(12, BulkQueuePolicy.WINDOW_LIMIT)
