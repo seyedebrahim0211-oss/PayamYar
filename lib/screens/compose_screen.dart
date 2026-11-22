@@ -17,6 +17,7 @@ import 'share_contact_sms.dart';
 import 'conversation_screen.dart';
 import 'send_control.dart';
 import 'bulk_queue_notice.dart';
+import 'carrier_sms_limits.dart';
 
 /// SMS composition with an internal phone book and explicit multi-send confirmation.
 class ComposeScreen extends StatefulWidget {
@@ -397,12 +398,18 @@ class _ComposeScreenState extends State<ComposeScreen> {
       final confirmed = await showDialog<bool>(context: context, builder: (ctx) =>
         AlertDialog(
           title: Text(groupMode ? 'تأیید ارسال به گروه' : 'تأیید ارسال جداگانه'),
-          content: Text('متن پیام به ${targets.length} شماره، به‌صورت پیامک جداگانه ارسال می‌شود. '
-            'اپراتور ممکن است برای هر پیامک هزینه دریافت کند. '
-            'سیم‌کارت انتخابی: ${store.sims.where((sim) => sim['id'] == groupSim).map((sim) => sim['label']).firstOrNull ?? 'انتخاب‌شده'}. '
-            'پس از تأیید، پیام‌ها در صف کنترل‌شده (حداکثر ۱۲ تلاش در دقیقه و فاصله دست‌کم ۴ ثانیه) ثبت می‌شوند. '
-            'پس از تأیید ارسال شبکه، نوبت مخاطب بعدی می‌رسد؛ در خطای شبکه صف متوقف می‌شود. '
-            'این روش تضمین عبور از محدودیت اپراتور نیست؛ $undoNote'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Text('متن پیام به ${targets.length} شماره، به‌صورت پیامک جداگانه ارسال می‌شود. '
+                'اپراتور ممکن است برای هر پیامک هزینه دریافت کند. '
+                'سیم‌کارت انتخابی: ${store.sims.where((sim) => sim['id'] == groupSim).map((sim) => sim['label']).firstOrNull ?? 'انتخاب‌شده'}. '
+                'پس از تأیید، پیام‌ها در صف کنترل‌شده (حداکثر ۱۲ تلاش در دقیقه و فاصله دست‌کم ۴ ثانیه) ثبت می‌شوند. '
+                'پس از تأیید ارسال شبکه، نوبت مخاطب بعدی می‌رسد؛ در خطای شبکه صف متوقف می‌شود. '
+                'این روش تضمین عبور از محدودیت اپراتور نیست؛ $undoNote'),
+              const SizedBox(height: 12),
+              const CarrierSmsLimits(compact: true),
+            ]),
+          ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('بازگشت')),
             FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('تأیید و ارسال')),
