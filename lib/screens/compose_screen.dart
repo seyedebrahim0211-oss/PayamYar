@@ -457,7 +457,7 @@ class _ComposeScreenState extends State<ComposeScreen> {
         }
       }
     }
-    if (targets.length > 1) store.notifyListeners();
+    if (targets.length > 1) store.notifyBulkQueueChanged();
     // Log only messages actually accepted into the native queue.
     // The group's original text is encrypted in Android Keystore; delivery
     // status is reconciled against SMS rows, never fabricated as 'sent'.
