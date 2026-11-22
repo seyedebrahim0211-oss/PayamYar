@@ -4,6 +4,7 @@ import '../jalali.dart';
 import '../message_logic.dart';
 import 'failed_message_actions.dart';
 import 'bulk_queue_notice.dart';
+import 'carrier_sms_limits.dart';
 import '../sms_bridge.dart';
 
 /// A dedicated on-device failed-SMS inbox. Only confirmed failed provider
@@ -44,12 +45,19 @@ class _FailedMessagesScreenState extends State<FailedMessagesScreen> {
       context: context,
       builder: (dialog) => AlertDialog(
         title: const Text('ارسال مجدد انتخاب‌شده‌ها'),
-        content: Text(
-          '${Jalali.digits(chosen.length)} پیامک به‌صورت جداگانه در صف ارسال قرار می‌گیرد و ممکن است هزینه داشته باشد. '
-          '${deliveryUncertain > 0 ? 'تحویل ${Jalali.digits(deliveryUncertain)} پیام قطعی نیست؛ احتمال دریافت پیام قبلی و ارسال تکراری وجود دارد. ' : ''}'
-          'پیام‌های قدیمی به‌طور خودکار حذف نمی‌شوند.',
-          textAlign: TextAlign.center,
-        ),
+        content: SingleChildScrollView(child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '${Jalali.digits(chosen.length)} پیامک به‌صورت جداگانه در صف ارسال قرار می‌گیرد و ممکن است هزینه داشته باشد. '
+              '${deliveryUncertain > 0 ? 'تحویل ${Jalali.digits(deliveryUncertain)} پیام قطعی نیست؛ احتمال دریافت پیام قبلی و ارسال تکراری وجود دارد. ' : ''}'
+              'پیام‌های قدیمی به‌طور خودکار حذف نمی‌شوند.',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            const CarrierSmsLimits(compact: true),
+          ],
+        )),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialog, false),
               child: const Text('انصراف')),
