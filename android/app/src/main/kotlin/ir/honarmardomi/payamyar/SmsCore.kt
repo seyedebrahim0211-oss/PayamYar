@@ -103,17 +103,23 @@ object SmsCore {
             catch (_: SecurityException) { emptyList() }
         } else emptyList()
         check(active.isNotEmpty()) { "سیم‌کارت فعال شناسایی نشد. دسترسی تلفن را بررسی کنید." }
-        // Background actions (quick reply and scheduled greetings) pass -1,
-        // so use the last *explicitly selected* in-app SIM, never Android's
-        // implicit default subscription. A single active SIM is unambiguous.
+        // A missing selection must not silently block all SMS on dual-SIM phones.
+        // Prefer the physical SIM in slot 1, rather than Android's implicit
+        // default (which may open an "ask every time" chooser in the background).
+        // Preserve an explicit user selection; never silently switch a stale
+        // explicitly requested subscription to another SIM.
         val remembered = try {
             c.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
                 .getLong("flutter.selected_send_sim", -1L).toInt()
         } catch (_: ClassCastException) { -1 }
-        val selected = if (requested >= 0) requested
-            else if (active.size == 1) active.first()
-            else remembered
-        check(selected >= 0) { "قبل از ارسال، سیم‌کارت ۱ یا ۲ را در پیام‌یار انتخاب کنید." }
+        val slotOne = try {
+            service.activeSubscriptionInfoList?.firstOrNull { it.simSlotIndex == 0 }?.subscriptionId
+        } catch (_: SecurityException) { null }
+        val selected = when {
+            requested >= 0 -> requested
+            remembered >= 0 -> remembered
+            else -> slotOne ?: active.first()
+        }
         check(active.contains(selected)) { "سیم‌کارت انتخابی دیگر فعال نیست؛ دوباره انتخاب کنید." }
         return selected
     }
