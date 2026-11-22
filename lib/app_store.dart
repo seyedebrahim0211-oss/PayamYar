@@ -829,7 +829,9 @@ class AppStore extends ChangeNotifier {
   }
 
   Future<bool> undo(PendingSend p) async {
-    final ok = await SmsBridge.cancel(p.id);
+    // A native error must not escape: callers would be left stuck in "sending".
+    bool ok;
+    try { ok = await SmsBridge.cancel(p.id); } on PlatformException { ok = false; }
     if (ok) {
       pendingSends.remove(p);
       notifyListeners();
@@ -895,7 +897,7 @@ class AppStore extends ChangeNotifier {
 
   static MessageRecord _copy(MessageRecord m, {bool? read}) => MessageRecord(
     sender: m.sender, body: m.body, date: m.date, outgoing: m.outgoing, id: m.id,
-    read: read ?? m.read, type: m.type, delivery: m.delivery);
+    read: read ?? m.read, type: m.type, delivery: m.delivery, simSlot: m.simSlot);
 
   @override
   void dispose() {

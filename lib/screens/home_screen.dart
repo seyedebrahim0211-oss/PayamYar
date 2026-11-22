@@ -90,7 +90,10 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final value = await SmsBridge.composeIntent();
     if (value == null || !mounted) return;
     final open = value['open']?.toString();
-    final to = Uri.decodeComponent(value['to']?.toString() ?? '').trim();
+    // A malformed link from a web page (e.g. "sms:%ZZ") must not crash the app.
+    var to = value['to']?.toString() ?? '';
+    try { to = Uri.decodeComponent(to); } catch (_) {}
+    to = to.trim();
     final body = value['body']?.toString() ?? '';
     // "Message" from the phone's Contacts app (smsto:NUMBER) goes straight into that
     // person's chat, keeping its history; several recipients still open the composer.
@@ -562,9 +565,11 @@ class _ConversationsPageState extends State<ConversationsPage> {
           ),
           body: GestureDetector(
             behavior: HitTestBehavior.translucent,
-            onHorizontalDragEnd: (details) {
-              if (widget.settings.swipeTabs) _cycleInbox(details.primaryVelocity ?? 0);
-            },
+            // Register the horizontal recogniser only when the user opted in; an always-on
+            // detector competes with vertical scrolling and swallows diagonal flicks.
+            onHorizontalDragEnd: widget.settings.swipeTabs
+                ? (details) => _cycleInbox(details.primaryVelocity ?? 0)
+                : null,
             child: RefreshIndicator(
             onRefresh: store.android ? store.loadAll : () async {},
             child: CustomScrollView(slivers: [

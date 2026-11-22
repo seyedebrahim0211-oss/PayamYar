@@ -145,6 +145,10 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
     if (pending != null || !store.android) {
       input.clear();
       HapticFeedback.selectionClick();
+      // Follow the message the user just sent, even if they had scrolled up.
+      if (_itemScroll.isAttached) {
+        unawaited(_itemScroll.scrollTo(index: 0, duration: const Duration(milliseconds: 250), curve: Curves.easeOut));
+      }
     }
     if (pending != null && scheduledAt != null) {
       store.onNotice?.call('ارسال برای ${Jalali.time(scheduledAt)} زمان‌بندی شد.');
@@ -599,7 +603,8 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
                     ),
                   ),
                 Expanded(child: items.isEmpty
-                    ? const EmptyState(icon: Icons.chat_outlined, title: 'هنوز پیامی نیست', subtitle: 'اولین پیام را بنویسید.')
+                    // Scrollable so opening the keyboard in a new chat cannot overflow.
+                    ? const SingleChildScrollView(child: EmptyState(icon: Icons.chat_outlined, title: 'هنوز پیامی نیست', subtitle: 'اولین پیام را بنویسید.'))
                     : ScrollablePositionedList.builder(
                         itemScrollController: _itemScroll,
                         reverse: true,
@@ -658,10 +663,12 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
                   )),
                 if (canReply) _inputBar(scheme, look) else Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(14),
                   color: scheme.surface.withValues(alpha: .85),
-                  child: Text('این فرستنده پاسخ پیامکی دریافت نمی‌کند.', textAlign: TextAlign.center,
-                    style: TextStyle(color: scheme.onSurfaceVariant))),
+                  // SafeArea keeps the notice above the system navigation bar (edge-to-edge).
+                  child: SafeArea(top: false, child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Text('این فرستنده پاسخ پیامکی دریافت نمی‌کند.', textAlign: TextAlign.center,
+                      style: TextStyle(color: scheme.onSurfaceVariant))))),
               ]),
             ),
             ]),
@@ -944,16 +951,20 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
                 onUndo: () async {
                   final list = store.pendingSends.where(
                     (p) => store.key(p.to) == store.key(widget.address) && !p.scheduled).toList();
-                  String? restore;
+                  final sig = settings.signature;
+                  String strip(String b) => settings.signatureEnabled && sig.isNotEmpty && b.endsWith('\n$sig')
+                      ? b.substring(0, b.length - sig.length - 1) : b;
+                  // Every cancelled message comes back (oldest first), and whatever the user
+                  // is typing right now is kept instead of being overwritten.
+                  final restored = <String>[];
                   for (final p in list) {
-                    if (await store.undo(p)) restore ??= p.body;
+                    if (await store.undo(p)) restored.add(strip(p.body));
                   }
-                  if (restore != null && mounted) {
-                    final sig = settings.signature;
-                    final text = settings.signatureEnabled && sig.isNotEmpty && restore.endsWith('\n$sig')
-                        ? restore.substring(0, restore.length - sig.length - 1) : restore;
-                    input.text = text;
-                    input.selection = TextSelection.collapsed(offset: text.length);
+                  if (restored.isNotEmpty && mounted) {
+                    final current = input.text.trim();
+                    final text = [...restored, if (current.isNotEmpty) current].join('\n');
+                    input.value = TextEditingValue(
+                        text: text, selection: TextSelection.collapsed(offset: text.length));
                   }
                 },
               ),

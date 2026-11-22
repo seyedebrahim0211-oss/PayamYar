@@ -10,7 +10,9 @@ class Conversation {
 
 class ConversationLogic {
   static final _spaces = RegExp(r'[\s()-]');
-  static final _iranMobile = RegExp(r'^(\+98|0098)9\d{9}$');
+  // Iranian mobile in any common form: +98912…, 0098912…, 98912… or 912… all map
+  // to 0912…, so one contact never splits into several conversations.
+  static final _iranMobile = RegExp(r'^(\+98|0098|98)?9\d{9}$');
 
   static String normalize(String address) {
     var value = address.trim().replaceAll(_spaces, '');

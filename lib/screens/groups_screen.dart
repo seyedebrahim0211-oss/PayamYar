@@ -108,7 +108,7 @@ class GroupsScreen extends StatelessWidget {
               onPressed: () => _compose(context)),
           ],
         ),
-        body: ListView(padding: const EdgeInsets.all(16), children: [
+        body: ListView(padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.paddingOf(context).bottom), children: [
           Container(
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(

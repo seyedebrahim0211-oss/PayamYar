@@ -128,7 +128,7 @@ class ContactDetailScreen extends StatelessWidget {
               ),
             ],
           ),
-          body: ListView(padding: const EdgeInsets.fromLTRB(16, 0, 16, 32), children: [
+          body: ListView(padding: EdgeInsets.fromLTRB(16, 0, 16, 32 + MediaQuery.paddingOf(context).bottom), children: [
             Center(child: ContactAvatar(contacts: contacts, contact: c, radius: 52)),
             const SizedBox(height: 12),
             Text(c.displayName, textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineSmall),

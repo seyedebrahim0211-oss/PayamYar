@@ -108,7 +108,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const feedback = {SentFeedback.sound: 'صدای کوتاه ارسال', SentFeedback.notification: 'اعلان', SentFeedback.silent: 'بی‌صدا'};
         return Scaffold(
           appBar: AppBar(title: const Text('تنظیمات')),
-          body: ListView(padding: const EdgeInsets.fromLTRB(16, 4, 16, 28), children: [
+          body: ListView(padding: EdgeInsets.fromLTRB(16, 4, 16, 28 + MediaQuery.paddingOf(context).bottom), children: [
             _HeaderCard(packageInfo: packageInfo, store: store, checking: checking, onCheck: _checkUpdate,
               onSecretTap: _secretTap),
             const SizedBox(height: 14),
@@ -374,7 +374,7 @@ class _Page extends StatelessWidget {
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: Text(title)),
     body: ListenableBuilder(listenable: listenable,
-      builder: (context, _) => ListView(padding: const EdgeInsets.fromLTRB(16, 0, 16, 28), children: children(context))),
+      builder: (context, _) => ListView(padding: EdgeInsets.fromLTRB(16, 0, 16, 28 + MediaQuery.paddingOf(context).bottom), children: children(context))),
   );
 }
 

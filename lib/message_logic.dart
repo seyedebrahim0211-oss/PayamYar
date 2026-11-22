@@ -45,7 +45,8 @@ class MessageLogic {
   static final _ipLink = RegExp(r'https?://\d{1,3}(?:\.\d{1,3}){3}');
 
   static MessageCategory category(MessageRecord m) {
-    final s = ('${m.sender} ${m.body}').toLowerCase();
+    // Many bank gateways send Arabic ي/ك (e.g. «واريز ... ريال»); fold them first.
+    final s = ('${m.sender} ${m.body}').toLowerCase().replaceAll('ي', 'ی').replaceAll('ك', 'ک');
     if (_banking.hasMatch(s)) return MessageCategory.banking;
     if (_advertising.hasMatch(s)) return MessageCategory.advertising;
     if (_service.hasMatch(s)) return MessageCategory.service;

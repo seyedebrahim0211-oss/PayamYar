@@ -413,7 +413,7 @@ class _ContactsScreenState extends State<ContactsScreen> with WidgetsBindingObse
                         ),
                       ),
                     SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(8, 0, 8, 96),
+                      padding: EdgeInsets.fromLTRB(8, 0, 8, 96 + MediaQuery.paddingOf(context).bottom),
                       sliver: SliverList.builder(
                         itemCount: list.length,
                         itemBuilder: (context, i) {

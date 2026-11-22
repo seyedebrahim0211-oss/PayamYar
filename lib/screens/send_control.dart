@@ -113,9 +113,11 @@ class _SendControlState extends State<SendControl> with SingleTickerProviderStat
               clipBehavior: Clip.antiAlias,
               child: InkWell(
                 customBorder: const CircleBorder(),
-                onTap: counting ? _cancel
+                // While a cancel is in flight the button must do nothing; otherwise a
+                // second tap on ✕ would turn into "send" and queue the draft.
+                onTap: cancelling ? null : counting ? _cancel
                     : widget.enabled && !widget.sending ? widget.onSend : null,
-                onLongPress: !counting && widget.enabled && !widget.sending ? widget.onSchedule : null,
+                onLongPress: !cancelling && !counting && widget.enabled && !widget.sending ? widget.onSchedule : null,
                 child: Center(child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 200),
                   transitionBuilder: (c, a) => ScaleTransition(scale: a, child: c),

@@ -72,7 +72,10 @@ class AppSettings extends ChangeNotifier {
   /// App-side recipient selection capacity, not an operator sending allowance.
   /// For >500, the user must explicitly opt in; all SMS remain subject to carrier policy.
   int recipientCapacity = 500;
-  bool swipeTabs = true;
+  // Off by default: a horizontal-swipe recogniser competes with vertical list
+  // scrolling, so diagonal thumb flicks were often swallowed. Stored under a new
+  // key so existing installs get the new default; users can still opt in.
+  bool swipeTabs = false;
   bool reduceEffects = false;
 
   // ── chat look ──
@@ -167,7 +170,7 @@ class AppSettings extends ChangeNotifier {
     replyTone = (p.getInt('replyTone') ?? 0).clamp(0, 2).toInt();
     smartReplies = p.getBool('smartReplies') ?? true;
     recipientCapacity = _capacity(p.getInt('recipientCapacity') ?? 500);
-    swipeTabs = p.getBool('swipeTabs') ?? true;
+    swipeTabs = p.getBool('swipeTabsV2') ?? false;
     reduceEffects = p.getBool('reduceEffects') ?? false;
     chatStyle = ChatStyle.values[(p.getInt('chatStyle') ?? 0).clamp(0, ChatStyle.values.length - 1).toInt()];
     bubbleText = (p.getDouble('bubbleText') ?? 15.5).clamp(13, 20).toDouble();
@@ -275,7 +278,7 @@ class AppSettings extends ChangeNotifier {
     await p.setInt('replyTone', replyTone);
     await p.setBool('smartReplies', smartReplies);
     await p.setInt('recipientCapacity', recipientCapacity);
-    await p.setBool('swipeTabs', swipeTabs);
+    await p.setBool('swipeTabsV2', swipeTabs);
     await p.setBool('reduceEffects', reduceEffects);
     await p.setInt('chatStyle', chatStyle.index);
     await p.setDouble('bubbleText', bubbleText);

@@ -332,7 +332,9 @@ open class MainActivity : FlutterFragmentActivity() {
                     val data = intent
                     val address = data.data?.schemeSpecificPart?.substringBefore('?').orEmpty()
                     val open = data.getStringExtra("open_address")
-                        ?.takeIf { data.getStringExtra("open_token") == launchToken(this) }
+                        ?.takeIf { java.security.MessageDigest.isEqual(
+                            data.getStringExtra("open_token").orEmpty().toByteArray(),
+                            launchToken(this).toByteArray()) }
                     // External text shares are drafts only; never send automatically.
                     // Accept plain text, not arbitrary files or parcelable payloads.
                     val shared = when {
@@ -344,7 +346,7 @@ open class MainActivity : FlutterFragmentActivity() {
                     }?.trim()?.take(2000)?.takeIf { it.isNotEmpty() }
                     result.success(if (open != null) mapOf("open" to open)
                         else if (data.action == Intent.ACTION_SENDTO) mapOf("to" to address,
-                            "body" to (data.getStringExtra("sms_body") ?: ""))
+                            "body" to (data.getStringExtra("sms_body") ?: "").take(2000))
                         else if (shared != null) mapOf("to" to "", "body" to shared)
                         else null)
                     intent = Intent(this, MainActivity::class.java)

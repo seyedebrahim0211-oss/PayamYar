@@ -182,7 +182,7 @@ class _ReportsScreenState extends State<ReportsScreen> with WidgetsBindingObserv
               ),
             ],
           ),
-          body: ListView(padding: const EdgeInsets.fromLTRB(16, 4, 16, 28), children: [
+          body: ListView(padding: EdgeInsets.fromLTRB(16, 4, 16, 28 + MediaQuery.paddingOf(context).bottom), children: [
             SegmentedButton<ReportPeriod>(
               showSelectedIcon: false,
               segments: [for (final x in ReportPeriod.values) ButtonSegment(value: x, label: Text(reportPeriodNames[x]!))],

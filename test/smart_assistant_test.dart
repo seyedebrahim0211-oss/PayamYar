@@ -11,6 +11,11 @@ void main() {
   test('suggests polite confirmation for a meeting', () {
     expect(SmartAssistant.suggestReplies('فردا ساعت ۱۰ جلسه داریم'), contains('زمان را تأیید می‌کنم'));
   });
+  test('short holiday keyword does not fire inside other words', () {
+    expect(SmartAssistant.suggestReplies('عید شما مبارک'), contains('عید شما هم مبارک 🌷'));
+    expect(SmartAssistant.suggestReplies('سعید هم میاد'), isNot(contains('عید شما هم مبارک 🌷')));
+    expect(SmartAssistant.suggestReplies('بعید میدونم بیاد'), isNot(contains('عید شما هم مبارک 🌷')));
+  });
   test('does not pretend to understand unfamiliar messages', () {
     expect(SmartAssistant.suggestReplies('نکته نامرتبط'), isEmpty);
   });

@@ -51,7 +51,7 @@ class _FaqPageState extends State<FaqPage> {
     final items = _faq.where((e) => query.isEmpty || e.$1.contains(query) || e.$2.contains(query)).toList();
     return Scaffold(
       appBar: AppBar(title: const Text('سوالات متداول')),
-      body: ListView(padding: const EdgeInsets.fromLTRB(16, 0, 16, 24), children: [
+      body: ListView(padding: EdgeInsets.fromLTRB(16, 0, 16, 24 + MediaQuery.paddingOf(context).bottom), children: [
         TextField(
           onChanged: (v) => setState(() => query = v.trim()),
           decoration: InputDecoration(hintText: 'جستجو در پرسش‌ها', isDense: true,
@@ -158,7 +158,7 @@ class _BugReportPageState extends State<BugReportPage> {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('گزارش خرابی')),
-      body: ListView(padding: const EdgeInsets.fromLTRB(16, 4, 16, 24), children: [
+      body: ListView(padding: EdgeInsets.fromLTRB(16, 4, 16, 24 + MediaQuery.paddingOf(context).bottom), children: [
         Text('کدام بخش مشکل دارد؟', style: TextStyle(color: scheme.primary, fontWeight: FontWeight.w700)),
         const SizedBox(height: 8),
         Wrap(spacing: 8, runSpacing: 6, children: [
@@ -205,7 +205,7 @@ class ContactPage extends StatelessWidget {
         subtitle: Text(sub), trailing: const Icon(Icons.chevron_left_rounded), onTap: onTap));
     return Scaffold(
       appBar: AppBar(title: const Text('ارتباط با ما')),
-      body: ListView(padding: const EdgeInsets.fromLTRB(16, 4, 16, 24), children: [
+      body: ListView(padding: EdgeInsets.fromLTRB(16, 4, 16, 24 + MediaQuery.paddingOf(context).bottom), children: [
         const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Center(child: PayamYarLogotype(height: 46, tagline: true))),
         tile(Icons.language_rounded, 'وب‌سایت هنر مردمی', 'honarmardomi.ir',
           () => UpdateService.openDownload('https://honarmardomi.ir/')),
@@ -227,7 +227,7 @@ class AboutPage extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('درباره پیام‌یار')),
-      body: ListView(padding: const EdgeInsets.fromLTRB(20, 16, 20, 24), children: [
+      body: ListView(padding: EdgeInsets.fromLTRB(20, 16, 20, 24 + MediaQuery.paddingOf(context).bottom), children: [
         const Center(child: PayamYarLogotype(height: 60, tagline: true)),
         const SizedBox(height: 18),
         FutureBuilder<PackageInfo>(future: packageInfo, builder: (context, snap) => Center(child: Text(

@@ -64,7 +64,7 @@ class FinanceLogic {
   }
 
   static FinanceEntry? parseBankMessage(MessageRecord m) {
-    final value = digits(m.body);
+    final value = digits(m.body).replaceAll('ي', 'ی').replaceAll('ك', 'ک');
     final result = _transaction.firstMatch(value);
     if (result == null) return null;
     final number = int.tryParse(result.group(2)!.replaceAll(RegExp(r'[,٬]'), ''));

@@ -415,6 +415,29 @@ Future<String?> askNewPin(BuildContext context, {String title = 'رمز جدید
   return completer.future;
 }
 
+/// Asks for the current app PIN. Returns true only after a correct PIN.
+/// Turning the lock off or changing the PIN must not be possible for someone who
+/// merely picks up an already-unlocked phone.
+Future<bool> confirmCurrentPin(BuildContext context, {String title = 'رمز فعلی'}) async {
+  var ok = false;
+  await Navigator.of(context).push(MaterialPageRoute<void>(
+    fullscreenDialog: true,
+    builder: (ctx) => PinScreen(
+      title: title,
+      subtitle: 'برای ادامه رمز فعلی را وارد کنید',
+      onCancel: () => Navigator.pop(ctx),
+      onSubmit: (pin) async {
+        final r = await Vault.verifyPin(AppLock.vaultName, pin);
+        if (!r.ok) return r.message;
+        ok = true;
+        if (ctx.mounted) Navigator.pop(ctx);
+        return null;
+      },
+    ),
+  ));
+  return ok;
+}
+
 /// Settings page: app lock on/off, change PIN, relock delay, screenshot protection.
 class AppLockSettingsPage extends StatelessWidget {
   final AppLock lock;
@@ -445,6 +468,7 @@ class AppLockSettingsPage extends StatelessWidget {
                       onNotice?.call('قفل برنامه فعال شد.');
                     }
                   } else {
+                    if (!await confirmCurrentPin(context)) return;
                     await lock.disable();
                     onNotice?.call('قفل برنامه غیرفعال شد.');
                   }
@@ -462,6 +486,8 @@ class AppLockSettingsPage extends StatelessWidget {
                   leading: Icon(Icons.password_rounded, color: scheme.primary),
                   title: const Text('تغییر رمز'),
                   onTap: () async {
+                    if (!await confirmCurrentPin(context)) return;
+                    if (!context.mounted) return;
                     final pin = await askNewPin(context, title: 'رمز جدید قفل');
                     if (pin != null) {
                       await lock.enable(pin);

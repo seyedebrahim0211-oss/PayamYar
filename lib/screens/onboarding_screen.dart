@@ -64,10 +64,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       action = 'انتخاب پیام‌رسان پیش‌فرض';
     }
     return Scaffold(
+      // Scrollable so small phones and large text never overflow or push the
+      // main button off screen; on tall screens the Spacers still fill the height.
       body: SafeArea(
-        child: Padding(
+        child: LayoutBuilder(builder: (context, box) => SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
-          child: Column(children: [
+          child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: (box.maxHeight - 28).clamp(0.0, double.infinity).toDouble()),
+          child: IntrinsicHeight(child: Column(children: [
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               _Dot(active: permissionStep, color: scheme.primary),
               const SizedBox(width: 6),
@@ -103,8 +107,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               TextButton(onPressed: busy ? null : () => SmsBridge.openAppSettings(), child: const Text('تنظیمات برنامه'))
             else
               const SizedBox(height: 48),
-          ]),
-        ),
+          ])),
+        ))),
       ),
     );
   }

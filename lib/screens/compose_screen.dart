@@ -147,8 +147,12 @@ class _ComposeScreenState extends State<ComposeScreen> {
     super.dispose();
   }
 
-  String _normalize(String number) => SmsBridge.normalizeNumber(number)
-      .replaceAll(RegExp(r'[\s()\-]'), '');
+  // Canonical form (0912…), so +98912… and 0912… are one recipient, not two SMS.
+  // Invalid input is returned as typed so validation can still report it.
+  String _normalize(String number) {
+    final plain = SmsBridge.normalizeNumber(number).replaceAll(RegExp(r'[\s()\-]'), '');
+    return _isNumber(plain) ? RecipientSuggestions.key(plain) : plain;
+  }
   bool _isNumber(String number) => RegExp(r'^\+?[0-9]{3,15}$').hasMatch(number);
 
   void _addTyped() {
@@ -364,11 +368,16 @@ class _ComposeScreenState extends State<ComposeScreen> {
     }
     if (!mounted) return;
     if (stopQueueing) {
+      // Numbers whose undo window already ran out are still going to receive the SMS;
+      // restoring them too would make a second tap on Send message them twice.
+      final stillGoing = {
+        for (final p in undoGroup) if (store.pendingSends.contains(p)) store.key(p.to)
+      };
       setState(() {
         sending = false;
         recipients
           ..clear()
-          ..addAll(targets);
+          ..addAll(targets.where((t) => !stillGoing.contains(store.key(t))));
         body.text = text;
       });
       await _saveDraft(immediate: true);
@@ -673,7 +682,9 @@ class _ComposeScreenState extends State<ComposeScreen> {
             onChanged: (_) { _saveDraft(); setState(() {}); },
             maxLength: 2000,
             minLines: 4,
-            maxLines: 7,
+            // Grow with the text so the page scrolls; an inner scrollable field made the
+            // page stick when the finger landed on it.
+            maxLines: null,
             textAlignVertical: TextAlignVertical.top,
             decoration: const InputDecoration(
               hintText: 'پیام خود را اینجا بنویسید…',
@@ -780,14 +791,22 @@ class _ComposeScreenState extends State<ComposeScreen> {
                 onSend: () => _send(),
                 onUndo: () async {
                   var cancelled = 0;
+                  final cancelledTo = <String>[];
                   stopQueueing = true;
                   for (final request in List<PendingSend>.of(undoGroup)) {
                     if (!request.deadline.isAfter(DateTime.now())) continue;
                     if (!store.pendingSends.contains(request)) continue;
-                    if (await store.undo(request)) cancelled++;
+                    if (await store.undo(request)) {
+                      cancelled++;
+                      cancelledTo.add(request.to);
+                    }
                   }
                   if (!mounted) return;
                   setState(() {
+                    // Put back exactly the recipients whose message was really cancelled.
+                    for (final n in cancelledTo) {
+                      if (!recipients.any((r) => store.key(r) == store.key(n))) recipients.add(n);
+                    }
                     undoGroup.removeWhere((p) => !store.pendingSends.contains(p));
                     if (cancelled > 0 || sending) body.text = lastSentBody;
                   });

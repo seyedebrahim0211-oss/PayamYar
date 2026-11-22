@@ -914,7 +914,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
           TextField(
             controller: textField,
             minLines: 4,
-            maxLines: 10,
+            maxLines: null, // grow with content; avoids a nested scroll inside the page
             decoration: const InputDecoration(labelText: 'متن پیامک', alignLabelWithHint: true),
           ),
           Align(

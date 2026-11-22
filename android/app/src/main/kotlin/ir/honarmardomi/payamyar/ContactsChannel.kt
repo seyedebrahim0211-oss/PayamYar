@@ -135,7 +135,9 @@ class ContactsChannel(private val activity: Activity, messenger: BinaryMessenger
             }
             "email" -> {
                 try {
-                    activity.startActivity(Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:" + call.argument<String>("address").orEmpty())))
+                    activity.startActivity(Intent(Intent.ACTION_SENDTO,
+                        // fromParts encodes the address, so "a@b.c?cc=x@evil" cannot add recipients or a body.
+                        Uri.fromParts("mailto", call.argument<String>("address").orEmpty().trim(), null)))
                     result.success(true)
                 } catch (_: Exception) { result.success(false) }
             }
