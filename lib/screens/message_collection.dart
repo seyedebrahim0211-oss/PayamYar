@@ -75,14 +75,14 @@ class _MessageCollectionState extends State<MessageCollection> {
       final m = source[i];
       if (widget.kind == CollectionKind.starred && !store.starredIds.contains(m.id)) continue;
       if (cleanup && (m.id == null || m.outgoing || store.starredIds.contains(m.id) ||
-          store.pinnedMessageId(m.sender) == m.id)) continue;
+          store.pinnedMessageId(m.sender) == m.id)) { continue; }
       if (cleanup || widget.kind == CollectionKind.codes) {
         if (m.outgoing) continue;
         final otp = SmartSmsEngine.analyze(m.sender, m.body).containsOneTimeCode;
         if (cleanup) {
           final age = now.difference(m.date);
           if (!(otp && age >= const Duration(days: 1)) &&
-              !(m.read && age >= const Duration(days: 30) && MessageLogic.category(m) == MessageCategory.advertising)) continue;
+              !(m.read && age >= const Duration(days: 30) && MessageLogic.category(m) == MessageCategory.advertising)) { continue; }
         } else if (!otp) { continue; }
       }
       if (period != null && (m.date.isBefore(period!.start) || !m.date.isBefore(until!))) continue;
@@ -91,7 +91,7 @@ class _MessageCollectionState extends State<MessageCollection> {
       if (amountsOnly && !_amount.hasMatch(m.body)) continue;
       if (terms.isNotEmpty && !MessageSearch.containsTerms(
           '${MessageSearch.normalize(store.displayName(m.sender))} ${MessageSearch.normalize(m.sender)} '
-          '${MessageSearch.phoneAliases(m.sender)} ${MessageSearch.indexedBody(m)}', terms)) continue;
+          '${MessageSearch.phoneAliases(m.sender)} ${MessageSearch.indexedBody(m)}', terms)) { continue; }
       found.add(m);
     }
     if (mounted && token == generation) {
@@ -150,9 +150,9 @@ class _MessageCollectionState extends State<MessageCollection> {
         final hide = widget.store.settings?.hidePreview == true;
         final preview = hide ? 'پیش‌نمایش پیام مخفی است' : BankPrivacy.preview(MessageLogic.category(m), m.body);
         final title = '${widget.store.displayName(m.sender)} · ${Jalali.short(m.date)}';
-        if (cleanup) return CheckboxListTile(value: selected.contains(m.id), title: Text(title),
+        if (cleanup) { return CheckboxListTile(value: selected.contains(m.id), title: Text(title),
           subtitle: Text(preview, maxLines: 2, overflow: TextOverflow.ellipsis),
-          onChanged: deleting || scanning ? null : (v) => setState(() { if (v == true) { selected.add(m.id!); } else { selected.remove(m.id); } }));
+          onChanged: deleting || scanning ? null : (v) => setState(() { if (v == true) { selected.add(m.id!); } else { selected.remove(m.id); } })); }
         return ListTile(title: Text(title), subtitle: Text(preview, maxLines: 2, overflow: TextOverflow.ellipsis),
           trailing: widget.kind == CollectionKind.starred && m.id != null ? IconButton(
             tooltip: 'برداشتن ستاره', icon: const Icon(Icons.star), onPressed: () => widget.store.toggleStar(m.id!)) : null,
