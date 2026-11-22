@@ -102,10 +102,20 @@ object SmsCore {
             try { service.activeSubscriptionInfoList?.map { it.subscriptionId }.orEmpty() }
             catch (_: SecurityException) { emptyList() }
         } else emptyList()
-        check(requested >= 0) { "قبل از ارسال، سیم‌کارت ۱ یا ۲ را انتخاب کنید." }
         check(active.isNotEmpty()) { "سیم‌کارت فعال شناسایی نشد. دسترسی تلفن را بررسی کنید." }
-        check(active.contains(requested)) { "سیم‌کارت انتخابی دیگر فعال نیست؛ دوباره انتخاب کنید." }
-        return requested
+        // Background actions (quick reply and scheduled greetings) pass -1,
+        // so use the last *explicitly selected* in-app SIM, never Android's
+        // implicit default subscription. A single active SIM is unambiguous.
+        val remembered = try {
+            c.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                .getLong("flutter.selected_send_sim", -1L).toInt()
+        } catch (_: ClassCastException) { -1 }
+        val selected = if (requested >= 0) requested
+            else if (active.size == 1) active.first()
+            else remembered
+        check(selected >= 0) { "قبل از ارسال، سیم‌کارت ۱ یا ۲ را در پیام‌یار انتخاب کنید." }
+        check(active.contains(selected)) { "سیم‌کارت انتخابی دیگر فعال نیست؛ دوباره انتخاب کنید." }
+        return selected
     }
 
     @Synchronized fun queue(c: Context, address: String, body: String, sim: Int, delayMs: Long = 5000, group: Boolean = false, groupTime: Long? = null): String {
