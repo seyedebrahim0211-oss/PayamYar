@@ -136,7 +136,9 @@ class _DialectCardState extends State<DialectCard> with WidgetsBindingObserver {
       if (!_officialAudio(address)) return;
       final player = _player ??= AudioPlayer();
       _completion ??= player.onPlayerComplete.listen((_) {
-        if (mounted) setState(() => _playing = false);
+        if (mounted) {
+          setState(() => _playing = false);
+        }
       });
       setState(() => _playing = true);
       await player.play(UrlSource(address)).timeout(const Duration(seconds: 15));
