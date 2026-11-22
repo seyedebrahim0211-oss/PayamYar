@@ -820,7 +820,7 @@ class AppStore extends ChangeNotifier {
   }
 
   /// Queues an SMS with a 5-second undo window. Returns null if sending failed to start.
-  Future<PendingSend?> send(String to, String body, {DateTime? scheduledAt, bool exactBody = false, int? groupSim, DateTime? groupTime}) async {
+  Future<PendingSend?> send(String to, String body, {DateTime? scheduledAt, bool exactBody = false, int? groupSim, DateTime? groupTime, bool silent = false}) async {
     final text = exactBody ? body : settings?.withSignature(body) ?? body.trim();
     final target = to.trim();
     if (text.isEmpty || target.isEmpty) return null;
@@ -854,7 +854,7 @@ class AppStore extends ChangeNotifier {
       final pending = PendingSend(id, target, text, now.add(delay),
           scheduled: scheduledAt != null, window: delay);
       pendingSends.add(pending);
-      notifyListeners();
+      if (!silent) notifyListeners();
       _scheduleSendPoll();
       return pending;
     } on PlatformException catch (e) {
@@ -878,6 +878,7 @@ class AppStore extends ChangeNotifier {
   }
 
   Timer? _sendPoll;
+  DateTime? _nextPollAt;
   bool _polling = false;
   bool _closed = false;
 
@@ -886,14 +887,22 @@ class AppStore extends ChangeNotifier {
     final next = pendingSends.map((p) => p.deadline).reduce((a, b) => a.isBefore(b) ? a : b);
     final wait = next.difference(DateTime.now());
     // A newly queued short send can precede a previously scheduled send.
-    _sendPoll?.cancel();
     final minimumPoll = pendingSends.length > 20
         ? const Duration(seconds: 6) : const Duration(seconds: 2);
-    _sendPoll = Timer(wait > minimumPoll ? wait : minimumPoll, _pollSends);
+    final duration = wait > minimumPoll ? wait : minimumPoll;
+    final requestedAt = DateTime.now().add(duration);
+    // Hundreds of contacts should not cancel/recreate a status timer for each
+    // queue insertion; keep an already-armed earlier wake.
+    if (_sendPoll?.isActive == true &&
+        _nextPollAt != null && !_nextPollAt!.isAfter(requestedAt)) return;
+    _sendPoll?.cancel();
+    _nextPollAt = requestedAt;
+    _sendPoll = Timer(duration, _pollSends);
   }
 
   Future<void> _pollSends() async {
     if (_closed || _polling) return;
+    _nextPollAt = null;
     _polling = true;
     final now = DateTime.now();
     final due = pendingSends.where((p) => !p.deadline.isAfter(now)).toList();
