@@ -3,12 +3,15 @@ import '../app_store.dart';
 import '../jalali.dart';
 import '../message_logic.dart';
 import 'failed_message_actions.dart';
+import 'bulk_queue_notice.dart';
+import '../sms_bridge.dart';
 
 /// A dedicated on-device failed-SMS inbox. Only confirmed failed provider
 /// rows are listed; a queued SMS is never incorrectly called "failed".
 class FailedMessagesScreen extends StatefulWidget {
   final AppStore store;
-  const FailedMessagesScreen({super.key, required this.store});
+  final Set<int>? restrictedIds;
+  const FailedMessagesScreen({super.key, required this.store, this.restrictedIds});
   @override
   State<FailedMessagesScreen> createState() => _FailedMessagesScreenState();
 }
@@ -19,7 +22,8 @@ class _FailedMessagesScreenState extends State<FailedMessagesScreen> {
   bool _busy = false;
 
   List<MessageRecord> get _failures => widget.store.messages
-      .where((m) => m.id != null && m.failedSendOrDelivery)
+      .where((m) => m.id != null && m.failedSendOrDelivery &&
+           (widget.restrictedIds == null || widget.restrictedIds!.contains(m.id)))
       .toList(growable: false);
 
   void _toggle(int id, bool selected) => setState(() {
@@ -55,6 +59,45 @@ class _FailedMessagesScreenState extends State<FailedMessagesScreen> {
       ),
     );
     if (allowed != true || !mounted) return;
+    int? batchSim;
+    if (widget.store.android) {
+      List<Map<dynamic, dynamic>> sims;
+      try {
+        sims = await SmsBridge.subscriptions();
+      } catch (_) {
+        widget.store.onNotice?.call('شناسایی سیم‌کارت ممکن نشد.');
+        return;
+      }
+      if (!mounted) return;
+      if (sims.isEmpty) {
+        widget.store.onNotice?.call('سیم‌کارت فعال یافت نشد؛ مجوز تلفن را بررسی کنید.');
+        return;
+      }
+      final selected = await showDialog<int>(
+        context: context,
+        builder: (dialog) => SimpleDialog(
+          title: const Text('سیم‌کارت ارسال مجدد'),
+          children: [
+            for (final sim in sims)
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(dialog, sim['id'] as int),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text(sim['label']?.toString() ?? 'سیم‌کارت'),
+                ),
+              ),
+          ],
+        ),
+      );
+      if (selected == null || !mounted) return;
+      try {
+        batchSim = await SmsBridge.resolveSendSim(selected);
+      } catch (_) {
+        widget.store.onNotice?.call('سیم‌کارت انتخابی فعال نیست.');
+        return;
+      }
+    }
+    if (!mounted) return;
     setState(() => _busy = true);
     var queued = 0;
     try {
@@ -62,7 +105,8 @@ class _FailedMessagesScreenState extends State<FailedMessagesScreen> {
         // Real queue IDs are the only evidence a retry was accepted.
         final at = DateTime.now();
         final pending = await widget.store.send(
-            message.sender, message.body, exactBody: true);
+            message.sender, message.body, exactBody: true,
+            groupSim: batchSim, groupTime: batchSim == null ? null : at);
         if (pending != null) {
           queued++;
           _retried.add(message.id!);
@@ -150,9 +194,10 @@ class _FailedMessagesScreenState extends State<FailedMessagesScreen> {
         return Scaffold(
           appBar: AppBar(
             centerTitle: true,
-            title: const Text('پیام‌های ارسال‌نشده'),
+            title: Text(widget.restrictedIds == null ? 'پیام‌های ارسال‌نشده' : 'ناموفق‌های گروه'),
           ),
           body: Column(children: [
+            const BulkQueueNotice(),
             Container(
               margin: const EdgeInsets.fromLTRB(12, 8, 12, 10),
               padding: const EdgeInsets.all(14),
