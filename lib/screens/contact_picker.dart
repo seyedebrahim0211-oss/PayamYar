@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../jalali.dart';
 import '../recipient_suggestions.dart';
 
 /// In-app contact list, without launching Android's external contact picker.
@@ -108,7 +109,8 @@ class _ContactPickerState extends State<_ContactPicker> {
             const SizedBox(width: 8),
             Expanded(child: Text('انتخاب مخاطبان',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800))),
-            Text('${selected.length} انتخاب‌شده',
+            // Persian digits, consistent with the rest of the RTL UI.
+            Text('${Jalali.digits(selected.length)} انتخاب‌شده',
               style: TextStyle(fontSize: 12, color: colors.primary, fontWeight: FontWeight.bold)),
           ]),
         ),
@@ -138,7 +140,7 @@ class _ContactPickerState extends State<_ContactPicker> {
               label: Text(allPicked ? 'لغو انتخاب همه' : 'انتخاب همه نتایج'),
             ),
             const Spacer(),
-            Text('${visible.length} مخاطب',
+            Text('${Jalali.digits(visible.length)} مخاطب',
               style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant)),
           ]),
         ),
@@ -177,7 +179,7 @@ class _ContactPickerState extends State<_ContactPicker> {
           child: FilledButton.icon(
             onPressed: () => Navigator.of(context).pop(selected),
             icon: const Icon(Icons.check_rounded),
-            label: Text('تأیید ${selected.length} مخاطب'),
+            label: Text('تأیید ${Jalali.digits(selected.length)} مخاطب'),
           ),
         )),
       ]),

@@ -10,7 +10,8 @@ import 'contact_store.dart';
 import 'contacts_data.dart';
 import 'contacts_screen.dart' show ContactAvatar;
 
-Future<bool> confirm(BuildContext context, String title, String body) async =>
+/// [destructive] tints the confirm button with the error color (e.g. deletions).
+Future<bool> confirm(BuildContext context, String title, String body, {bool destructive = false}) async =>
     await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -19,7 +20,11 @@ Future<bool> confirm(BuildContext context, String title, String body) async =>
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
           FilledButton(
-            style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(0, 44),
+              backgroundColor: destructive ? Theme.of(ctx).colorScheme.error : null,
+              foregroundColor: destructive ? Theme.of(ctx).colorScheme.onError : null,
+            ),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('تأیید'),
           ),
@@ -379,12 +384,14 @@ class ContactToolsScreen extends StatelessWidget {
                 Tab(text: 'فراموش‌شده ${Jalali.digits(forgotten.length)}'),
               ]),
             ),
+            // Each tab's list carries a PageStorageKey so its scroll position
+            // survives switching tabs (TabBarView rebuilds off-screen pages).
             body: TabBarView(children: [
               _dupList(context, dups),
               _nameReviewList(context, names),
-              _simpleList(context, incomplete, 'همه مخاطبین کامل‌اند.', _problem),
+              _simpleList(context, incomplete, 'همه مخاطبین کامل‌اند.', _problem, 'tools-incomplete'),
               _untidyList(context, untidy),
-              _simpleList(context, forgotten, 'با همه مخاطبین پرکار در ۶ ماه اخیر پیامک داشته‌اید.', (c) => 'بیش از ۶ ماه بدون پیامک'),
+              _simpleList(context, forgotten, 'با همه مخاطبین پرکار در ۶ ماه اخیر پیامک داشته‌اید.', (c) => 'بیش از ۶ ماه بدون پیامک', 'tools-forgotten'),
             ]),
           );
         },
@@ -419,9 +426,10 @@ class ContactToolsScreen extends StatelessWidget {
 
   Widget _empty(String text) => Center(child: Padding(padding: const EdgeInsets.all(32), child: Text(text, textAlign: TextAlign.center)));
 
-  Widget _simpleList(BuildContext context, List<PhoneContact> list, String empty, String Function(PhoneContact) why) {
+  Widget _simpleList(BuildContext context, List<PhoneContact> list, String empty, String Function(PhoneContact) why, String storageKey) {
     if (list.isEmpty) return _empty(empty);
     return ListView.builder(
+      key: PageStorageKey<String>(storageKey),
       itemCount: list.length,
       itemBuilder: (context, i) => ListTile(
         leading: ContactAvatar(contacts: contacts, contact: list[i]),
@@ -457,6 +465,7 @@ class ContactToolsScreen extends StatelessWidget {
       ),
       Expanded(
         child: ListView.builder(
+          key: const PageStorageKey<String>('tools-untidy'),
           itemCount: list.length,
           itemBuilder: (context, i) {
             final c = list[i];
@@ -476,7 +485,7 @@ class ContactToolsScreen extends StatelessWidget {
 
   Widget _nameReviewList(BuildContext context, List<List<PhoneContact>> groups) {
     if (groups.isEmpty) return _empty('نام تکراری نیازمند بررسی پیدا نشد.');
-    return ListView(padding: const EdgeInsets.all(12), children: [
+    return ListView(key: const PageStorageKey<String>('tools-names'), padding: const EdgeInsets.all(12), children: [
       const Card(child: Padding(
         padding: EdgeInsets.all(16),
         child: Text('این افراد فقط نام یکسان دارند. ادغام خودکار آن‌ها غیرفعال است؛ '
@@ -501,6 +510,7 @@ class ContactToolsScreen extends StatelessWidget {
     if (clusters.isEmpty) return _empty('مخاطب تکراری پیدا نشد.');
     final scheme = Theme.of(context).colorScheme;
     return ListView.builder(
+      key: const PageStorageKey<String>('tools-dups'),
       padding: const EdgeInsets.all(12),
       itemCount: clusters.length + 1,
       itemBuilder: (context, index) {
@@ -537,7 +547,7 @@ class ContactToolsScreen extends StatelessWidget {
                     tooltip: 'حذف این مورد',
                     icon: Icon(Icons.delete_outline_rounded, color: scheme.error),
                     onPressed: () async {
-                      if (await confirm(context, 'حذف مخاطب', '«${c.displayName}» از گوشی حذف شود؟')) await contacts.remove([c]);
+                      if (await confirm(context, 'حذف مخاطب', '«${c.displayName}» از گوشی حذف شود؟', destructive: true)) await contacts.remove([c]);
                     },
                   ),
                   onTap: () => _open(context, c),
@@ -610,7 +620,7 @@ class GroupsManagerScreen extends StatelessWidget {
                   onSelected: (v) async {
                     if (v == 'edit') await _edit(context, g);
                     if (v == 'delete' && context.mounted &&
-                        await confirm(context, 'حذف گروه', 'گروه «${g.name}» حذف می‌شود؛ مخاطبان آن حذف نمی‌شوند.')) {
+                        await confirm(context, 'حذف گروه', 'گروه «${g.name}» حذف می‌شود؛ مخاطبان آن حذف نمی‌شوند.', destructive: true)) {
                       await contacts.deleteGroup(g.id);
                     }
                   },

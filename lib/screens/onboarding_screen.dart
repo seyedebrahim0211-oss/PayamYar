@@ -80,7 +80,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             const SizedBox(height: 18),
             const PayamYarLogotype(height: 48, tagline: true),
             const Spacer(),
-            const SizedBox(width: 260, height: 210, child: CustomPaint(painter: OnboardingArt())),
+            SizedBox(width: 260, height: 210, child: CustomPaint(painter: OnboardingArt(outlineColor: scheme.onSurface))),
             const SizedBox(height: 28),
             Text(title, textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
@@ -131,14 +131,17 @@ class _Dot extends StatelessWidget {
 
 /// PayamYar's own onboarding illustration: a phone with the message emblem, two cards and confetti.
 class OnboardingArt extends CustomPainter {
-  const OnboardingArt();
+  /// Outline ink; callers pass the theme's onSurface so the drawing stays
+  /// visible on the dark background (a fixed near-black vanished in dark mode).
+  final Color outlineColor;
+  const OnboardingArt({this.outlineColor = const Color(0xFF1B2B30)});
 
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width, h = size.height;
     final cx = w / 2, cy = h / 2 + 6;
     final outline = Paint()
-      ..color = const Color(0xFF1B2B30)
+      ..color = outlineColor
       ..style = PaintingStyle.stroke
       ..strokeWidth = 4
       ..strokeJoin = StrokeJoin.round;
@@ -229,5 +232,5 @@ class OnboardingArt extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant OnboardingArt oldDelegate) => oldDelegate.outlineColor != outlineColor;
 }

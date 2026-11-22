@@ -232,6 +232,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
   final lineField = TextEditingController(text: MeliPayamak.defaultLine);
   final toField = TextEditingController();
   final textField = TextEditingController();
+  // Merged once per state instead of on every build of the send tab.
+  late final Listenable _sendFields = Listenable.merge([textField, toField]);
   bool flash = false;
   bool sending = false;
   String? lastRecId;
@@ -547,7 +549,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
     final scheme = Theme.of(context).colorScheme;
     return RefreshIndicator(
       onRefresh: _refresh,
-      child: ListView(padding: const EdgeInsets.all(16), children: [
+      // PageStorageKeys keep each tab's scroll offset across TabBarView switches.
+      child: ListView(key: const PageStorageKey<String>('admin-dashboard'), padding: const EdgeInsets.all(16), children: [
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
@@ -873,11 +876,11 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
     if (api == null) return _needSetup();
     final scheme = Theme.of(context).colorScheme;
     return ListenableBuilder(
-      listenable: Listenable.merge([textField, toField]),
+      listenable: _sendFields,
       builder: (context, _) {
         final parts = _parts(textField.text);
         final count = toField.text.split(RegExp(r'[\s,،;]+')).map(MeliPayamak.normalize).where((n) => n.isNotEmpty).toSet().length;
-        return ListView(padding: const EdgeInsets.all(16), children: [
+        return ListView(key: const PageStorageKey<String>('admin-send'), padding: const EdgeInsets.all(16), children: [
           TextField(
             controller: toField,
             minLines: 1,
@@ -993,6 +996,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
               Padding(padding: EdgeInsets.all(40), child: Center(child: Text('پیامی به این خط نرسیده است.'))),
             ])
           : ListView.separated(
+              key: const PageStorageKey<String>('admin-inbox'),
               padding: const EdgeInsets.symmetric(vertical: 8),
               itemCount: inbox.length,
               separatorBuilder: (_, __) => const Divider(height: 1, indent: 72),
@@ -1003,7 +1007,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
 
   Widget _connectionTab() {
     final scheme = Theme.of(context).colorScheme;
-    return ListView(padding: const EdgeInsets.all(16), children: [
+    return ListView(key: const PageStorageKey<String>('admin-connection'), padding: const EdgeInsets.all(16), children: [
       Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -1074,7 +1078,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with WidgetsBinding
               content: const Text('اطلاعات اتصال و رمز مدیر از این گوشی پاک می‌شود و ورودی پنل از تنظیمات پنهان می‌شود.'),
               actions: [
                 TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
-                TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('پاک کردن')),
+                // Destructive action is tinted with the error color.
+                TextButton(
+                  style: TextButton.styleFrom(foregroundColor: Theme.of(ctx).colorScheme.error),
+                  onPressed: () => Navigator.pop(ctx, true), child: const Text('پاک کردن')),
               ],
             ),
           );

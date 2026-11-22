@@ -56,6 +56,7 @@ class ContactsChannel(private val activity: Activity, messenger: BinaryMessenger
 
     init {
         channel.setMethodCallHandler { call, result -> handle(call, result) }
+        worker.execute { pruneStaleVcf() }
     }
 
     private fun has(p: String) = ContextCompat.checkSelfPermission(activity, p) == PackageManager.PERMISSION_GRANTED
@@ -333,17 +334,31 @@ class ContactsChannel(private val activity: Activity, messenger: BinaryMessenger
     /** Hands a VCF file to the phone's own Contacts app, which imports it with its usual screen. */
     private fun importWithSystem(bytes: ByteArray): Boolean {
         require(bytes.isNotEmpty()) { "فایل خالی است." }
+        pruneStaleVcf()
         val dir = File(activity.cacheDir, "updates").apply { mkdirs() }
         val file = File(dir, "payamyar-import.vcf")
         file.writeBytes(bytes)
         val uri = FileProvider.getUriForFile(activity, activity.packageName + ".updates", file)
         main.post {
             try {
-                activity.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "text/x-vcard")
-                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                // A chooser every time: an implicit VIEW with a read grant would silently hand the
+                // whole address book to whatever app is the default vCard handler.
+                val view = Intent(Intent.ACTION_VIEW).setDataAndType(uri, "text/x-vcard")
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                activity.startActivity(Intent.createChooser(view, "بازکردن مخاطبان با"))
             } catch (_: Exception) { }
         }
         return true
+    }
+
+    /** Address-book copies must not linger in the cache after the import screen is done. */
+    private fun pruneStaleVcf(maxAgeMs: Long = 10 * 60 * 1000L) {
+        try {
+            val now = System.currentTimeMillis()
+            File(activity.cacheDir, "updates").listFiles()?.forEach { f ->
+                if (f.isFile && f.name.endsWith(".vcf", ignoreCase = true) && now - f.lastModified() > maxAgeMs) f.delete()
+            }
+        } catch (_: Exception) { }
     }
 
     // ───────────── activity results ─────────────

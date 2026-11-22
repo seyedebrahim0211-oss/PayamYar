@@ -122,8 +122,10 @@ class _PayamYarState extends State<PayamYar> with WidgetsBindingObserver {
         builder: (context, child) => Directionality(
           textDirection: TextDirection.rtl,
           child: MediaQuery(
+            // In-app size multiplies the system size; clamp the product so a large
+            // system font plus a large in-app setting cannot break every layout.
             data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(
-              settings.scale * MediaQuery.textScalerOf(context).scale(16) / 16)),
+              (settings.scale * MediaQuery.textScalerOf(context).scale(16) / 16).clamp(0.85, 1.6).toDouble())),
             child: LockGate(
               lock: AppLock.instance,
               child: BannerHost(store: store, settings: settings, child: child!),

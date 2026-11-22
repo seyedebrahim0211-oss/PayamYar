@@ -98,17 +98,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  // Built once per state: a fresh Listenable.merge on every build made the
+  // ListenableBuilder detach and re-attach its listeners each time.
+  late final Listenable _changes = Listenable.merge([store, settings, AppLock.instance]);
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([store, settings, AppLock.instance]),
+      listenable: _changes,
       builder: (context, _) {
         final scheme = Theme.of(context).colorScheme;
         final delay = settings.sendDelayEnabled ? '${Jalali.digits(settings.sendDelaySeconds)} ثانیه فرصت لغو' : 'ارسال فوری';
         const feedback = {SentFeedback.sound: 'صدای کوتاه ارسال', SentFeedback.notification: 'اعلان', SentFeedback.silent: 'بی‌صدا'};
         return Scaffold(
           appBar: AppBar(title: const Text('تنظیمات')),
-          body: ListView(padding: EdgeInsets.fromLTRB(16, 4, 16, 28 + MediaQuery.paddingOf(context).bottom), children: [
+          // PageStorageKey keeps the scroll offset when returning to this tab.
+          body: ListView(key: const PageStorageKey<String>('settings-tab'), padding: EdgeInsets.fromLTRB(16, 4, 16, 28 + MediaQuery.paddingOf(context).bottom), children: [
             _HeaderCard(packageInfo: packageInfo, store: store, checking: checking, onCheck: _checkUpdate,
               onSecretTap: _secretTap),
             const SizedBox(height: 14),

@@ -130,14 +130,21 @@ object SmsCore {
         if (groupTime != null) item.put("groupTime", groupTime)
         val grouped = group && delayMs <= 10000
         val due = item.getLong("due")
+        // "t:$id" lets prune() drop the oldest finished sends first.
         val edit = prefs(c).edit().putString("queue:$id", SecureVault.encryptQueue(item.toString()))
-            .putString("status:$id", "queued")
+            .putString("status:$id", "queued").putLong("t:$id", System.currentTimeMillis())
         if (grouped) edit.putLong("group:$id", due)
         check(edit.commit())
         try {
-            if (grouped) scheduleGroup(c.applicationContext, due) else arm(c, id, due)
+            if (grouped) {
+                // The group shares ONE PendingIntent. After process death groupDue is forgotten,
+                // so arming with only this item's due could postpone an earlier stored item.
+                val earliest = prefs(c).all.entries.filter { it.key.startsWith("group:") }
+                    .mapNotNull { it.value as? Long }.minOrNull() ?: due
+                scheduleGroup(c.applicationContext, minOf(due, earliest))
+            } else arm(c, id, due)
         } catch (e: RuntimeException) {
-            prefs(c).edit().remove("queue:$id").remove("group:$id").remove("status:$id").commit()
+            prefs(c).edit().remove("queue:$id").remove("group:$id").remove("status:$id").remove("t:$id").commit()
             throw e
         }
         return id
@@ -221,13 +228,24 @@ object SmsCore {
     @Synchronized fun prune(c: Context, keep: Int = 300) {
         val p = prefs(c)
         val all = p.all
-        val finished = all.keys.filter { it.startsWith("status:") }.map { it.removePrefix("status:") }
-            .filter { !all.containsKey("queue:$it") }
+        val now = System.currentTimeMillis()
+        fun age(id: String) = (all["t:$id"] as? Long) ?: 0L // missing (pre-upgrade) = oldest
+        // Only terminal states. Dropping "queued"/"pending" (in-flight) would lose the row:
+        // link and leave the provider row stuck in the outbox. "send_unconfirmed" may still
+        // get its radio callback, so it is kept for a day.
+        fun terminal(id: String, s: String) = s == "delivered" || s == "delivery_failed" ||
+            s == "accepted_by_radio" || s.startsWith("send_failed") || s.startsWith("cancelled") ||
+            s == "queue_unreadable" || (s == "send_unconfirmed" && now - age(id) > 24L * 60 * 60 * 1000)
+        val finished = all.entries.filter { it.key.startsWith("status:") }
+            .map { it.key.removePrefix("status:") to ((it.value as? String) ?: "") }
+            .filter { (id, s) -> !all.containsKey("queue:$id") && terminal(id, s) }
+            .map { it.first }
+            .sortedBy { age(it) } // oldest first, not HashMap order
         if (finished.size <= keep) return
         val edit = p.edit()
         finished.take(finished.size - keep).forEach { id ->
             listOf("status:$id", "row:$id", "notified:$id", "acks:$id:true", "acks:$id:false",
-                "ok:$id:true", "ok:$id:false").forEach { edit.remove(it) }
+                "ok:$id:true", "ok:$id:false", "t:$id").forEach { edit.remove(it) }
         }
         edit.apply()
     }

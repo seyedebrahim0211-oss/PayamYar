@@ -66,7 +66,22 @@ object Notifier {
         0xFF47765F.toInt(), 0xFFA17A37.toInt(), 0xFFC0583B.toInt(), 0xFF3A7CA5.toInt())
     private val DEFAULT_REPLIES = listOf("باشه 👍", "ممنون", "الان نمی‌تونم صحبت کنم", "بعداً تماس می‌گیرم", "رسیدم")
 
-    fun idFor(address: String) = 100_000 + (address.filter { it.isLetterOrDigit() }.hashCode() and 0x7FFFFFF)
+    /**
+     * Canonical per-conversation key. Android/providers report the same sender as "+98912…",
+     * "0098912…" or "0912…"; raw-address ids made opening the chat miss the notification.
+     */
+    fun addressKey(address: String): String {
+        val digits = buildString {
+            for (ch in address) { val d = Character.digit(ch, 10); if (d >= 0) append(d) }
+        }
+        val iranMobile = digits.startsWith("09") || digits.startsWith("989") || digits.startsWith("00989") ||
+            (digits.length == 10 && digits.startsWith("9"))
+        // Named senders ("MyBank") are never folded into a number.
+        if (iranMobile && digits.length >= 10 && address.none { it.isLetter() }) return digits.takeLast(10)
+        return address.lowercase().filterNot { it.isWhitespace() }
+    }
+
+    fun idFor(address: String) = 100_000 + (addressKey(address).hashCode() and 0x7FFFFFF)
 
     private fun latinDigits(s: String) = buildString {
         for (ch in s) append(when (ch) { in '۰'..'۹' -> '0' + (ch - '۰'); in '٠'..'٩' -> '0' + (ch - '٠'); else -> ch })
@@ -270,7 +285,8 @@ object Notifier {
 
     /** Long-lived conversation shortcut: required by Android 11+ for bubbles and the "Conversations" section. */
     private fun conversationShortcut(c: Context, address: String, name: String, sender: Person, icon: IconCompat): String? = try {
-        val id = "conv_" + address.filter { it.isLetterOrDigit() }.ifEmpty { "x" }
+        // Same canonical key as idFor, so one sender keeps one conversation shortcut.
+        val id = "conv_" + addressKey(address).filter { it.isLetterOrDigit() }.ifEmpty { "x" }
         val shortcut = ShortcutInfoCompat.Builder(c, id)
             .setLongLived(true)
             .setShortLabel(name.take(24))

@@ -65,8 +65,10 @@ class FloatingNotifications : Service() {
         }
         fun refresh() { instance?.let { service -> service.main.post { service.refreshViews() } } }
         fun clear(address: String) { instance?.let { service -> service.main.post {
-            service.messages.remove(address)
-            if (service.shown?.address == address) service.dismissCard()
+            // Keyed canonically so "+98912…" clears a card shown for "0912…".
+            val key = Notifier.addressKey(address)
+            service.messages.remove(key)
+            if (service.shown?.let { Notifier.addressKey(it.address) } == key) service.dismissCard()
             else if (service.messages.isEmpty() && service.shown == null) service.stopSelf()
             else if (service.card == null) service.renderBubble()
         } } }
@@ -223,8 +225,9 @@ class FloatingNotifications : Service() {
         val message = if (privateContent()) Message(address, "پیام‌یار", "پیام جدید", sample, time, null)
                       else Message(address, name.ifBlank { address }, body, sample, time, source)
         if (!sample) {
-            messages.remove(address)
-            messages[address] = message
+            val key = Notifier.addressKey(address)
+            messages.remove(key)
+            messages[key] = message
             while (messages.size > 10) messages.remove(messages.keys.first())
         }
         shown = message
@@ -637,7 +640,7 @@ class FloatingNotifications : Service() {
             }
             if (messages.size < 2) return false
             val all = messages.values.toList()
-            val i = all.indexOfFirst { it.address == message.address }
+            val i = all.indexOfFirst { Notifier.addressKey(it.address) == Notifier.addressKey(message.address) }
             val next = all[(i + (if (dx < 0) 1 else all.size - 1)).mod(all.size)]
             main.post { shown = next; renderCard(next, pinned = true, expanded = true) }
             return true

@@ -51,6 +51,9 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
   final focus = FocusNode();
   final _searchController = TextEditingController();
   final _itemScroll = ItemScrollController();
+  // Tracks visible rows so a "jump to latest" button can appear after scrolling
+  // back through history; listened to via ValueListenableBuilder (no setState per pixel).
+  final _itemPositions = ItemPositionsListener.create();
   bool _searchVisible = false;
   String _searchQuery = '';
   int _matchIndex = 0;
@@ -229,7 +232,7 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
           if (tasks.isEmpty) const Text('مورد مشخصی پیدا نشد.'),
           for (final item in tasks) ListTile(dense: true, leading: const Icon(Icons.task_alt_rounded),
             title: Text(item),
-            trailing: IconButton(icon: const Icon(Icons.copy_outlined),
+            trailing: IconButton(tooltip: 'کپی این مورد', icon: const Icon(Icons.copy_outlined),
               onPressed: () => Clipboard.setData(ClipboardData(text: item)))),
           const SizedBox(height: 12),
           Text('هشدارهای امنیتی', style: Theme.of(ctx).textTheme.titleMedium),
@@ -329,7 +332,10 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
                 content: const Text('این پیام برای همیشه از گوشی حذف می‌شود.'),
                 actions: [
                   TextButton(onPressed: () => Navigator.pop(dialog, false), child: const Text('انصراف')),
-                  TextButton(onPressed: () => Navigator.pop(dialog, true), child: const Text('حذف')),
+                  // Destructive action is tinted with the error color.
+                  TextButton(
+                    style: TextButton.styleFrom(foregroundColor: Theme.of(dialog).colorScheme.error),
+                    onPressed: () => Navigator.pop(dialog, true), child: const Text('حذف')),
                 ]));
               if (ok == true) await store.deleteMessages([m.id!]);
             }),
@@ -605,8 +611,10 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
                 Expanded(child: items.isEmpty
                     // Scrollable so opening the keyboard in a new chat cannot overflow.
                     ? const SingleChildScrollView(child: EmptyState(icon: Icons.chat_outlined, title: 'هنوز پیامی نیست', subtitle: 'اولین پیام را بنویسید.'))
-                    : ScrollablePositionedList.builder(
+                    : Stack(fit: StackFit.expand, children: [
+                      ScrollablePositionedList.builder(
                         itemScrollController: _itemScroll,
+                        itemPositionsListener: _itemPositions,
                         reverse: true,
                         padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
                         itemCount: items.length,
@@ -632,9 +640,35 @@ class _ConversationScreenState extends State<ConversationScreen> with WidgetsBin
                           return _bubbleFor(e.message!, pinnedId, look,
                             searchHit: matchSet.contains(e.message),
                             selectedHit: identical(e.message, selectedMatch));
-                        })),
+                        }),
+                      // "Jump to latest" appears only once the newest rows (index 0,
+                      // bottom of the reversed list) have scrolled out of view.
+                      PositionedDirectional(
+                        end: 12, bottom: 12,
+                        child: ValueListenableBuilder<Iterable<ItemPosition>>(
+                          valueListenable: _itemPositions.itemPositions,
+                          builder: (context, positions, _) {
+                            final away = positions.isNotEmpty &&
+                                positions.map((p) => p.index).reduce((a, b) => a < b ? a : b) > 2;
+                            if (!away) return const SizedBox.shrink();
+                            return FloatingActionButton.small(
+                              heroTag: null,
+                              tooltip: 'رفتن به آخرین پیام',
+                              onPressed: () {
+                                if (_itemScroll.isAttached) {
+                                  unawaited(_itemScroll.scrollTo(index: 0,
+                                    duration: const Duration(milliseconds: 300), curve: Curves.easeOut));
+                                }
+                              },
+                              child: const Icon(Icons.keyboard_double_arrow_down_rounded),
+                            );
+                          },
+                        ),
+                      ),
+                    ])),
                 if (canReply && quickReplies.isNotEmpty)
-                  SizedBox(height: 45, child: ListView(
+                  // Height follows the text scale so chips are not clipped at large font sizes.
+                  SizedBox(height: MediaQuery.textScalerOf(context).scale(45), child: ListView(
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     children: [
@@ -1024,7 +1058,13 @@ class _Bubble extends StatelessWidget {
       alignment: outgoing ? AlignmentDirectional.centerStart : AlignmentDirectional.centerEnd,
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * .8),
-        child: GestureDetector(
+        // A bare GestureDetector gives screen readers no context; describe the bubble
+        // and announce what long-press does.
+        child: Semantics(
+          container: true,
+          label: [outgoing ? 'پیام ارسالی' : 'پیام دریافتی', if (time.isNotEmpty) time, if (status != null) status!].join('، '),
+          onLongPressHint: onLongPress == null ? null : 'گزینه‌های پیام',
+          child: GestureDetector(
           onLongPress: onLongPress,
           onTap: onTap,
           child: Container(
@@ -1074,7 +1114,9 @@ class _Bubble extends StatelessWidget {
                 onPhoneMessage: onPhoneMessage),
               if (text.length > 260 || text.split('\n').length > 8)
                 TextButton(
-                  style: TextButton.styleFrom(foregroundColor: fg, padding: EdgeInsets.zero),
+                  // Zero padding kept the tap target tiny; keep a 48dp-high minimum.
+                  style: TextButton.styleFrom(foregroundColor: fg, padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: const Size(64, 48)),
                   onPressed: () => showDialog<void>(
                     context: context,
                     builder: (ctx) => AlertDialog(
@@ -1111,6 +1153,7 @@ class _Bubble extends StatelessWidget {
               ]),
             ]),
           ),
+        ),
         ),
       ),
     );

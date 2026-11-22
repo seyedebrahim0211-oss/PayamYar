@@ -27,7 +27,11 @@ class GroupsScreen extends StatelessWidget {
         content: Text('گروه «${group.name}» حذف شود؟ پیام‌های خصوصی اعضا حذف نمی‌شوند.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('انصراف')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('حذف گروه')),
+          // Destructive action uses the error color.
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error,
+              foregroundColor: Theme.of(ctx).colorScheme.onError),
+            onPressed: () => Navigator.pop(ctx, true), child: const Text('حذف گروه')),
         ],
       ));
     if (confirmed == true) await store.smsGroups.remove(group.id);
@@ -108,7 +112,9 @@ class GroupsScreen extends StatelessWidget {
               onPressed: () => _compose(context)),
           ],
         ),
-        body: ListView(padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.paddingOf(context).bottom), children: [
+        // PageStorageKey keeps the scroll offset when returning to this tab.
+        body: ListView(key: const PageStorageKey<String>('groups-tab'),
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.paddingOf(context).bottom), children: [
           Container(
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(

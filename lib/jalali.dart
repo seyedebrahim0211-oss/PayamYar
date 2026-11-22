@@ -65,15 +65,18 @@ class Jalali {
     }).join();
   }
 
+  /// Whole calendar days from [b] to [a]. Computed in UTC so a 23-hour
+  /// daylight-saving day still counts as one day (local midnights would not).
+  static int dayDiff(DateTime a, DateTime b) =>
+      DateTime.utc(a.year, a.month, a.day).difference(DateTime.utc(b.year, b.month, b.day)).inDays;
+
   static String time(DateTime d) =>
       digits('${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}');
 
   /// "۱۴:۰۵" today, "دیروز", weekday within a week, "۲۰ آبان" this year, otherwise "۱۴۰۴/۰۸/۲۰".
   static String short(DateTime d, {DateTime? now}) {
     final today = now ?? DateTime.now();
-    final start = DateTime(today.year, today.month, today.day);
-    final day = DateTime(d.year, d.month, d.day);
-    final diff = start.difference(day).inDays;
+    final diff = dayDiff(today, d);
     if (diff <= 0) return time(d);
     if (diff == 1) return 'دیروز';
     if (diff < 7) return weekdays[d.weekday - 1];
@@ -86,8 +89,7 @@ class Jalali {
   /// Day header inside a conversation: "امروز", "دیروز" or "شنبه ۲۰ آبان ۱۴۰۵".
   static String dayHeader(DateTime d, {DateTime? now}) {
     final today = now ?? DateTime.now();
-    final diff = DateTime(today.year, today.month, today.day)
-        .difference(DateTime(d.year, d.month, d.day)).inDays;
+    final diff = dayDiff(today, d);
     if (diff == 0) return 'امروز';
     if (diff == 1) return 'دیروز';
     final j = fromGregorian(d.year, d.month, d.day);

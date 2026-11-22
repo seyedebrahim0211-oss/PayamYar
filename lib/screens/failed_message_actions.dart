@@ -53,7 +53,10 @@ Future<void> failedMessageActions(
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialog, false),
               child: const Text('انصراف')),
+          // Destructive action uses the error color.
           FilledButton(onPressed: () => Navigator.pop(dialog, true),
+              style: FilledButton.styleFrom(backgroundColor: Theme.of(dialog).colorScheme.error,
+                foregroundColor: Theme.of(dialog).colorScheme.onError),
               child: const Text('حذف')),
         ],
       ),

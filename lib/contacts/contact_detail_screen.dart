@@ -110,7 +110,7 @@ class ContactDetailScreen extends StatelessWidget {
                     case 'system':
                       await ContactsBridge.openSystemEditor(c.id);
                     case 'delete':
-                      if (await confirm(context, 'حذف مخاطب', 'این مخاطب از دفترچه تلفن گوشی حذف می‌شود.')) {
+                      if (await confirm(context, 'حذف مخاطب', 'این مخاطب از دفترچه تلفن گوشی حذف می‌شود.', destructive: true)) {
                         await contacts.remove([c]);
                         if (context.mounted) Navigator.of(context).pop();
                       }

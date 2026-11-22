@@ -82,7 +82,8 @@ class _TemplatesSheetState extends State<_TemplatesSheet> {
                 ),
               ),
             ),
-            SizedBox(height: 46, child: ListView(
+            // Height follows the text scale so chip labels are not clipped.
+            SizedBox(height: MediaQuery.textScalerOf(context).scale(46), child: ListView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 16),
               children: [
