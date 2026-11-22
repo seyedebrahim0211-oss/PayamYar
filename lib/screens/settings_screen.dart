@@ -421,13 +421,15 @@ class SendingSettingsPage extends StatelessWidget {
                       const ListTile(title: Text('سیم‌کارت برای ارسال'),
                         subtitle: Text('هیچ پیامکی با گزینهٔ «پیش‌فرض» ارسال نمی‌شود.')),
                       for (final sim in store.sims)
-                        RadioListTile<int>(
-                          value: sim['id'] as int,
-                          groupValue: store.selectedSim,
+                        ListTile(
+                          leading: Icon(
+                            store.selectedSim == sim['id']
+                                ? Icons.radio_button_checked_rounded
+                                : Icons.radio_button_off_rounded,
+                            color: scheme.primary),
                           title: Text(sim['label'].toString()),
-                          onChanged: (id) {
-                            if (id == null) return;
-                            store.selectSim(id);
+                          onTap: () {
+                            store.selectSim(sim['id'] as int);
                             Navigator.pop(ctx);
                           }),
                     ],
