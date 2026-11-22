@@ -45,6 +45,9 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
   final Map<String, String> _names = {};
   late Future<List<_BatchBody>> _batchBodies;
   bool _showMemberHistory = false;
+  String _statusFilter = 'all';
+  List<_GroupRow>? _cachedBroadcasts;
+  int _cachedRevision = -1;
 
   AppStore get store => widget.store;
   SmsGroup get group {
@@ -77,6 +80,7 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
   }
 
   void _loadHistory() {
+    _cachedBroadcasts = null;
     _batchBodies = Future.wait([
       for (final batch in store.smsGroups.batchesFor(widget.group.id))
         store.smsGroups.batchBody(batch).then((text) => _BatchBody(batch, text)),
@@ -111,9 +115,16 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
   }
 
   List<_GroupRow> _timeline(List<_BatchBody> history) {
+    if (_cachedBroadcasts != null && _cachedRevision == store.revision) {
+      return _cachedBroadcasts!;
+    }
+    // Index only this group's members. Indexing the entire SMS database on
+    // every notification was expensive on phones with large inboxes.
+    final members = group.recipients.map(_key).toSet();
     final indexed = <String, List<MessageRecord>>{};
     for (final m in store.messages) {
-      (indexed[_key(m.sender)] ??= []).add(m);
+      final address = _key(m.sender);
+      if (members.contains(address)) (indexed[address] ??= []).add(m);
     }
     final output = <_GroupRow>[];
     final shownIncoming = <String>{};
@@ -155,6 +166,8 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
       }
     }
     output.sort((a, b) => b.date.compareTo(a.date));
+    _cachedBroadcasts = output;
+    _cachedRevision = store.revision;
     return output;
   }
 
@@ -416,6 +429,14 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
               final registered = sent.where((r) => r.confirmed &&
                   r.record?.failedSendOrDelivery != true && r.record?.type == 2).length;
               final unknown = sent.length - failedCount - registered;
+              final filtered = _showMemberHistory ? rows : rows.where((r) {
+                if (_statusFilter == 'all') return true;
+                if (r.incoming || r.privateMessage) return false;
+                final failed = r.record?.failedSendOrDelivery == true;
+                if (_statusFilter == 'failed') return failed;
+                final registered = !failed && r.confirmed && r.record?.type == 2;
+                return _statusFilter == 'sent' ? registered : !failed && !registered;
+              }).toList(growable: false);
               return Column(children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(12, 5, 12, 3),
@@ -432,12 +453,40 @@ class _GroupConversationScreenState extends State<GroupConversationScreen> {
                     ],
                   ),
                 ),
-                Expanded(child: ListView.builder(
-                  reverse: true,
-                  itemCount: rows.length,
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
-                  itemBuilder: (context, i) => _item(rows[i], scheme),
-                )),
+                if (!_showMemberHistory) SizedBox(
+                  height: 48,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    children: [
+                      for (final item in const [
+                        ('all', 'همه', Icons.list_alt_rounded),
+                        ('sent', 'ثبت‌شده', Icons.done_all_rounded),
+                        ('failed', 'ناموفق', Icons.error_outline_rounded),
+                        ('pending', 'در انتظار', Icons.schedule_rounded),
+                      ])
+                        Padding(
+                          padding: const EdgeInsetsDirectional.only(end: 7),
+                          child: ChoiceChip(
+                            avatar: Icon(item.$3, size: 17,
+                              color: _statusFilter == item.$1 ? scheme.onPrimaryContainer : scheme.primary),
+                            label: Text(item.$2),
+                            selected: _statusFilter == item.$1,
+                            onSelected: (_) => setState(() => _statusFilter = item.$1),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                Expanded(child: filtered.isEmpty
+                  ? Center(child: Text('در این وضعیت موردی وجود ندارد.',
+                      style: Theme.of(context).textTheme.bodyMedium))
+                  : ListView.builder(
+                    reverse: true,
+                    itemCount: filtered.length,
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
+                    itemBuilder: (context, i) => _item(filtered[i], scheme),
+                  )),
               ]);
             },
           ),
