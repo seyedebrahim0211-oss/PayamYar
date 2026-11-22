@@ -433,7 +433,7 @@ class SendingSettingsPage extends StatelessWidget {
                             Navigator.pop(ctx);
                           }),
                     ],
-                  )))),
+                  ))),
             ),
           ]),
         SettingsGroup(title: 'ظرفیت فهرست گیرندگان', children: [
