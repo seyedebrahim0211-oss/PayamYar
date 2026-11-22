@@ -106,7 +106,9 @@ class _DialectCardState extends State<DialectCard> with WidgetsBindingObserver {
           .where((v) => v.length >= 3 && _officialAudio(v[2])).toList();
       display(entries);
       if (!mounted || generation != _generation ||
-          prefs.getInt('dialect.public.day') == day) return;
+          prefs.getInt('dialect.public.day') == day) {
+        return;
+      }
       final response = await _client.get(Uri.parse(_source))
           .timeout(const Duration(seconds: 12));
       if (response.statusCode != 200) return;
