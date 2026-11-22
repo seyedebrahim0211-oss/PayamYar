@@ -887,7 +887,9 @@ class AppStore extends ChangeNotifier {
     final wait = next.difference(DateTime.now());
     // A newly queued short send can precede a previously scheduled send.
     _sendPoll?.cancel();
-    _sendPoll = Timer(wait > const Duration(seconds: 1) ? wait : const Duration(seconds: 1), _pollSends);
+    final minimumPoll = pendingSends.length > 20
+        ? const Duration(seconds: 6) : const Duration(seconds: 2);
+    _sendPoll = Timer(wait > minimumPoll ? wait : minimumPoll, _pollSends);
   }
 
   Future<void> _pollSends() async {
