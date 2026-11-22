@@ -11,7 +11,7 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
-    expect(find.text('نذر فرهنگی پیام‌یار'), findsOneWidget);
+    expect(find.text('نذر فرهنگی'), findsOneWidget);
     // The voluntary-payment notice and button are below the fold on small
     // screens. Scroll as a person would instead of assuming eager list layout.
     await tester.scrollUntilVisible(find.textContaining('کاملاً اختیاری'), 180);
@@ -20,7 +20,7 @@ void main() {
       find.byKey(const ValueKey('cultural-support-donate')), 180);
     expect(find.byKey(const ValueKey('cultural-support-donate')), findsOneWidget);
     expect(CulturalSupportPage.supportUrl,
-      'https://honarmardomi.ir/payamyar-cultural-support/');
+      'https://honarmardomi.ir/nazr-farhangi/');
     expect(tester.takeException(), isNull);
   });
 }

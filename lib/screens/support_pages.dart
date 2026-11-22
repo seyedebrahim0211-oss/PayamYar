@@ -1,4 +1,5 @@
 import 'dart:io' show Platform;
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../app_settings.dart';
@@ -31,7 +32,7 @@ const _faq = <(String, String)>[
     'نسخه جدید فقط از honarmardomi.ir دریافت می‌شود؛ اثر انگشت فایل و امضای رسمی پیام‌یار پیش از نصب بررسی و نصب با تأیید خودتان در نصب‌کننده اندروید انجام می‌شود. داده‌های شما حفظ می‌شود.'),
   ('آیا پیامک‌های من جایی ارسال می‌شود؟',
     'متن پیامک‌ها و فهرست مخاطبان برای پشتیبانی ارسال نمی‌شود. فقط متن گزارشی که خودتان ثبت و ارسال می‌کنید، به‌صورت امن در سامانه پشتیبانی honarmardomi.ir ذخیره می‌شود؛ بررسی به‌روزرسانی و سرویس‌های اختیاری ممکن است به اینترنت نیاز داشته باشند.'),
-  ('نذر فرهنگی و حمایت از پیام‌یار اجباری است؟',
+  ('آیا نذر فرهنگی اجباری است؟',
     'خیر؛ نذر فرهنگی یک حمایت مالی کاملاً داوطلبانه است. همه خدمات برنامه مستقل از حمایت در دسترس می‌مانند. مبلغ دلخواه از طریق صفحه امن هنر مردمی و درگاه سامان پرداخت می‌شود؛ برنامه اطلاعات کارت بانکی را دریافت نمی‌کند.'),
   ('پیام چندرسانه‌ای (MMS) پشتیبانی می‌شود؟',
     'فعلاً خیر؛ پیام‌یار اعلان MMS را نشان می‌دهد ولی دانلود آن را انجام نمی‌دهد.'),
@@ -245,7 +246,7 @@ class AboutPage extends StatelessWidget {
           onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
             builder: (_) => const CulturalSupportPage())),
           icon: const Icon(Icons.volunteer_activism_outlined),
-          label: const Text('نذر فرهنگی؛ حمایت داوطلبانه از توسعه'),
+          label: const Text('نذر فرهنگی؛ همراهی با هنر مردمی'),
         ),
         const SizedBox(height: 18),
         Text('قلم: وزیرمتن (SIL Open Font License)', style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
@@ -260,12 +261,12 @@ class CulturalSupportPage extends StatelessWidget {
   const CulturalSupportPage({super.key});
 
   static const String supportUrl =
-      'https://honarmardomi.ir/payamyar-cultural-support/';
+      'https://honarmardomi.ir/nazr-farhangi/';
 
   Future<void> _visit(BuildContext context) async {
     bool opened = false;
     try {
-      opened = await UpdateService.openDownload(supportUrl);
+      opened = await launchUrl(Uri.parse(supportUrl), mode: LaunchMode.inAppBrowserView);
     } catch (_) {
       opened = false;
     }
@@ -277,102 +278,16 @@ class CulturalSupportPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    const green = Color(0xFF075D60);
-    const gold = Color(0xFFB9934C);
     return Scaffold(
-      appBar: AppBar(title: const Text('نذر فرهنگی پیام‌یار')),
-      body: ListView(
-        padding: EdgeInsets.fromLTRB(
-          16, 12, 16, 28 + MediaQuery.paddingOf(context).bottom),
-        children: [
-          Container(
-            padding: const EdgeInsets.all(21),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topRight,
-                end: Alignment.bottomLeft,
-                colors: [
-                  scheme.surface,
-                  scheme.secondaryContainer.withValues(alpha: .73),
-                ],
-              ),
-              border: Border.all(color: gold.withValues(alpha: .40)),
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: Column(children: [
-              Container(
-                width: 63, height: 63,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: green.withValues(alpha: .10),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: gold.withValues(alpha: .48)),
-                ),
-                child: const Icon(Icons.volunteer_activism_outlined, size: 35, color: green),
-              ),
-              const SizedBox(height: 13),
-              Text('با هم، پیام‌یار را بهتر می‌کنیم',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w900, color: green),
-                textAlign: TextAlign.center),
-              const SizedBox(height: 9),
-              const Text('نذر فرهنگی، همراهی داوطلبانه برای توسعه و نگهداری پیام‌یار است. '
-                'اگر مایل باشید، می‌توانید با هر مبلغ دلخواه در بازه مجاز درگاه سایت '
-                'به تداوم و ارتقای این پروژه کمک کنید.',
-                textAlign: TextAlign.center,
-                style: TextStyle(height: 1.85)),
-            ]),
-          ),
-          const SizedBox(height: 16),
-          Text('حمایت شما صرف چه کارهایی می‌شود؟',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w800)),
-          const SizedBox(height: 7),
-          for (final item in const [
-            (Icons.security_outlined, 'تقویت امنیت و حفظ حریم خصوصی'),
-            (Icons.speed_outlined, 'بهبود سرعت، پایداری و سازگاری گوشی‌ها'),
-            (Icons.build_circle_outlined, 'رفع باگ‌ها و بهینه‌سازی تجربه کاربری'),
-            (Icons.auto_awesome_outlined, 'توسعه امکانات تازه و انتشار به‌روزرسانی‌ها'),
-          ])
-            Card(
-              margin: const EdgeInsets.only(bottom: 7),
-              child: ListTile(
-                dense: true,
-                leading: Icon(item.$1, color: scheme.primary),
-                title: Text(item.$2),
-              ),
-            ),
-          const SizedBox(height: 11),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Icon(Icons.verified_user_outlined, color: scheme.primary),
-                const SizedBox(width: 10),
-                const Expanded(child: Text(
-                  'حمایت کاملاً اختیاری است و هیچ ویژگی یا خدماتی به پرداخت وابسته نیست. '
-                  'پرداخت در مرورگر و از طریق درگاه رسمی هنر مردمی انجام می‌شود؛ '
-                  'شماره کارت و اطلاعات بانکی در پیام‌یار دریافت یا ذخیره نمی‌شود.',
-                  style: TextStyle(height: 1.75, fontSize: 12.5))),
-              ]),
-            ),
-          ),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            key: const ValueKey('cultural-support-donate'),
-            onPressed: () => _visit(context),
-            icon: const Icon(Icons.favorite_border_rounded),
-            label: const Text('انتخاب مبلغ و پرداخت امن'),
-            style: FilledButton.styleFrom(
-              minimumSize: const Size.fromHeight(52)),
-          ),
-          const SizedBox(height: 8),
-          Text('انتقال به سایت رسمی هنر مردمی · پرداخت به تومان · نام و شماره تماس اختیاری',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant)),
-        ],
-      ),
+      appBar: AppBar(title: const Text('نذر فرهنگی')),
+      body: ListView(padding: const EdgeInsets.all(16), children: [
+        for (final paragraph in const ["نذر فرهنگی؛ همراهی با هنر مردمی","هر نذر فرهنگی، سهمی داوطلبانه در تداوم فعالیت‌های فرهنگی، هنری، آموزشی و رسانه‌ای مجموعه هنر مردمی است؛ از تولید آثار و برگزاری برنامه‌های مردمی تا پاسداشت میراث بومی و توسعه ابزارهای کاربردی. می‌توانید متناسب با توان و علاقه خود، مبلغ دلخواهی در بازه مجاز درگاه پرداخت اهدا کنید.","✦ تولید آثار فرهنگی، هنری و رسانه‌ای","✦ حفظ گویش و میراث فرهنگی بشرویه","✦ آموزش، مهارت‌آموزی و رویدادهای مردمی","✦ توسعه و نگهداری سامانه‌ها و اپلیکیشن‌های فرهنگی","نذر فرهنگی به مجموعه فعالیت‌های هنر مردمی اختصاص دارد و محدود به یک برنامه یا اپلیکیشن نیست. این کمک کاملاً داوطلبانه است و هیچ حق اشتراک، خدمت تضمین‌شده یا امتیاز ویژه‌ای ایجاد نمی‌کند. نام، شماره تماس و درج پیام اختیاری است؛ اطلاعات کارت فقط در صفحه رسمی درگاه سامان دریافت می‌شود. مبلغ‌ها به تومان و در بازه مجاز درگاه هستند.","💝 مشارکت در نذر فرهنگی هنر مردمی","به انتخاب خود در پشتیبانی از فعالیت‌های فرهنگی، هنری، آموزشی، رسانه‌ای، میراث بومی و توسعه سامانه‌های مجموعه هنر مردمی سهیم شوید؛ مبلغ دلخواه را به تومان وارد کنید.","🛈 نذر فرهنگی برای مجموعه فعالیت‌های هنر مردمی است، نه صرفاً یک اپ یا پروژه. حمایت کاملاً اختیاری است و امتیاز یا خدمت ویژه ایجاد نمی‌کند.","🔒 پرداخت امن از درگاه رسمی · رسید پس از پرداخت","سپاس از مشارکت شما در رشد فعالیت‌های فرهنگی و هنری مردمی؛ کمک‌ها برای پیشبرد برنامه‌های مجموعه هنر مردمی ثبت و پیگیری می‌شوند."])
+          Padding(padding: const EdgeInsets.only(bottom: 12),
+            child: Text(paragraph, textAlign: TextAlign.start, style: const TextStyle(height: 1.7))),
+        FilledButton.icon(key: const ValueKey('cultural-support-donate'),
+          onPressed: () => _visit(context), icon: const Icon(Icons.volunteer_activism_outlined),
+          label: const Text('انتخاب مبلغ و پرداخت با درگاه سامان')),
+      ]),
     );
   }
 }

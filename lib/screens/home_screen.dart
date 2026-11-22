@@ -541,7 +541,14 @@ class _ConversationsPageState extends State<ConversationsPage> {
                               blurRadius: 12, offset: const Offset(0, 4)),
                           ],
                         ),
-                        child: const BrandTile(size: 38),
+                        child: Material(color: scheme.primaryContainer, borderRadius: BorderRadius.circular(12),
+                          child: InkWell(borderRadius: BorderRadius.circular(12),
+                            onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const DialectCard())),
+                            child: const Tooltip(message: 'باز کردن واژه‌نامه بشرویه',
+                              child: Padding(padding: EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                                  BrandTile(size: 24), Text('واژه‌نامه بشرویه', style: TextStyle(fontSize: 10)),
+                                ]))))),
                       ),
                       const SizedBox(width: 10),
                       Flexible(child: Column(
@@ -642,8 +649,7 @@ class _ConversationsPageState extends State<ConversationsPage> {
                   ),
                 ))),
               if (!widget.archive && query.isEmpty) const SliverToBoxAdapter(child: WhatsNewCard()),
-              if (store.android && !widget.archive && query.isEmpty)
-                const SliverToBoxAdapter(child: DialectCard()),
+
               if (store.update != null && !store.updateDismissed && !widget.archive)
                 SliverToBoxAdapter(child: UpdateBanner(store: store)),
               if (store.android && !store.isDefault && !widget.archive)

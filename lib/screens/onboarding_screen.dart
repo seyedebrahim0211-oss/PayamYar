@@ -19,14 +19,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   AppStore get store => widget.store;
   // Google Play requires the default SMS role *before* requesting restricted SMS access.
-  bool get permissionStep => store.permissions.isDefault && !store.permissions.canRead;
+  bool get permissionStep => store.permissions.isDefault && (!store.permissions.canRead || !store.permissions.canSend);
 
   Future<void> _grant() async {
     setState(() => busy = true);
     try {
       final state = await store.requestPermissions();
-      if (mounted) setState(() => denied = !state.canRead);
-      if (state.canRead && state.isDefault) await store.finishOnboarding();
+      if (mounted) setState(() => denied = !state.canRead || !state.canSend);
+      if (state.canRead && state.canSend && state.isDefault) await store.finishOnboarding();
     } catch (_) {
       if (mounted) setState(() => denied = true);
     } finally {
@@ -42,7 +42,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       // The user can still continue; the inbox shows a reminder card.
     }
     await store.checkPermissions();
-    if (store.permissions.isDefault && store.permissions.canRead) {
+    if (store.permissions.isDefault && store.permissions.canRead && store.permissions.canSend) {
       await store.finishOnboarding();
     }
     if (mounted) setState(() => busy = false);
